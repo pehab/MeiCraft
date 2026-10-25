@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")"
+SDK="${ANDROID_SDK_ROOT:-../android-sdk}"
+SDK="$(cd "$SDK" && pwd)"
+BT="$SDK/build-tools/35.0.0"
+JAVA_BIN="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}/bin"
+mkdir -p build/test-apk/classes build/test-apk/dex
+"$BT/aapt2" link -I "$SDK/platforms/android-35/android.jar" --manifest tests/AndroidManifest.xml -o build/test-apk/resources.apk
+"$JAVA_BIN/java" -m jdk.compiler/com.sun.tools.javac.Main -encoding UTF-8 -source 17 -target 17 -classpath "$SDK/platforms/android-35/android.jar:build/classes" -d build/test-apk/classes tests/SmokeInstrumentation.java
+python3 - <<'PY'
+import zipfile,pathlib
+with zipfile.ZipFile('build/test-apk/classes.jar','w') as z:
+ for p in pathlib.Path('build/test-apk/classes').rglob('*.class'):z.write(p,p.relative_to('build/test-apk/classes'))
+PY
+"$BT/d8" --lib "$SDK/platforms/android-35/android.jar" --classpath build/classes.jar --min-api 26 --output build/test-apk/dex build/test-apk/classes.jar
+cp build/test-apk/resources.apk build/test-apk/unsigned.apk
+python3 - <<'PY'
+import zipfile,pathlib
+with zipfile.ZipFile('build/test-apk/unsigned.apk','a') as z:
+ for p in pathlib.Path('build/test-apk/dex').glob('*.dex'):z.write(p,p.name)
+PY
+"$BT/zipalign" -f -p 4 build/test-apk/unsigned.apk build/test-apk/aligned.apk
+"$BT/apksigner" sign --ks .signing/keystore.p12 --ks-pass file:.signing/password --out build/meiCraft-tests.apk build/test-apk/aligned.apk
