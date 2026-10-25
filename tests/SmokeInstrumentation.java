@@ -40,6 +40,10 @@ public final class SmokeInstrumentation extends Instrumentation {
   stickEvent(game,3,new int[]{31},new float[][]{{lx,ly-40}});
   check(game.forward==0&&game.strafe==0&&game.lookVertical==0&&game.lookHorizontal==0,"cancel clears both joysticks");
  }
+ void emitScreenshot(android.graphics.Bitmap screenshot,String name){
+  ByteArrayOutputStream image=new ByteArrayOutputStream();screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,image);String encoded=android.util.Base64.encodeToString(image.toByteArray(),android.util.Base64.NO_WRAP);
+  for(int start=0;start<encoded.length();start+=16000){Bundle chunk=new Bundle();chunk.putString(name+"Chunk",encoded.substring(start,Math.min(encoded.length(),start+16000)));sendStatus(1,chunk);}
+ }
  android.graphics.Bitmap smallScreenshot(){
   android.graphics.Bitmap source=getUiAutomation().takeScreenshot();if(source==null)return null;int edge=Math.max(source.getWidth(),source.getHeight());if(edge<=640)return source;android.graphics.Bitmap scaled=android.graphics.Bitmap.createScaledBitmap(source,Math.max(1,source.getWidth()*640/edge),Math.max(1,source.getHeight()*640/edge),true);source.recycle();return scaled;
  }
@@ -91,9 +95,9 @@ public final class SmokeInstrumentation extends Instrumentation {
   runOnMainSync(()->{synchronized(game.world){World w=game.world;w.yaw=.55f;w.pitch=-.38f;w.y=26;w.x=48.5f;w.z=48.5f;}activity.paused=false;});
   Thread.sleep(1500);
   android.graphics.Bitmap screenshot=smallScreenshot();
-  if(screenshot!=null){try(FileOutputStream out=context.openFileOutput("smoke.png",0)){screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}ByteArrayOutputStream image=new ByteArrayOutputStream();screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,image);result.putString("screenshot",android.util.Base64.encodeToString(image.toByteArray(),android.util.Base64.NO_WRAP));screenshot.recycle();}
+  if(screenshot!=null){try(FileOutputStream out=context.openFileOutput("smoke.png",0)){screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}emitScreenshot(screenshot,"screenshot");screenshot.recycle();}
   runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));Thread.sleep(1200);runOnMainSync(()->{game.hud.layoutHud();check(game.hud.designW==540&&game.hud.designH==960,"portrait has a full responsive control layout");});testSticks(activity,game);
-  android.graphics.Bitmap portrait=smallScreenshot();if(portrait!=null){ByteArrayOutputStream image=new ByteArrayOutputStream();portrait.compress(android.graphics.Bitmap.CompressFormat.PNG,100,image);result.putString("portraitScreenshot",android.util.Base64.encodeToString(image.toByteArray(),android.util.Base64.NO_WRAP));portrait.recycle();}
+  android.graphics.Bitmap portrait=smallScreenshot();if(portrait!=null){emitScreenshot(portrait,"portraitScreenshot");portrait.recycle();}
   result.putString("summary","PASS: "+checks+" Android assertions");finish(Activity.RESULT_OK,result);
  }catch(Throwable t){result.putString("error",android.util.Log.getStackTraceString(t));finish(Activity.RESULT_CANCELED,result);}}
 }

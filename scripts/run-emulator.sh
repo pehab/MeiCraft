@@ -23,7 +23,7 @@ PYAVD
 adb start-server
 "$SDK/emulator/emulator" -avd meicraft-ci -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader -memory 2048 -cores 2 -camera-back none -camera-front none > build/emulator.log 2>&1 &
 EMU_PID=$!
-trap 'kill "$EMU_PID" 2>/dev/null || true' EXIT
+trap 'adb logcat -d -s AndroidRuntime:E > build/android-crash.log 2>/dev/null || true; kill "$EMU_PID" 2>/dev/null || true' EXIT
 for n in $(seq 1 120); do
  if ! kill -0 "$EMU_PID" 2>/dev/null; then cat build/emulator.log; exit 1; fi
  if [ "$(timeout 10 adb -e shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then

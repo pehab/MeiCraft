@@ -36,7 +36,7 @@ bash scripts/build-upgrade-fixture.sh
 
 `build-local.sh` baut ohne Gradle-Downloads direkt mit dem Android SDK. Die APK liegt unter `build/meiCraft-0.1.1.apk`. Beim ersten lokalen Build wird ein privater Schlüssel unter `.signing/` erstellt und für weitere Builds wiederverwendet. Dieser Ordner wird niemals ins Repository eingecheckt. Für Updates einer bereits installierten Release-APK muss der ursprünglich verwendete Schlüssel wiederhergestellt werden.
 
-Alternativ Android Studio öffnen oder `./gradlew assembleDebug lintDebug` ausführen. Der Gradle Wrapper ist auf 9.6.0 mit Prüfsumme fixiert. Wenn `.signing/` vorhanden ist, verwendet auch Gradle diesen Schlüssel.
+Alternativ Android Studio öffnen oder `./gradlew assembleDebug lintDebug` ausführen. Der Gradle Wrapper ist auf 9.8.2 mit Prüfsumme fixiert. Wenn `.signing/` vorhanden ist, verwendet auch Gradle diesen Schlüssel.
 
 Lint und Java-Kompilierung behandeln Warnungen als Fehler. CI prüft Android 11 und Android 17 sowie beide Ausrichtungen.
 
@@ -65,3 +65,5 @@ Die signierten APKs liegen unter `dist/`, inklusive SHA-256-Prüfsumme. Der Work
 `World.java` enthält Terrain, Kollisionsprüfung, Raycasting und das versionierte GZIP-Speicherformat. `VoxelRenderer.java` erzeugt sichtbare Blockflächen in 16 × 16 großen Chunks und zeichnet sie mit Texturen, Richtungslicht und Nebel. `GameView.java` verwaltet Touch-Steuerung, Bewegung und HUD. `MainActivity.java` übernimmt Menüs, Lebenszyklus und atomare Speicherdateien. Speicherjobs laufen seriell; beschädigte Dateien werden vor dem Überschreiben als lokale Sicherung abgelegt.
 
 `app/src/main/assets/blocks.png` enthält ausschließlich prozedural erzeugte Originaltexturen. Zum Neuerzeugen: `python3 scripts/generate-textures.py` (Pillow erforderlich). Keine Minecraft-Dateien oder Original-Assets. Das Projekt ist unabhängig von Mojang und Microsoft.
+
+Die Gradle-Prüfung verwendet AGP 9.5.0-rc01: Diese Version behebt Googles dokumentierte Configuration.setVisible-Warnung mit Gradle 9.8. Die veröffentlichte APK wird direkt mit den stabilen Android SDK Build Tools 36.0.0 gebaut.

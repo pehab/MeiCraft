@@ -61,6 +61,7 @@ jobs:
         with:
           name: Android-validation-${{ matrix.api }}
           path: |
+            build/android-crash.log
             build/emulator.log
             build/reports/
             build/android-smoke.log
