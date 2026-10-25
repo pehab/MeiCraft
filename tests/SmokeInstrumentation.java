@@ -90,7 +90,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   testSwipeControl(activity,game);
   runOnMainSync(()->activity.paused=false);for(int attempt=0;attempt<30&&!focused(activity);attempt++)Thread.sleep(100);check(focused(activity),"game window has input focus before system back");systemBack();
   for(int attempt=0;attempt<30&&!activity.paused;attempt++)Thread.sleep(100);check(activity.paused,"system back opens game menu");for(int attempt=0;attempt<30&&focused(activity);attempt++)Thread.sleep(100);check(!focused(activity),"menu window receives focus before dismissal");
-  systemBack();for(int attempt=0;attempt<30&&(activity.paused||!focused(activity));attempt++)Thread.sleep(100);check(!activity.paused&&focused(activity),"back dismisses menu without leaving game");
+  systemBack();for(int attempt=0;attempt<30&&(activity.paused||!focused(activity));attempt++)Thread.sleep(100);check(!activity.paused&&focused(activity),"back dismisses menu without leaving game (paused="+activity.paused+", focused="+focused(activity)+")");
   runOnMainSync(()->activity.paused=true);
   CountDownLatch done=new CountDownLatch(1);Throwable[] failure=new Throwable[1];
   game.gl.queueEvent(()->{try{
