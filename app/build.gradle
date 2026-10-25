@@ -5,8 +5,8 @@ def signingPassword = rootProject.file('.signing/password')
 def signingKey = rootProject.file('.signing/keystore.p12')
 android {
  namespace = 'de.meiapps.meicraft'
- compileSdk = 36
- defaultConfig { applicationId = 'de.meiapps.meicraft'; minSdk = 26; targetSdk = 36; versionCode = appVersion.getProperty('versionCode').toInteger(); versionName = appVersion.getProperty('versionName') }
+ compileSdk { version = release(37) }
+ defaultConfig { applicationId = 'de.meiapps.meicraft'; minSdk = 26; targetSdk = 37; versionCode = appVersion.getProperty('versionCode').toInteger(); versionName = appVersion.getProperty('versionName') }
  lint { warningsAsErrors = true; abortOnError = true }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  if (signingPassword.exists() && signingKey.exists()) {
