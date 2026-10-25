@@ -27,7 +27,9 @@ final class UpdateController {
  void settings(){activity.paused=true;boolean automatic=prefs.getBoolean("automatic",true);new AlertDialog.Builder(activity).setTitle("Updates · meiCraft "+versionName()).setItems(new String[]{"Jetzt nach Updates suchen","Automatische Prüfung: "+(automatic?"an":"aus")},(d,item)->{if(item==0)check(true);else{prefs.edit().putBoolean("automatic",!automatic).apply();activity.toast(!automatic?"Tägliche Update-Prüfung eingeschaltet":"Automatische Prüfung ausgeschaltet");}}).setOnDismissListener(d->activity.paused=false).show();}
  String versionName(){try{return activity.getPackageManager().getPackageInfo(activity.getPackageName(),0).versionName;}catch(Exception e){return "?";}}
  long installedCode(){try{PackageInfo p=activity.getPackageManager().getPackageInfo(activity.getPackageName(),0);return versionCode(p);}catch(Exception e){return Long.MAX_VALUE;}}
- static long versionCode(PackageInfo p){return Build.VERSION.SDK_INT>=28?p.getLongVersionCode():p.versionCode;}
+ static long versionCode(PackageInfo p){return Build.VERSION.SDK_INT>=28?p.getLongVersionCode():legacyVersionCode(p);}
+ // Android 8 uses the original version-code field; newer devices use the long API.
+ @SuppressWarnings("deprecation") private static long legacyVersionCode(PackageInfo p){return p.versionCode;}
  static UpdateInfo parse(String data)throws JSONException{JSONObject j=new JSONObject(data);if(j.getInt("schema")!=1)throw new JSONException("Unknown schema");return new UpdateInfo(j.getInt("versionCode"),j.getString("versionName"),j.getString("url"),j.getString("sha256"),j.getLong("size"));}
  static String encode(UpdateInfo info){try{JSONObject j=new JSONObject();j.put("schema",1);j.put("versionCode",info.code);j.put("versionName",info.name);j.put("url",info.url);j.put("sha256",info.sha256);j.put("size",info.size);return j.toString();}catch(JSONException e){throw new AssertionError(e);}}
  void check(boolean manual){if(busy){if(manual)activity.toast("Eine Update-Prüfung oder ein Download läuft bereits");return;}busy=true;prefs.edit().putLong("lastCheck",System.currentTimeMillis()).apply();if(manual)activity.toast("Suche nach Updates …");
@@ -47,7 +49,7 @@ final class UpdateController {
  void download(UpdateInfo info){if(busy)return;busy=true;activity.toast("Update wird heruntergeladen …");network.execute(()->{
   File part=new File(activity.getCacheDir(),"update.part"),apk=new File(activity.getCacheDir(),"update.apk");
   try{HttpURLConnection connection=open(new URL(info.url));try(InputStream in=connection.getInputStream();FileOutputStream out=new FileOutputStream(part)){byte[] buffer=new byte[16384];int n;long size=0;while((n=in.read(buffer))!=-1){if(Thread.currentThread().isInterrupted())throw new IOException("Interrupted");size+=n;if(size>info.size)throw new IOException("APK too large");out.write(buffer,0,n);}out.getFD().sync();}finally{connection.disconnect();}
-   verify(info,part);if(!part.renameTo(apk))throw new IOException("Cannot store APK");prefs.edit().putString("candidate",encode(info)).commit();ui(()->{busy=false;ready(info);});
+   verify(info,part);if(!part.renameTo(apk))throw new IOException("Cannot store APK");if(!prefs.edit().putString("candidate",encode(info)).commit())throw new IOException("Cannot persist update metadata");ui(()->{busy=false;ready(info);});
   }catch(Exception e){part.delete();ui(()->{busy=false;activity.toast("Das Update konnte nicht sicher geladen werden. Bitte später erneut versuchen.");});}
  });}
  @SuppressWarnings("deprecation") void verify(UpdateInfo info,File apk)throws Exception{
@@ -58,8 +60,8 @@ final class UpdateController {
  }
  @SuppressWarnings("deprecation") static Set<String> signatures(PackageInfo info){Signature[] signatures=Build.VERSION.SDK_INT>=28?(info.signingInfo==null?null:info.signingInfo.getApkContentsSigners()):info.signatures;Set<String> set=new HashSet<>();if(signatures!=null)for(Signature signature:signatures)set.add(signature.toCharsString());return set;}
  void ready(UpdateInfo info){activity.paused=true;new AlertDialog.Builder(activity).setTitle("Update bereit").setMessage("Die APK wurde geprüft. Version "+info.name+" jetzt installieren?").setPositiveButton("Installieren",(d,w)->install(info)).setNegativeButton("Später",null).setOnDismissListener(d->activity.paused=false).show();}
- void install(UpdateInfo info){if(busy)return;busy=true;network.execute(()->{try{verify(info,new File(activity.getCacheDir(),"update.apk"));ui(()->{busy=false;try{
-   if(!activity.getPackageManager().canRequestPackageInstalls()){prefs.edit().putBoolean("waitingPermission",true).commit();activity.toast("Bitte Updates aus meiCraft einmalig erlauben");activity.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:"+activity.getPackageName())));return;}
+ void install(UpdateInfo info){if(busy)return;busy=true;network.execute(()->{try{verify(info,new File(activity.getCacheDir(),"update.apk"));boolean allowed=activity.getPackageManager().canRequestPackageInstalls();if(!allowed&&!prefs.edit().putBoolean("waitingPermission",true).commit())throw new IOException("Cannot persist installation handoff");ui(()->{busy=false;try{
+   if(!allowed){activity.toast("Bitte Updates aus meiCraft einmalig erlauben");activity.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,Uri.parse("package:"+activity.getPackageName())));return;}
    Uri uri=Uri.parse("content://"+activity.getPackageName()+".updates/update.apk");Intent intent=new Intent(Intent.ACTION_VIEW).setDataAndType(uri,"application/vnd.android.package-archive").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);activity.startActivity(intent);
   }catch(Exception e){prefs.edit().putBoolean("waitingPermission",false).apply();activity.toast("Android konnte die Installation nicht öffnen");}});}catch(Exception e){ui(()->{busy=false;activity.toast("Bitte das Update erneut herunterladen");});}});}
 }

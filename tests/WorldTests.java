@@ -9,7 +9,7 @@ public final class WorldTests {
   check(!a.collides(a.x,a.y,a.z),"safe spawn");
   int[] counts=new int[13];for(byte block:a.blocks)counts[block]++;
   for(int t=1;t<=6;t++)check(counts[t]>0,"generated terrain/tree type "+t);check(counts[10]>0,"water generated");
-  check(!a.set(0,0,0,0),"indestructible floor");check(!a.set(-1,2,0,1),"negative edit rejected");check(!a.set(96,2,0,1),"far edit rejected");check(!a.set(1,2,0,13),"invalid block rejected");
+  check(!a.set(0,0,0,0),"indestructible floor");check(!a.set(-1,2,0,1),"negative edit rejected");check(!a.set(96,2,0,1),"far edit rejected");check(!a.set(1,2,0,World.NAMES.length),"invalid block rejected");
   Arrays.fill(a.blocks,(byte)0);a.x=10.5f;a.y=20.5f;a.z=10.5f;a.yaw=0;a.pitch=0;
   a.set(10,20,7,3);int[] hit=a.ray(6);check(Arrays.equals(hit,new int[]{10,20,7,10,20,8}),"ray -z and previous empty neighbor");
   check(a.ray(2)==null,"ray distance limit");a.yaw=(float)-Math.PI/2;a.set(13,20,10,1);hit=a.ray(6);check(hit[0]==13&&hit[3]==12,"ray +x");

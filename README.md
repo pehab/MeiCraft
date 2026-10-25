@@ -1,30 +1,38 @@
 # meiCraft
 
-Ein eigenständiges, vollständig offline spielbares 3D-Klötzchenspiel für Android. Native Java-App mit OpenGL ES 2.0, eigener Weltgenerierung und selbst erzeugten Texturen. Keine Konten, Werbung oder Käufe. Zum Spielen sind weder Server noch Internet nötig.
+Eigenständiges Offline-Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Keine Konten, Werbung oder Käufe. Nur die abschaltbare Update-Prüfung verwendet das Internet.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Android 8.0 oder neuer · Querformat · Version 0.1.0
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.2.0
 
-![Spielansicht](docs/screenshot.png)
+## Kreativ und Story
 
-## Erste spielbare Version
+Die Kreativwelt behält unbegrenzte Materialien, sofortiges Abbauen und optionales Fliegen. Vorhandene Spielstände aus 0.1.0 werden automatisch geladen.
 
-- Eine generierte Welt mit 96 × 96 × 48 Blöcken, Hügeln, Sandufern, Wasser und Bäumen.
-- Kreativmodus: zwölf unbegrenzt verfügbare Materialien, Blöcke abbauen und platzieren.
-- Touch-Joystick, freie Kamerasteuerung, Fliegen oder Laufen mit Kollisionen und Springen.
-- Zielmarkierung am anvisierten Block, Reichweite sechs Blöcke.
-- Lokaler Spielstand: Welt, Bauwerke, Kameraposition, Material und Bewegungsmodus bleiben erhalten.
-- Automatisches Speichern alle 30 Sekunden und beim Wechsel in den Hintergrund; zusätzlich manuell im Menü.
-- Neue Welten über einen Namen oder numerischen Seed. Das Ersetzen der aktuellen Welt erfordert eine Bestätigung.
+Der **Storymodus** speichert in einer eigenen Datei. Über **STORY** oben im Spiel wechselst du den Modus beziehungsweise öffnest Aufträge und Werkbank. Du läufst, springst und sammelst Material. Gesetzte Blöcke werden vom Inventar abgezogen. Zum Abbauen hältst du **−** gedrückt; härtere Blöcke brauchen bessere Werkzeuge.
 
-Dies ist eine erste Kreativ-Sandbox. Crafting, Tiere, Gegner, Überleben, Mehrspieler, mehrere Speicherplätze und unendliche Welten sind noch nicht enthalten. Updates werden einmal täglich geprüft und können zusätzlich unter **☰ → Updates** manuell gesucht werden. Die automatische Prüfung ist dort abschaltbar. Nur die Update-Funktion verwendet das Internet. Downloads erfolgen erst nach Bestätigung; vor der Android-Installation prüft die App Größe, SHA-256, Paketname, Version und Signatur. Ein Update mit gleicher Signatur erhält den privaten App-Spielstand. Eine Deinstallation entfernt ihn.
+1. Gras/Erde mit der Hand sammeln; Miko tauscht 8 Erde gegen ein Holzwerkzeug.
+2. Holz und Erde für Werkbank und Holzspitzhacke sammeln. Damit wird Stein abbaubar.
+3. Eine Steinspitzhacke herstellen und Eisenerz erschließen.
+4. Einen Ofen bauen und Erz mit Holz als Brennstoff schmelzen.
+5. Eisenwerkzeug herstellen, Gebäude mit Fenstern bauen und tief im Gestein Leuchtstein finden.
+
+Die Werkbank stellt Bretter, Ziegel und Grasblöcke her. Im Ofen entstehen Glas und Eisenbarren; später lassen sich Eisenblöcke bauen. Die sieben Einführungskapitel gehen anschließend in freies Bauen mit begrenzten Ressourcen über. Hunger, Gegner, Multiplayer und fließendes Wasser sind noch nicht enthalten. Die Welt ist 96 × 96 × 48 Blöcke groß.
 
 ## Steuerung
 
-Links am Kreis bewegen, auf der rechten Bildschirmhälfte wischen zum Umsehen. Mit **−** den anvisierten Block entfernen, mit **+** das ausgewählte Material daneben setzen. Im Flugmodus mit **↑ / ↓** auf- und absteigen. Im Laufmodus mit **↑** springen. Baumaterial unten oder unter **☰ → Baumaterial wählen** auswählen. Die Weltgrenze ist fest; Wasser lässt sich durchqueren.
+**Die ursprüngliche Steuerung bleibt:** links am virtuellen Joystick bewegen, rechts wischen zum Umsehen. Mit **+** neben dem anvisierten Block bauen. In der Kreativwelt baut **−** sofort ab; im Storymodus hältst du **−** gedrückt. **↑** springt oder schwimmt aufwärts. In der Kreativwelt können **↑ / ↓** zum Fliegen genutzt werden. Gesammelte Blöcke helfen beim Bau von Stufen aus Gruben.
 
-## Bauen und testen
+Hoch- und Querformat werden unterstützt. Unter **☰ → Weltmodus wechseln** findest du ebenfalls beide Welten. **Neue Welt** ersetzt nach Bestätigung ausschließlich den gerade aktiven Speicherplatz.
 
-Voraussetzungen: JDK 17, Android SDK Platform 35 und Build Tools 35.0.0. Keine Laufzeitbibliotheken oder externen Spiel-Assets.
+## Speicher und Updates
+
+Automatisches Speichern alle 30 Sekunden und beim Wechsel in den Hintergrund; zusätzlich manuell im Menü. Kreativwelt: `world.mcworld`, Story: `story.mcworld`, jeweils atomar geschriebene GZIP-Dateien im privaten App-Speicher. Ein Moduswechsel speichert die alte Welt zuerst. Schreibaufträge erfassen ihren Ziel-Speicherplatz beim Erstellen. Version-1-Spielstände aus 0.1.0 bleiben kompatibel. Beschädigte Dateien werden vor einer Neuerstellung als Sicherung behalten.
+
+Updates: täglich automatisch beim Öffnen, abschaltbar, zusätzlich unter **☰ → Updates**. Downloads brauchen eine Bestätigung. Die App prüft SHA-256, Größe, Paketname, Version und Signatur vor der Android-Installation. Ein Update mit gleichem Signierschlüssel erhält beide Welten; eine Deinstallation entfernt den lokalen Fortschritt.
+
+## Bauen und prüfen
+
+JDK 17, Android SDK Platform 37.0 und Build Tools 36.0.0:
 
 ```sh
 export ANDROID_SDK_ROOT=/pfad/zum/android-sdk
@@ -34,32 +42,20 @@ bash scripts/build-upgrade-fixture.sh
 ./test-android-build.sh
 ```
 
-`build-local.sh` baut ohne Gradle-Downloads direkt mit dem Android SDK. Die APK liegt unter `build/meiCraft-0.1.0.apk`. Beim ersten lokalen Build wird ein privater Schlüssel unter `.signing/` erstellt und für weitere Builds wiederverwendet. Dieser Ordner wird niemals ins Repository eingecheckt. Für Updates einer bereits installierten Release-APK muss der ursprünglich verwendete Schlüssel wiederhergestellt werden.
+Die APK liegt unter `build/meiCraft-0.2.0.apk`. Der direkte SDK-Build benötigt keine Spielbibliotheken. `.signing/` enthält den privaten, lokal wiederverwendeten Schlüssel und ist aus Git ausgeschlossen. Updates veröffentlichter APKs brauchen den ursprünglichen Projektschlüssel. Das private Secret `MEICRAFT_SIGNING_JSON` hat die Felder `keystore` (Base64-PKCS12), `password` und `alias` (`meicraft`); `scripts/restore-signing.py` stellt daraus den lokalen Schlüssel wieder her. CI-Testschlüssel werden nie veröffentlicht.
 
-Alternativ Android Studio öffnen oder `./gradlew assembleDebug lintDebug` ausführen. Der Gradle Wrapper ist auf 8.11.1 mit Prüfsumme fixiert. Wenn `.signing/` vorhanden ist, verwendet auch Gradle diesen Schlüssel.
+Alternativ Android Studio oder `./gradlew --warning-mode=fail assembleDebug lintDebug`. Versionen stehen in `version.properties`. Compiler-, Lint- und Gradle-Warnungen führen zu Fehlern. Der Gradle-Prüfpfad verwendet AGP 9.5.0-rc01 mit Kotlin-Build-Komponente 2.4.21, um deren dokumentierte Configuration.setVisible-Probleme mit Gradle 9.8.2 zu beheben. Die veröffentlichte APK entsteht direkt mit den stabilen SDK-Werkzeugen.
 
-### Android-Smoke-Test
-
-App und Test-APK auf einem Emulator oder Testgerät installieren:
+Auf einem Emulator ohne wertvollen Spielstand:
 
 ```sh
 bash scripts/smoke-android.sh
 ```
 
-Der Smoke-Test verändert seine Testwelt und prüft OpenGL, Touch-Steuerung, Bewegung, Abbauen/Setzen und den tatsächlichen Speichervorgang. Eine zusätzliche Installation von VersionCode 0 auf 1 prüft den Spielstanderhalt sowie APK-Prüfsumme, Paketidentität, Signatur und die nur lesbare Installations-URI. Die niedrigere Testversion basiert auf demselben Quellcode. Er gehört auf ein Testgerät ohne wertvollen Spielstand. `tests/UpdateTests.java` prüft Update-Metadaten und manipulierte Dateien. `tests/WorldTests.java` prüft zusätzlich deterministische Landschaften, sichere Startpositionen, Raycasting, Kollisionen und ungültige Spielstände.
+CI prüft Android 11 und Android 17: tatsächliche Aktualisierung der ursprünglichen 0.1.0-APK (für CI neu signiert), Spielstanderhalt, ursprüngliche Wischsteuerung, Blick nach unten, Touch-Abbruch, beide Ausrichtungen, System-Zurück, zeitgesteuertes Abbauen, Materialkosten, Werkzeug-Sperren, Rezeptdialoge und beide Speicherplätze. Die Tests verändern ihre Testwelten.
 
-### Release-Signierung
+## Code und Assets
 
-Die erste signierte APK liegt unter `dist/`, inklusive SHA-256-Prüfsumme. Der Workflow testet den Quellcode und veröffentlicht diese geprüfte Erstversion samt `meiCraft-update.json`. Die App fragt diesen Manifest-Anhang des neuesten Releases ab; die APK-Adresse verweist immer auf eine konkrete Version. Für spätere Versionen wird das private Repository-Secret `MEICRAFT_SIGNING_JSON` benötigt:
+`World.java`: Terrain, Kollisionen, Raycasting, Ressourcenaktionen und Speicherformat. `Story.java`: Aufträge, Werkzeugstufen, Inventar und Rezepte. `GameView.java`: bisherige Touch-Steuerung, Bewegung und HUD. `VoxelRenderer.java`: sichtbare Blockflächen in 16 × 16 großen Chunks, Texturen, Licht und Nebel. `MainActivity.java`: Dialoge, Speicherplätze und Lebenszyklus.
 
-```json
-{"keystore":"BASE64_PKCS12","password":"PRIVATE_PASSWORD","alias":"meicraft"}
-```
-
-`scripts/restore-signing.py` stellt daraus `.signing/` wieder her. Der private Schlüssel und das Passwort gehören nicht ins öffentliche Repository. Die gesicherte Signierungsdatei gehört dem Projektinhaber. CI-Builds ohne dieses Secret erstellen nur einen temporären Testschlüssel; solche Builds ersetzen niemals die veröffentlichte APK. Versionsnummern stehen derzeit in `app/build.gradle`, `build-local.sh` und im Release-Workflow und müssen gemeinsam erhöht werden.
-
-## Aufbau
-
-`World.java` enthält Terrain, Kollisionsprüfung, Raycasting und das versionierte GZIP-Speicherformat. `VoxelRenderer.java` erzeugt sichtbare Blockflächen in 16 × 16 großen Chunks und zeichnet sie mit Texturen, Richtungslicht und Nebel. `GameView.java` verwaltet Touch-Steuerung, Bewegung und HUD. `MainActivity.java` übernimmt Menüs, Lebenszyklus und atomare Speicherdateien. Speicherjobs laufen seriell; beschädigte Dateien werden vor dem Überschreiben als lokale Sicherung abgelegt.
-
-`app/src/main/assets/blocks.png` enthält ausschließlich prozedural erzeugte Originaltexturen. Zum Neuerzeugen: `python3 scripts/generate-textures.py` (Pillow erforderlich). Keine Minecraft-Dateien oder Original-Assets. Das Projekt ist unabhängig von Mojang und Microsoft.
+Alle Texturen sind prozedurale Originale. Neuerzeugen mit `python3 scripts/generate-textures.py` (Pillow). Keine Minecraft-Dateien oder Original-Assets; unabhängig von Mojang und Microsoft.
