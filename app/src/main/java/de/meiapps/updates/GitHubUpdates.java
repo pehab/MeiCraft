@@ -39,8 +39,10 @@ public final class GitHubUpdates implements Application.ActivityLifecycleCallbac
         if (!repository.matches("pehab/[A-Za-z0-9]+")) throw new IllegalArgumentException("Unexpected repository");
         this.activity = activity; this.repository = repository; this.beforeInstall = beforeInstall;
         String name = repository.substring(repository.indexOf('/') + 1);
-        feed = "https://github.com/" + repository + "/releases/download/"
-                + ("MeiHotel".equals(name) ? "preview/MeiHotel-update.json" : "updates/" + name + "-update.json");
+        feed = "MeiCraft".equals(name)
+                ? "https://github.com/pehab/MeiCraft/releases/latest/download/meiCraft-update.json"
+                : "https://github.com/" + repository + "/releases/download/"
+                    + ("MeiHotel".equals(name) ? "preview/MeiHotel-update.json" : "updates/" + name + "-update.json");
         preferences = activity.getSharedPreferences("updates", Context.MODE_PRIVATE);
     }
     public static void showSettings(Context context, String repository) {
