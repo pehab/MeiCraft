@@ -57,12 +57,7 @@ jobs:
           TEST_API: ${{ matrix.api }}
         run: bash scripts/run-emulator.sh
       - name: Package APK from the validated source
-        run: |
-          if [ "${{ github.event_name }}" = 'pull_request' ]; then
-            python3 scripts/prepare-release.py build/baseline.apk
-          else
-            python3 scripts/prepare-release.py
-          fi
+        run: python3 scripts/prepare-release.py
       - uses: actions/upload-artifact@v6
         if: github.event_name != 'pull_request' && matrix.api == 30
         with:

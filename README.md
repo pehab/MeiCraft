@@ -32,6 +32,8 @@ Automatisches Speichern alle 30 Sekunden und beim Wechsel in den Hintergrund; zu
 
 Updates: täglich automatisch beim Öffnen, abschaltbar, zusätzlich unter **☰ → Updates**. Downloads brauchen eine Bestätigung. Die App prüft SHA-256, Größe, Paketname, Version und Signatur vor der Android-Installation. Ein Update mit gleichem Signierschlüssel erhält beide Welten; eine Deinstallation entfernt den lokalen Fortschritt.
 
+Die Release-Pipeline erzeugt Prüfsumme und Update-Manifest aus der geprüften APK. Fehlt das private Signier-Secret in CI, kann eine lokal mit dem ursprünglichen Schlüssel signierte APK unter `dist/` verwendet werden. Dafür müssen sämtliche APK-Inhalte (Code, Manifest, Ressourcen und Assets; ausgenommen Signaturdateien) bytegenau mit dem frischen CI-Build übereinstimmen. Veraltete Pakete oder abweichende Signaturen verhindern die Veröffentlichung. Gegner, Waffen und Rüstung sind in der [Roadmap](docs/ROADMAP.md) vorgemerkt.
+
 ## Bauen und prüfen
 
 JDK 17, Android SDK Platform 37.0 und Build Tools 36.0.0:
