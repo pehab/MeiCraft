@@ -58,6 +58,8 @@ public final class SmokeInstrumentation extends Instrumentation {
  boolean focused(MainActivity activity){boolean[] value={false};runOnMainSync(()->value[0]=activity.hasWindowFocus());return value[0];}
  void orient(MainActivity activity,GameView game,int orientation,float width)throws Exception{
   runOnMainSync(()->activity.setRequestedOrientation(orientation));boolean[] ready={false};for(int attempt=0;attempt<40&&!ready[0];attempt++){Thread.sleep(100);runOnMainSync(()->{game.hud.layoutHud();ready[0]=game.hud.designW==width;});}check(ready[0],"responsive controls match requested orientation "+orientation);
+  // Window layout precedes the compositor finishing its rotation animation.
+  Thread.sleep(1200);waitForIdleSync();
  }
  void emitScreenshot(android.graphics.Bitmap screenshot,String name){
   ByteArrayOutputStream image=new ByteArrayOutputStream();screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,image);String encoded=android.util.Base64.encodeToString(image.toByteArray(),android.util.Base64.NO_WRAP);
