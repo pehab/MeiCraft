@@ -6,13 +6,15 @@ SDK="$(cd "$SDK" && pwd)"
 BT="$SDK/build-tools/35.0.0"
 JAVA_BIN="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}/bin"
 mkdir -p build/classes build/dex .signing
+APP_VERSION="$(sed -n 's/^versionName=//p' version.properties)"
 "$BT/aapt2" compile --dir app/src/main/res -o build/resources.zip
 python3 - <<'PYMANIFEST'
 from pathlib import Path
 import os
-code=int(os.environ.get('MEICRAFT_VERSION_CODE','1'))
+version=dict(line.split('=',1) for line in Path('version.properties').read_text().splitlines() if '=' in line)
+code=int(os.environ.get('MEICRAFT_VERSION_CODE',version['versionCode']))
 assert 0<=code<2147483647
-s=Path('app/src/main/AndroidManifest.xml').read_text().replace('<manifest ', '<manifest package="de.meiapps.meicraft" android:versionCode="'+str(code)+'" android:versionName="0.1.0" ',1)
+s=Path('app/src/main/AndroidManifest.xml').read_text().replace('<manifest ', '<manifest package="de.meiapps.meicraft" android:versionCode="'+str(code)+'" android:versionName="'+version['versionName']+'" ',1)
 Path('build/AndroidManifest.xml').write_text(s)
 PYMANIFEST
 "$BT/aapt2" link -I "$SDK/platforms/android-35/android.jar" --manifest build/AndroidManifest.xml --java build/generated -A app/src/main/assets -o build/resources.apk build/resources.zip
@@ -34,5 +36,5 @@ if [ ! -f .signing/keystore.p12 ]; then
  python3 -c 'import secrets,pathlib;pathlib.Path(".signing/password").write_text(secrets.token_hex(24))'
  "$JAVA_BIN/keytool" -genkeypair -keystore .signing/keystore.p12 -storetype PKCS12 -storepass:file .signing/password -alias meicraft -keyalg RSA -keysize 3072 -validity 10000 -dname "CN=meiCraft, OU=meiApps, O=Private Development, C=DE"
 fi
-"$BT/apksigner" sign --ks .signing/keystore.p12 --ks-pass file:.signing/password --out build/meiCraft-0.1.0.apk build/aligned.apk
-"$BT/apksigner" verify --verbose build/meiCraft-0.1.0.apk
+"$BT/apksigner" sign --ks .signing/keystore.p12 --ks-pass file:.signing/password --out "build/meiCraft-$APP_VERSION.apk" build/aligned.apk
+"$BT/apksigner" verify --verbose "build/meiCraft-$APP_VERSION.apk"

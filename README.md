@@ -2,7 +2,7 @@
 
 Ein eigenständiges, vollständig offline spielbares 3D-Klötzchenspiel für Android. Native Java-App mit OpenGL ES 2.0, eigener Weltgenerierung und selbst erzeugten Texturen. Keine Konten, Werbung oder Käufe. Zum Spielen sind weder Server noch Internet nötig.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Android 8.0 oder neuer · Querformat · Version 0.1.0
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Android 8.0 oder neuer · Querformat · Version 0.1.1
 
 ![Spielansicht](docs/screenshot.png)
 
@@ -20,7 +20,7 @@ Dies ist eine erste Kreativ-Sandbox. Crafting, Tiere, Gegner, Überleben, Mehrsp
 
 ## Steuerung
 
-Links am Kreis bewegen, auf der rechten Bildschirmhälfte wischen zum Umsehen. Mit **−** den anvisierten Block entfernen, mit **+** das ausgewählte Material daneben setzen. Im Flugmodus mit **↑ / ↓** auf- und absteigen. Im Laufmodus mit **↑** springen. Baumaterial unten oder unter **☰ → Baumaterial wählen** auswählen. Die Weltgrenze ist fest; Wasser lässt sich durchqueren.
+Links am Kreis bewegen, am rechten Joystick horizontal und vertikal umsehen. Mit **−** den anvisierten Block entfernen, mit **+** das ausgewählte Material daneben setzen. Im Flugmodus mit **↑ / ↓** auf- und absteigen. Im Laufmodus mit **↑** springen. Baumaterial unten oder unter **☰ → Baumaterial wählen** auswählen. Die Weltgrenze ist fest; Wasser lässt sich durchqueren.
 
 ## Bauen und testen
 
@@ -34,7 +34,7 @@ bash scripts/build-upgrade-fixture.sh
 ./test-android-build.sh
 ```
 
-`build-local.sh` baut ohne Gradle-Downloads direkt mit dem Android SDK. Die APK liegt unter `build/meiCraft-0.1.0.apk`. Beim ersten lokalen Build wird ein privater Schlüssel unter `.signing/` erstellt und für weitere Builds wiederverwendet. Dieser Ordner wird niemals ins Repository eingecheckt. Für Updates einer bereits installierten Release-APK muss der ursprünglich verwendete Schlüssel wiederhergestellt werden.
+`build-local.sh` baut ohne Gradle-Downloads direkt mit dem Android SDK. Die APK liegt unter `build/meiCraft-0.1.1.apk`. Beim ersten lokalen Build wird ein privater Schlüssel unter `.signing/` erstellt und für weitere Builds wiederverwendet. Dieser Ordner wird niemals ins Repository eingecheckt. Für Updates einer bereits installierten Release-APK muss der ursprünglich verwendete Schlüssel wiederhergestellt werden.
 
 Alternativ Android Studio öffnen oder `./gradlew assembleDebug lintDebug` ausführen. Der Gradle Wrapper ist auf 8.11.1 mit Prüfsumme fixiert. Wenn `.signing/` vorhanden ist, verwendet auch Gradle diesen Schlüssel.
 
@@ -46,17 +46,17 @@ App und Test-APK auf einem Emulator oder Testgerät installieren:
 bash scripts/smoke-android.sh
 ```
 
-Der Smoke-Test verändert seine Testwelt und prüft OpenGL, Touch-Steuerung, Bewegung, Abbauen/Setzen und den tatsächlichen Speichervorgang. Eine zusätzliche Installation von VersionCode 0 auf 1 prüft den Spielstanderhalt sowie APK-Prüfsumme, Paketidentität, Signatur und die nur lesbare Installations-URI. Die niedrigere Testversion basiert auf demselben Quellcode. Er gehört auf ein Testgerät ohne wertvollen Spielstand. `tests/UpdateTests.java` prüft Update-Metadaten und manipulierte Dateien. `tests/WorldTests.java` prüft zusätzlich deterministische Landschaften, sichere Startpositionen, Raycasting, Kollisionen und ungültige Spielstände.
+Der Smoke-Test verändert seine Testwelt und prüft OpenGL, Touch-Steuerung, Bewegung, Abbauen/Setzen und den tatsächlichen Speichervorgang. Eine zusätzliche Aktualisierung der ursprünglichen 0.1.0-APK auf die aktuelle Version prüft den Spielstanderhalt sowie APK-Prüfsumme, Paketidentität, Signatur und die nur lesbare Installations-URI. Die ursprüngliche APK wird für CI mit dem jeweiligen Testschlüssel neu signiert. Er gehört auf ein Testgerät ohne wertvollen Spielstand. `tests/UpdateTests.java` prüft Update-Metadaten und manipulierte Dateien. `tests/WorldTests.java` prüft zusätzlich deterministische Landschaften, sichere Startpositionen, Raycasting, Kollisionen und ungültige Spielstände.
 
 ### Release-Signierung
 
-Die erste signierte APK liegt unter `dist/`, inklusive SHA-256-Prüfsumme. Der Workflow testet den Quellcode und veröffentlicht diese geprüfte Erstversion samt `meiCraft-update.json`. Die App fragt diesen Manifest-Anhang des neuesten Releases ab; die APK-Adresse verweist immer auf eine konkrete Version. Für spätere Versionen wird das private Repository-Secret `MEICRAFT_SIGNING_JSON` benötigt:
+Die signierten APKs liegen unter `dist/`, inklusive SHA-256-Prüfsumme. Der Workflow testet den Quellcode und veröffentlicht die geprüfte Version samt `meiCraft-update.json`. Die App fragt diesen Manifest-Anhang des neuesten Releases ab; die APK-Adresse verweist immer auf eine konkrete Version. Für spätere Versionen wird das private Repository-Secret `MEICRAFT_SIGNING_JSON` benötigt:
 
 ```json
 {"keystore":"BASE64_PKCS12","password":"PRIVATE_PASSWORD","alias":"meicraft"}
 ```
 
-`scripts/restore-signing.py` stellt daraus `.signing/` wieder her. Der private Schlüssel und das Passwort gehören nicht ins öffentliche Repository. Die gesicherte Signierungsdatei gehört dem Projektinhaber. CI-Builds ohne dieses Secret erstellen nur einen temporären Testschlüssel; solche Builds ersetzen niemals die veröffentlichte APK. Versionsnummern stehen derzeit in `app/build.gradle`, `build-local.sh` und im Release-Workflow und müssen gemeinsam erhöht werden.
+`scripts/restore-signing.py` stellt daraus `.signing/` wieder her. Der private Schlüssel und das Passwort gehören nicht ins öffentliche Repository. Die gesicherte Signierungsdatei gehört dem Projektinhaber. CI-Builds ohne dieses Secret erstellen nur einen temporären Testschlüssel; solche Builds ersetzen niemals die veröffentlichte APK. Versionsnummern stehen zentral in `version.properties`.
 
 ## Aufbau
 

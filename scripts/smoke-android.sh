@@ -7,7 +7,8 @@ adb install -r build/baseline.apk
 adb install -r build/meiCraft-tests.apk
 adb shell am instrument -w -e phase seed de.meiapps.meicraft.tests/de.meiapps.meicraft.SmokeInstrumentation > build/android-update-seed.log
 grep -q "PASS: " build/android-update-seed.log
-adb install -r build/meiCraft-0.1.0.apk
+APP_VERSION="$(sed -n 's/^versionName=//p' version.properties)"
+adb install -r "build/meiCraft-$APP_VERSION.apk"
 adb shell am instrument -w -e phase verify de.meiapps.meicraft.tests/de.meiapps.meicraft.SmokeInstrumentation > build/android-smoke.log
 python3 - <<'PY'
 from pathlib import Path

@@ -2,6 +2,7 @@ name: Android
 on:
   push:
     branches: [main]
+    paths-ignore: ['docs/**', 'README.md']
   pull_request:
   workflow_dispatch:
 permissions:
@@ -66,15 +67,17 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Verify first release APK
+      - name: Verify signed release APK
         run: |
+          VERSION=$(sed -n 's/^versionName=//p' version.properties)
           cd dist
-          sha256sum --check meiCraft-0.1.0.apk.sha256
-      - name: Publish first playable version
+          sha256sum --check "meiCraft-$VERSION.apk.sha256"
+      - name: Publish verified version
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          if ! gh release view v0.1.0 >/dev/null 2>&1; then
-            gh release create v0.1.0 dist/meiCraft-0.1.0.apk dist/meiCraft-0.1.0.apk.sha256 dist/meiCraft-update.json --target "$GITHUB_SHA" --title 'meiCraft 0.1.0 · Offline-Kreativwelt' --notes-file docs/RELEASE-0.1.0.md
+          VERSION=$(sed -n 's/^versionName=//p' version.properties)
+          if ! gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release create "v$VERSION" "dist/meiCraft-$VERSION.apk" "dist/meiCraft-$VERSION.apk.sha256" dist/meiCraft-update.json --target "$GITHUB_SHA" --title "meiCraft $VERSION" --notes-file "docs/RELEASE-$VERSION.md"
           fi
