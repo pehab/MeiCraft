@@ -33,8 +33,20 @@ public final class SmokeInstrumentation extends Instrumentation {
   stickEvent(game,3,new int[]{31},new float[][]{{lx,ly-40}});check(game.forward==0&&game.strafe==0&&!game.mineHeld,"cancel clears original controls");
  }
  void clickText(String text)throws Exception{
-  for(int attempt=0;attempt<40;attempt++){android.view.accessibility.AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();if(root!=null)for(android.view.accessibility.AccessibilityNodeInfo node:root.findAccessibilityNodeInfosByText(text)){android.graphics.Rect bounds=new android.graphics.Rect();node.getBoundsInScreen(bounds);if(!node.isVisibleToUser()||bounds.isEmpty())continue;long now=SystemClock.uptimeMillis();android.view.MotionEvent down=android.view.MotionEvent.obtain(now,now,0,bounds.centerX(),bounds.centerY(),0);sendPointerSync(down);down.recycle();android.view.MotionEvent up=android.view.MotionEvent.obtain(now,now+30,1,bounds.centerX(),bounds.centerY(),0);sendPointerSync(up);up.recycle();waitForIdleSync();return;}Thread.sleep(100);}
+  for(int attempt=0;attempt<40;attempt++){
+   android.view.accessibility.AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();
+   if(root!=null)for(android.view.accessibility.AccessibilityNodeInfo node:root.findAccessibilityNodeInfosByText(text)){
+    android.graphics.Rect bounds=new android.graphics.Rect();node.getBoundsInScreen(bounds);if(!node.isVisibleToUser()||bounds.isEmpty())continue;
+    long now=SystemClock.uptimeMillis();android.view.MotionEvent down=android.view.MotionEvent.obtain(now,now,0,bounds.centerX(),bounds.centerY(),0);sendPointerSync(down);down.recycle();android.view.MotionEvent up=android.view.MotionEvent.obtain(now,now+30,1,bounds.centerX(),bounds.centerY(),0);sendPointerSync(up);up.recycle();waitForIdleSync();return;
+   }
+   if(attempt%4==3)scrollForward(root);Thread.sleep(100);
+  }
   throw new AssertionError("UI text not found: "+text);
+ }
+ boolean scrollForward(android.view.accessibility.AccessibilityNodeInfo node){
+  if(node==null)return false;
+  if(node.isScrollable()&&node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD))return true;
+  for(int i=0;i<node.getChildCount();i++)if(scrollForward(node.getChild(i)))return true;return false;
  }
  void awaitSlot(MainActivity activity,int slot)throws Exception{for(int n=0;n<100&&(activity.slot!=slot||activity.world.story!=(slot==1)||activity.paused);n++)Thread.sleep(50);check(activity.slot==slot&&activity.world.story==(slot==1)&&!activity.paused,"selected world slot is active "+slot);}
  void testStory(MainActivity activity,GameView game)throws Exception{
@@ -50,6 +62,57 @@ public final class SmokeInstrumentation extends Instrumentation {
   runOnMainSync(()->activity.switchMode(0));awaitSlot(activity,0);check(game.world.get(30,30,30)==11&&!game.world.story,"creative world preserved after story switch");World stored=World.decode(activity.slotFile(1).readFully());check(stored.story&&stored.progress.chapter==2&&stored.progress.inventory[9]==4,"story progress stored separately");
   runOnMainSync(()->activity.switchMode(1));awaitSlot(activity,1);check(game.world.progress.inventory[9]==4&&game.world.progress.tool()==2,"story restores inventory and tools");
   CountDownLatch clean=new CountDownLatch(1);game.gl.queueEvent(()->{synchronized(game.world){World w=game.world;for(int x=44;x<=52;x++)for(int z=40;z<=52;z++)for(int y=32;y<=38;y++)w.set(x,y,z,0);w.x=spawn[0];w.y=spawn[1];w.z=spawn[2];w.yaw=.55f;w.pitch=-.38f;w.selected=9;for(VoxelRenderer.Mesh mesh:game.renderer.meshes)mesh.dirty=true;}clean.countDown();});check(clean.await(30,TimeUnit.SECONDS),"story showcase ready");
+ }
+ void field(String label,String value)throws Exception{
+  for(int attempt=0;attempt<40;attempt++){
+   android.view.accessibility.AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();
+   android.view.accessibility.AccessibilityNodeInfo input=findField(root,label);
+   if(input!=null){Bundle args=new Bundle();args.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,value);check(input.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,args),"text entered into "+label);waitForIdleSync();return;}
+   Thread.sleep(100);
+  }
+  throw new AssertionError("Field not found: "+label);
+ }
+ android.view.accessibility.AccessibilityNodeInfo findField(android.view.accessibility.AccessibilityNodeInfo node,String label){
+  if(node==null)return null;if(label.contentEquals(node.getContentDescription()==null?"":node.getContentDescription()))return node;
+  for(int i=0;i<node.getChildCount();i++){android.view.accessibility.AccessibilityNodeInfo child=findField(node.getChild(i),label);if(child!=null)return child;}return null;
+ }
+ void awaitWorld(MainActivity activity,String name)throws Exception{
+  for(int i=0;i<160&&(activity.busy||activity.paused||!activity.active.name.equals(name));i++)Thread.sleep(50);
+  check(!activity.busy&&!activity.paused&&activity.active.name.equals(name),"world loaded: "+name);
+ }
+ void chooseWorld(MainActivity activity,String name)throws Exception{
+  runOnMainSync(activity::menu);clickText("Welten laden");clickText(name);awaitWorld(activity,name);
+ }
+ void testWorldLibrary(MainActivity activity,GameView game)throws Exception{
+  runOnMainSync(()->activity.switchMode(0));awaitSlot(activity,0);
+  check(game.world.get(30,30,30)==11,"legacy creative world is preserved before creating worlds");
+  runOnMainSync(activity::menu);clickText("Neue Welt");field("Weltname","Burg");field("Seed","445566");clickText("Welt erstellen");awaitWorld(activity,"Burg");
+  String castle=activity.active.id;check(!castle.equals("creative")&&activity.slot==0&&game.world.seed==445566,"new named creative world uses a separate ID and seed");
+  runOnMainSync(()->{activity.paused=true;synchronized(game.world){game.world.set(30,35,30,7);game.world.selected=7;}activity.paused=false;activity.renameWorld();});field("Weltname","Burg am See");clickText("Umbenennen");awaitWorld(activity,"Burg am See");
+  check(activity.active.id.equals(castle),"renaming preserves the world file identity");
+  runOnMainSync(activity::newWorld);field("Weltname","Testfeld");field("Seed","998877");clickText("Welt erstellen");awaitWorld(activity,"Testfeld");
+  check(!activity.active.id.equals(castle)&&game.world.seed==998877,"second creative world does not replace the first");
+  runOnMainSync(()->{synchronized(game.world){game.world.set(30,35,30,9);}});
+  chooseWorld(activity,"Meine Kreativwelt");check(game.world.get(30,30,30)==11,"legacy world loads from the world list");
+  chooseWorld(activity,"Burg am See");check(game.world.get(30,35,30)==7&&game.world.selected==7,"first creative world restores its blocks and selected material");
+  chooseWorld(activity,"Testfeld");check(game.world.get(30,35,30)==9,"second creative world has independent block edits");
+  chooseWorld(activity,"Meine Storywelt");check(game.world.story&&game.world.progress.inventory[9]==4,"creative world management preserves existing Story inventory");
+  chooseWorld(activity,"Burg am See");check(activity.library.list().size()==4,"two legacy worlds and two new worlds are listed");
+  runOnMainSync(activity::save);activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);
+  check(new WorldLibrary(activity.getFilesDir()).entry(castle).name.equals("Burg am See"),"renamed metadata persists independently of Activity memory");
+  // Failure to load must keep the current world and must not create an empty replacement.
+  SavedWorld missing=SavedWorld.create("Nicht vorhanden",0);runOnMainSync(()->activity.openWorld(missing,null));
+  for(int i=0;i<100&&activity.busy;i++)Thread.sleep(50);
+  check(!activity.busy&&activity.active.id.equals(castle)&&game.world.get(30,35,30)==7,"failed loading keeps the open world intact");
+  check(!activity.library.file(missing).getBaseFile().exists(),"failed loading does not create an empty save");
+ }
+ void testReopened(MainActivity activity,GameView game,Bundle result)throws Exception{
+   check(activity.active.name.equals("Burg am See")&&game.world.seed==445566,"process restart reopens the last selected named world");
+   check(game.world.get(30,35,30)==7&&game.world.selected==7,"named world block edits survive a full process restart");
+   check(activity.library.list().size()==4,"all world entries survive process restart");
+   check(activity.getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE,"restart stays in landscape with portrait device lock");
+   runOnMainSync(activity::showWorlds);Thread.sleep(800);waitForIdleSync();android.graphics.Bitmap worlds=smallScreenshot();if(worlds!=null){emitScreenshot(worlds,"worldsScreenshot");worlds.recycle();}clickText("Zurück");
+   result.putString("summary","PASS: "+checks+" world restart assertions");finish(Activity.RESULT_OK,result);
  }
  void systemBack()throws Exception{
   try(InputStream in=new android.os.ParcelFileDescriptor.AutoCloseInputStream(getUiAutomation().executeShellCommand("input keyevent KEYCODE_BACK"))){byte[] data=new byte[512];while(in.read(data)!=-1){}}
@@ -74,6 +137,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   MainActivity activity=(MainActivity)startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));waitForIdleSync();
   Thread.sleep(1800);
   GameView game=activity.game;
+  if("worlds-reopen".equals(phase)){testReopened(activity,game,result);return;}
   if("seed".equals(phase)){
    runOnMainSync(()->activity.paused=true);
    File candidate=new File(context.getCacheDir(),"update.apk");try(InputStream in=getContext().getAssets().open("current.apk");FileOutputStream out=new FileOutputStream(candidate)){byte[] bytes=new byte[8192];int n;while((n=in.read(bytes))!=-1)out.write(bytes,0,n);}
@@ -84,11 +148,17 @@ public final class SmokeInstrumentation extends Instrumentation {
    android.net.Uri uri=android.net.Uri.parse("content://de.meiapps.meicraft.updates/update.apk");try(android.os.ParcelFileDescriptor fd=context.getContentResolver().openFileDescriptor(uri,"r")){check(fd.getStatSize()==info.size,"installer URI grants exact APK bytes");}
    rejected=false;try{context.getContentResolver().openFileDescriptor(uri,"w");}catch(Exception e){rejected=true;}check(rejected,"installer URI is read only");
    synchronized(game.world){game.world.set(30,30,30,11);game.world.selected=12;}
+   World legacyStory=new World(7654321,true);legacyStory.set(31,30,30,7);
+   try(FileOutputStream out=new FileOutputStream(new File(context.getFilesDir(),"story.mcworld"))){out.write(legacyStory.encode());}
    activity.updates.prefs.edit().putBoolean("automatic",false).commit();runOnMainSync(activity::save);activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);
    result.putString("summary","PASS: "+checks+" update seed assertions");finish(Activity.RESULT_OK,result);return;
   }
   if("verify".equals(phase)){check(game.world.get(30,30,30)==11&&game.world.selected==12,"install -r preserves world and selected material");check(!activity.updates.prefs.getBoolean("automatic",true),"update preference persists across APK replacement");}
-  orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,960);
+  check(activity.getRequestedOrientation()==android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,"manifest requests only landscape orientations");
+  check(activity.getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE,"launch is landscape even with portrait device lock");
+  check(context.getApplicationInfo().category==android.content.pm.ApplicationInfo.CATEGORY_GAME,"game category preserves orientation support on large screens");
+  check(World.decode(activity.slotFile(1).readFully()).get(31,30,30)==7,"existing 0.2.0 Story world is retained during upgrade");
+  orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,960);
   testSwipeControl(activity,game);
   runOnMainSync(()->activity.paused=false);for(int attempt=0;attempt<30&&!focused(activity);attempt++)Thread.sleep(100);check(focused(activity),"game window has input focus before system back");systemBack();
   for(int attempt=0;attempt<30&&!activity.paused;attempt++)Thread.sleep(100);check(activity.paused,"system back opens game menu");for(int attempt=0;attempt<30&&focused(activity);attempt++)Thread.sleep(100);check(!focused(activity),"menu window receives focus before dismissal");
@@ -121,8 +191,10 @@ public final class SmokeInstrumentation extends Instrumentation {
   Thread.sleep(1500);
   android.graphics.Bitmap screenshot=smallScreenshot();
   if(screenshot!=null){try(FileOutputStream out=context.openFileOutput("smoke.png",0)){screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}emitScreenshot(screenshot,"screenshot");screenshot.recycle();}
-  orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,540);testSwipeControl(activity,game);
-  android.graphics.Bitmap portrait=smallScreenshot();if(portrait!=null){emitScreenshot(portrait,"portraitScreenshot");portrait.recycle();}
+  orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,960);testSwipeControl(activity,game);
+  orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,960);
+  testWorldLibrary(activity,game);
+  android.graphics.Bitmap portrait=smallScreenshot();if(portrait!=null){emitScreenshot(portrait,"landscapeScreenshot");portrait.recycle();}
   result.putString("summary","PASS: "+checks+" Android assertions");finish(Activity.RESULT_OK,result);
  }catch(Throwable t){result.putString("error",android.util.Log.getStackTraceString(t));try{android.graphics.Bitmap failure=smallScreenshot();if(failure!=null){emitScreenshot(failure,"failureScreenshot");failure.recycle();}android.view.accessibility.AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();if(root!=null)result.putString("activeWindowPackage",String.valueOf(root.getPackageName()));}catch(Exception ignored){}finish(Activity.RESULT_CANCELED,result);}}
 }

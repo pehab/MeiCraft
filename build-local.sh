@@ -20,7 +20,7 @@ s=s.replace('<uses-feature ', '<uses-sdk android:minSdkVersion="26" android:targ
 Path('build/AndroidManifest.xml').write_text(s)
 PYMANIFEST
 "$BT/aapt2" link -I "$SDK/platforms/android-37.0/android.jar" --manifest build/AndroidManifest.xml --java build/generated -A app/src/main/assets -o build/resources.apk build/resources.zip
-"$JAVA_BIN/java" -m jdk.compiler/com.sun.tools.javac.Main -Xlint:deprecation -Werror -encoding UTF-8 -source 17 -target 17 -classpath "$SDK/platforms/android-37.0/android.jar" -d build/classes $(find app/src/main/java -name '*.java')
+"$JAVA_BIN/java" -m jdk.compiler/com.sun.tools.javac.Main -Xlint:deprecation -Werror -encoding UTF-8 -source 17 -target 17 -classpath "$SDK/platforms/android-37.0/android.jar" -d build/classes $(find app/src/main/java build/generated -name '*.java')
 python3 - <<'PY'
 import zipfile,pathlib
 with zipfile.ZipFile('build/classes.jar','w') as z:
