@@ -36,11 +36,16 @@ final class GameView extends FrameLayout {
     }
     final class Hud extends View {
         final Paint p=new Paint(3);final RectF rect=new RectF();float scale=1,offsetX,offsetY;float joyX=111,joyY=390;
-        Hud(Context context){super(context);setLayerType(View.LAYER_TYPE_SOFTWARE,null);}
+        Hud(Context context){super(context);}
         void box(Canvas c,float x,float y,float w,float h,int color){p.setColor(color);rect.set(x,y,x+w,y+h);c.drawRoundRect(rect,13,13,p);}
         void text(Canvas c,String s,float x,float y,float size,int color){p.setColor(color);p.setTextSize(size);p.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));c.drawText(s,x,y,p);}
         void center(Canvas c,String s,float x,float y,float size,int color){p.setTextSize(size);text(c,s,x-p.measureText(s)/2,y,size,color);}
-        @Override protected void onDraw(Canvas c){super.onDraw(c);scale=Math.min(getWidth()/960f,getHeight()/540f);offsetX=(getWidth()-960*scale)/2;offsetY=(getHeight()-540*scale)/2;c.save();c.translate(offsetX,offsetY);c.scale(scale,scale);
+        void layoutHud(){
+            int left=0,right=0,top=0,bottom=0;
+            if(android.os.Build.VERSION.SDK_INT>=28){WindowInsets insets=getRootWindowInsets();if(insets!=null&&insets.getDisplayCutout()!=null){DisplayCutout cutout=insets.getDisplayCutout();left=cutout.getSafeInsetLeft();right=cutout.getSafeInsetRight();top=cutout.getSafeInsetTop();bottom=cutout.getSafeInsetBottom();}}
+            scale=Math.min((getWidth()-left-right)/960f,(getHeight()-top-bottom)/540f);offsetX=left+(getWidth()-left-right-960*scale)/2;offsetY=top+(getHeight()-top-bottom-540*scale)/2;
+        }
+        @Override protected void onDraw(Canvas c){super.onDraw(c);layoutHud();c.save();c.translate(offsetX,offsetY);c.scale(scale,scale);
             box(c,20,16,221,55,0xbb153d42);text(c,"meiCraft",34,41,23,0xffffdb76);text(c,"OFFLINE · KREATIV",35,59,11,0xffd1e8e6);
             box(c,867,18,72,49,0xcc153d42);center(c,"☰",903,51,25,Color.WHITE);
             World w=world;int[] hit=target;
@@ -58,7 +63,7 @@ final class GameView extends FrameLayout {
         void button(Canvas c,float x,float y,String symbol,String label){box(c,x-29,y-29,58,58,0xaa173b43);center(c,symbol,x,y+10,31,Color.WHITE);center(c,label,x,y+44,9,Color.WHITE);}
         boolean at(float x,float y,float a,float b,float radius){return Math.abs(x-a)<radius&&Math.abs(y-b)<radius;}
         @Override public boolean onTouchEvent(MotionEvent event){
-            float s=Math.min(getWidth()/960f,getHeight()/540f),ox=(getWidth()-960*s)/2,oy=(getHeight()-540*s)/2;
+            layoutHud();float s=scale,ox=offsetX,oy=offsetY;
             int action=event.getActionMasked(),index=event.getActionIndex(),id=event.getPointerId(index);float x=(event.getX(index)-ox)/s,y=(event.getY(index)-oy)/s;
             if(action==MotionEvent.ACTION_CANCEL){clearInput();return true;}
             if(activity.paused){clearInput();return true;}
