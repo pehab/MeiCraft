@@ -4,6 +4,8 @@ Ein eigenständiges, vollständig offline spielbares 3D-Klötzchenspiel für And
 
 **[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Android 8.0 oder neuer · Querformat · Version 0.1.0
 
+![Spielansicht](docs/screenshot.png)
+
 ## Erste spielbare Version
 
 - Eine generierte Welt mit 96 × 96 × 48 Blöcken, Hügeln, Sandufern, Wasser und Bäumen.
@@ -28,7 +30,7 @@ Voraussetzungen: JDK 17, Android SDK Platform 35 und Build Tools 35.0.0. Keine L
 export ANDROID_SDK_ROOT=/pfad/zum/android-sdk
 ./test.sh
 ./build-local.sh
-(cd . && bash scripts/build-upgrade-fixture.sh)
+bash scripts/build-upgrade-fixture.sh
 ./test-android-build.sh
 ```
 
