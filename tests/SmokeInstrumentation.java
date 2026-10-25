@@ -68,7 +68,9 @@ public final class SmokeInstrumentation extends Instrumentation {
   }
   if("verify".equals(phase)){check(game.world.get(30,30,30)==11&&game.world.selected==12,"install -r preserves world and selected material");check(!activity.updates.prefs.getBoolean("automatic",true),"update preference persists across APK replacement");}
   testSticks(activity,game);
-  runOnMainSync(()->activity.paused=false);sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK);waitForIdleSync();check(activity.paused,"system back opens game menu");sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK);waitForIdleSync();check(!activity.paused,"back dismisses menu without leaving game");
+  runOnMainSync(()->activity.paused=false);check(getUiAutomation().performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK),"system accepts back navigation");
+  for(int attempt=0;attempt<30&&!activity.paused;attempt++)Thread.sleep(100);check(activity.paused,"system back opens game menu");
+  check(getUiAutomation().performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK),"system accepts dialog back navigation");for(int attempt=0;attempt<30&&activity.paused;attempt++)Thread.sleep(100);check(!activity.paused,"back dismisses menu without leaving game");
   runOnMainSync(()->activity.paused=true);
   CountDownLatch done=new CountDownLatch(1);Throwable[] failure=new Throwable[1];
   game.gl.queueEvent(()->{try{
@@ -96,7 +98,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   Thread.sleep(1500);
   android.graphics.Bitmap screenshot=smallScreenshot();
   if(screenshot!=null){try(FileOutputStream out=context.openFileOutput("smoke.png",0)){screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}emitScreenshot(screenshot,"screenshot");screenshot.recycle();}
-  runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));Thread.sleep(1200);runOnMainSync(()->{game.hud.layoutHud();check(game.hud.designW==540&&game.hud.designH==960,"portrait has a full responsive control layout");});testSticks(activity,game);
+  runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));boolean[] portraitReady={false};for(int attempt=0;attempt<40&&!portraitReady[0];attempt++){Thread.sleep(100);runOnMainSync(()->{game.hud.layoutHud();portraitReady[0]=game.hud.designW==540&&game.hud.designH==960;});}check(portraitReady[0],"portrait has a full responsive control layout");testSticks(activity,game);
   android.graphics.Bitmap portrait=smallScreenshot();if(portrait!=null){emitScreenshot(portrait,"portraitScreenshot");portrait.recycle();}
   result.putString("summary","PASS: "+checks+" Android assertions");finish(Activity.RESULT_OK,result);
  }catch(Throwable t){result.putString("error",android.util.Log.getStackTraceString(t));finish(Activity.RESULT_CANCELED,result);}}

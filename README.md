@@ -67,3 +67,5 @@ Die signierten APKs liegen unter `dist/`, inklusive SHA-256-Prüfsumme. Der Work
 `app/src/main/assets/blocks.png` enthält ausschließlich prozedural erzeugte Originaltexturen. Zum Neuerzeugen: `python3 scripts/generate-textures.py` (Pillow erforderlich). Keine Minecraft-Dateien oder Original-Assets. Das Projekt ist unabhängig von Mojang und Microsoft.
 
 Die Gradle-Prüfung verwendet AGP 9.5.0-rc01: Diese Version behebt Googles dokumentierte Configuration.setVisible-Warnung mit Gradle 9.8. Die veröffentlichte APK wird direkt mit den stabilen Android SDK Build Tools 36.0.0 gebaut.
+
+Die vom Android-Plugin geladene Kotlin-Build-Komponente ist auf 2.4.21 fixiert, um ebenfalls deren alte Configuration.setVisible-Aufrufe zu beseitigen. Es werden keine Warnungsregeln ausgeblendet.
