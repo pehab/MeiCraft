@@ -56,6 +56,19 @@ jobs:
         env:
           TEST_API: ${{ matrix.api }}
         run: bash scripts/run-emulator.sh
+      - name: Package APK from the validated source
+        run: |
+          if [ "${{ github.event_name }}" = 'pull_request' ]; then
+            python3 scripts/prepare-release.py build/baseline.apk
+          else
+            python3 scripts/prepare-release.py
+          fi
+      - uses: actions/upload-artifact@v6
+        if: github.event_name != 'pull_request' && matrix.api == 30
+        with:
+          name: verified-release
+          path: build/release/
+          if-no-files-found: error
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -78,10 +91,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v6
+        with:
+          name: verified-release
+          path: build/release
       - name: Verify signed release APK
         run: |
           VERSION=$(sed -n 's/^versionName=//p' version.properties)
-          cd dist
+          cd build/release
           sha256sum --check "meiCraft-$VERSION.apk.sha256"
       - name: Publish verified version
         env:
@@ -90,5 +107,5 @@ jobs:
         run: |
           VERSION=$(sed -n 's/^versionName=//p' version.properties)
           if ! gh release view "v$VERSION" >/dev/null 2>&1; then
-            gh release create "v$VERSION" "dist/meiCraft-$VERSION.apk" "dist/meiCraft-$VERSION.apk.sha256" dist/meiCraft-update.json --target "$GITHUB_SHA" --title "meiCraft $VERSION" --notes-file "docs/RELEASE-$VERSION.md"
+            gh release create "v$VERSION" "build/release/meiCraft-$VERSION.apk" "build/release/meiCraft-$VERSION.apk.sha256" build/release/meiCraft-update.json --target "$GITHUB_SHA" --title "meiCraft $VERSION" --notes-file "docs/RELEASE-$VERSION.md"
           fi
