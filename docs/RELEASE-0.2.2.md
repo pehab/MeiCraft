@@ -1,0 +1,1 @@
+Updates nach Installationsquelle: Play-Installationen erhalten Updates über Google Play; direkt installierte APKs behalten die tägliche und manuelle geprüfte GitHub-Aktualisierung. Spielstände und Weltverwaltung bleiben erhalten.

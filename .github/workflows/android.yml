@@ -20,6 +20,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Verify update routing and APK metadata contract
+        run: bash scripts/test-update-contract.sh
       - name: Install Android SDK
         run: |
           SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
