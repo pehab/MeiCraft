@@ -5,8 +5,9 @@ SDK="${ANDROID_SDK_ROOT:-../android-sdk}"
 SDK="$(cd "$SDK" && pwd)"
 BT="$SDK/build-tools/35.0.0"
 JAVA_BIN="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}/bin"
-mkdir -p build/test-apk/classes build/test-apk/dex
-"$BT/aapt2" link -I "$SDK/platforms/android-35/android.jar" --manifest tests/AndroidManifest.xml -o build/test-apk/resources.apk
+mkdir -p build/test-apk/classes build/test-apk/dex build/test-assets
+cp build/meiCraft-0.1.0.apk build/test-assets/current.apk
+"$BT/aapt2" link -I "$SDK/platforms/android-35/android.jar" --manifest tests/AndroidManifest.xml -A build/test-assets -o build/test-apk/resources.apk
 "$JAVA_BIN/java" -m jdk.compiler/com.sun.tools.javac.Main -encoding UTF-8 -source 17 -target 17 -classpath "$SDK/platforms/android-35/android.jar:build/classes" -d build/test-apk/classes tests/SmokeInstrumentation.java
 python3 - <<'PY'
 import zipfile,pathlib

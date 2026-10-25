@@ -1,6 +1,6 @@
 # meiCraft
 
-Ein eigenständiges, vollständig offline spielbares 3D-Klötzchenspiel für Android. Native Java-App mit OpenGL ES 2.0, eigener Weltgenerierung und selbst erzeugten Texturen. Keine Konten, Werbung, Käufe, Server oder Netzwerkberechtigungen.
+Ein eigenständiges, vollständig offline spielbares 3D-Klötzchenspiel für Android. Native Java-App mit OpenGL ES 2.0, eigener Weltgenerierung und selbst erzeugten Texturen. Keine Konten, Werbung oder Käufe. Zum Spielen sind weder Server noch Internet nötig.
 
 **[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Android 8.0 oder neuer · Querformat · Version 0.1.0
 
@@ -14,7 +14,7 @@ Ein eigenständiges, vollständig offline spielbares 3D-Klötzchenspiel für And
 - Automatisches Speichern alle 30 Sekunden und beim Wechsel in den Hintergrund; zusätzlich manuell im Menü.
 - Neue Welten über einen Namen oder numerischen Seed. Das Ersetzen der aktuellen Welt erfordert eine Bestätigung.
 
-Dies ist eine erste Kreativ-Sandbox. Crafting, Tiere, Gegner, Überleben, Mehrspieler, mehrere Speicherplätze und unendliche Welten sind noch nicht enthalten. Es gibt keine automatische Update-Abfrage; neue APKs werden über die Releases installiert. Ein Update mit gleicher Signatur erhält den privaten App-Spielstand. Eine Deinstallation entfernt ihn.
+Dies ist eine erste Kreativ-Sandbox. Crafting, Tiere, Gegner, Überleben, Mehrspieler, mehrere Speicherplätze und unendliche Welten sind noch nicht enthalten. Updates werden einmal täglich geprüft und können zusätzlich unter **☰ → Updates** manuell gesucht werden. Die automatische Prüfung ist dort abschaltbar. Nur die Update-Funktion verwendet das Internet. Downloads erfolgen erst nach Bestätigung; vor der Android-Installation prüft die App Größe, SHA-256, Paketname, Version und Signatur. Ein Update mit gleicher Signatur erhält den privaten App-Spielstand. Eine Deinstallation entfernt ihn.
 
 ## Steuerung
 
@@ -28,6 +28,7 @@ Voraussetzungen: JDK 17, Android SDK Platform 35 und Build Tools 35.0.0. Keine L
 export ANDROID_SDK_ROOT=/pfad/zum/android-sdk
 ./test.sh
 ./build-local.sh
+(cd . && bash scripts/build-upgrade-fixture.sh)
 ./test-android-build.sh
 ```
 
@@ -40,16 +41,14 @@ Alternativ Android Studio öffnen oder `./gradlew assembleDebug lintDebug` ausf�
 App und Test-APK auf einem Emulator oder Testgerät installieren:
 
 ```sh
-adb install -r build/meiCraft-0.1.0.apk
-adb install -r build/meiCraft-tests.apk
-adb shell am instrument -w de.meiapps.meicraft.tests/de.meiapps.meicraft.SmokeInstrumentation
+bash scripts/smoke-android.sh
 ```
 
-Der Smoke-Test verändert seine Testwelt und prüft OpenGL, Bewegung, Abbauen/Setzen und den tatsächlichen Speichervorgang. Er gehört auf ein Testgerät ohne wertvollen Spielstand. `tests/WorldTests.java` prüft zusätzlich deterministische Landschaften, sichere Startpositionen, Raycasting, Kollisionen und ungültige Spielstände.
+Der Smoke-Test verändert seine Testwelt und prüft OpenGL, Touch-Steuerung, Bewegung, Abbauen/Setzen und den tatsächlichen Speichervorgang. Eine zusätzliche Installation von VersionCode 0 auf 1 prüft den Spielstanderhalt sowie APK-Prüfsumme, Paketidentität, Signatur und die nur lesbare Installations-URI. Die niedrigere Testversion basiert auf demselben Quellcode. Er gehört auf ein Testgerät ohne wertvollen Spielstand. `tests/UpdateTests.java` prüft Update-Metadaten und manipulierte Dateien. `tests/WorldTests.java` prüft zusätzlich deterministische Landschaften, sichere Startpositionen, Raycasting, Kollisionen und ungültige Spielstände.
 
 ### Release-Signierung
 
-Die erste signierte APK liegt unter `dist/`, inklusive SHA-256-Prüfsumme. Der Workflow testet den Quellcode und veröffentlicht diese geprüfte Erstversion. Für spätere Versionen wird das private Repository-Secret `MEICRAFT_SIGNING_JSON` benötigt:
+Die erste signierte APK liegt unter `dist/`, inklusive SHA-256-Prüfsumme. Der Workflow testet den Quellcode und veröffentlicht diese geprüfte Erstversion samt `meiCraft-update.json`. Die App fragt diesen Manifest-Anhang des neuesten Releases ab; die APK-Adresse verweist immer auf eine konkrete Version. Für spätere Versionen wird das private Repository-Secret `MEICRAFT_SIGNING_JSON` benötigt:
 
 ```json
 {"keystore":"BASE64_PKCS12","password":"PRIVATE_PASSWORD","alias":"meicraft"}

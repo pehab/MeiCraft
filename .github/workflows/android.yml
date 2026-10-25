@@ -31,6 +31,7 @@ jobs:
       - name: Build native APK and smoke APK
         run: |
           bash build-local.sh
+          bash scripts/build-upgrade-fixture.sh
           bash test-android-build.sh
       - name: Android Gradle build and lint
         run: bash gradlew --no-daemon assembleDebug lintDebug
@@ -54,6 +55,7 @@ jobs:
           path: |
             build/reports/
             build/android-smoke.log
+            build/android-update-seed.log
             build/smoke.png
             app/build/reports/
   publish:
@@ -74,5 +76,5 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if ! gh release view v0.1.0 >/dev/null 2>&1; then
-            gh release create v0.1.0 dist/meiCraft-0.1.0.apk dist/meiCraft-0.1.0.apk.sha256 --target "$GITHUB_SHA" --title 'meiCraft 0.1.0 · Offline-Kreativwelt' --notes-file docs/RELEASE-0.1.0.md
+            gh release create v0.1.0 dist/meiCraft-0.1.0.apk dist/meiCraft-0.1.0.apk.sha256 dist/meiCraft-update.json --target "$GITHUB_SHA" --title 'meiCraft 0.1.0 · Offline-Kreativwelt' --notes-file docs/RELEASE-0.1.0.md
           fi

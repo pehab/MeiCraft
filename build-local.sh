@@ -9,7 +9,10 @@ mkdir -p build/classes build/dex .signing
 "$BT/aapt2" compile --dir app/src/main/res -o build/resources.zip
 python3 - <<'PYMANIFEST'
 from pathlib import Path
-s=Path('app/src/main/AndroidManifest.xml').read_text().replace('<manifest ', '<manifest package="de.meiapps.meicraft" android:versionCode="1" android:versionName="0.1.0" ',1)
+import os
+code=int(os.environ.get('MEICRAFT_VERSION_CODE','1'))
+assert 0<=code<2147483647
+s=Path('app/src/main/AndroidManifest.xml').read_text().replace('<manifest ', '<manifest package="de.meiapps.meicraft" android:versionCode="'+str(code)+'" android:versionName="0.1.0" ',1)
 Path('build/AndroidManifest.xml').write_text(s)
 PYMANIFEST
 "$BT/aapt2" link -I "$SDK/platforms/android-35/android.jar" --manifest build/AndroidManifest.xml --java build/generated -A app/src/main/assets -o build/resources.apk build/resources.zip
