@@ -49,8 +49,8 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
                 int neighbor=world.get(x+N[face][0],y+N[face][1],z+N[face][2]);
                 if(neighbor!=0 && !(neighbor==10&&block!=10))continue;
                 if(y==0&&face==3)continue;
-                int tile=block;if(block==1)tile=face==2?1:face==3?2:13;if(block==5&&face>=2&&face<=3)tile=14;
-                float u0=(tile*32+.5f)/512f,u1=(tile*32+31.5f)/512f;
+                int tile=block==13?16:block==14?17:block;if(block==1)tile=face==2?1:face==3?2:13;if(block==5&&face>=2&&face<=3)tile=14;
+                float u0=(tile*32+.5f)/1024f,u1=(tile*32+31.5f)/1024f;
                 float shade=block==11?1:SHADE[face];
                 for(int corner:ORDER){float[] f=F[face];float u=(corner==0||corner==1)?u0:u1;float v=(corner==0||corner==3)?31.5f/32:.5f/32;data.add(x+f[corner*3],y+f[corner*3+1],z+f[corner*3+2],u,v,shade);}
             }
@@ -86,7 +86,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             outlineBuffer.put(hit[0]+((vertex&1)==0?-.004f:1.004f));
             outlineBuffer.put(hit[1]+((vertex&2)==0?-.004f:1.004f));
             outlineBuffer.put(hit[2]+((vertex&4)==0?-.004f:1.004f));
-            outlineBuffer.put((11*32+16f)/512);outlineBuffer.put(.5f);outlineBuffer.put(1f);
+            outlineBuffer.put((11*32+16f)/1024);outlineBuffer.put(.5f);outlineBuffer.put(1f);
         }
         outlineBuffer.position(0);GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,outlineBuffer);
         outlineBuffer.position(3);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,24,outlineBuffer);
