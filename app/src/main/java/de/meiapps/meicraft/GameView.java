@@ -56,7 +56,7 @@ final class GameView {
             box(c,designW-93,18,72,49,0xcc153d42);center(c,"☰",designW-57,51,25,Color.WHITE);
             World w=world;int[] hit=target;
             if(hit!=null){box(c,(designW-266)/2,designW<960?82:20,266,31,0x99152c32);center(c,World.NAMES[w.get(hit[0],hit[1],hit[2])],designW/2,designW<960?103:41,15,Color.WHITE);}
-            float cx=designW/2,cy=designH/2;p.setColor(0xddffffff);p.setStrokeWidth(2);c.drawLine(cx-10,cy,cx-3,cy,p);c.drawLine(cx+3,cy,cx+10,cy,p);c.drawLine(cx,cy-10,cx,cy-3,p);c.drawLine(cx,cy+3,cx,cy+10,p);
+            float cx=(getWidth()/2f-offsetX)/scale,cy=(getHeight()/2f-offsetY)/scale;p.setColor(0xddffffff);p.setStrokeWidth(2);c.drawLine(cx-10,cy,cx-3,cy,p);c.drawLine(cx+3,cy,cx+10,cy,p);c.drawLine(cx,cy-10,cx,cy-3,p);c.drawLine(cx,cy+3,cx,cy+10,p);
             joystick(c,joyX,joyY,knobX,knobY,"BEWEGEN");
             joystick(c,lookJoyX,lookJoyY,lookKnobX,lookKnobY,"UMSEHEN");
             button(c,mineX,actionY,"−","ABBAUEN");button(c,placeX,actionY,"+","SETZEN");
