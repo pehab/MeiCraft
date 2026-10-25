@@ -27,7 +27,9 @@ final class UpdateController {
  void settings(){activity.paused=true;boolean automatic=prefs.getBoolean("automatic",true);new AlertDialog.Builder(activity).setTitle("Updates · meiCraft "+versionName()).setItems(new String[]{"Jetzt nach Updates suchen","Automatische Prüfung: "+(automatic?"an":"aus")},(d,item)->{if(item==0)check(true);else{prefs.edit().putBoolean("automatic",!automatic).apply();activity.toast(!automatic?"Tägliche Update-Prüfung eingeschaltet":"Automatische Prüfung ausgeschaltet");}}).setOnDismissListener(d->activity.paused=false).show();}
  String versionName(){try{return activity.getPackageManager().getPackageInfo(activity.getPackageName(),0).versionName;}catch(Exception e){return "?";}}
  long installedCode(){try{PackageInfo p=activity.getPackageManager().getPackageInfo(activity.getPackageName(),0);return versionCode(p);}catch(Exception e){return Long.MAX_VALUE;}}
- static long versionCode(PackageInfo p){return Build.VERSION.SDK_INT>=28?p.getLongVersionCode():p.versionCode;}
+ static long versionCode(PackageInfo p){return Build.VERSION.SDK_INT>=28?p.getLongVersionCode():legacyVersionCode(p);}
+ // Android 8 uses the original version-code field; newer devices use the long API.
+ @SuppressWarnings("deprecation") private static long legacyVersionCode(PackageInfo p){return p.versionCode;}
  static UpdateInfo parse(String data)throws JSONException{JSONObject j=new JSONObject(data);if(j.getInt("schema")!=1)throw new JSONException("Unknown schema");return new UpdateInfo(j.getInt("versionCode"),j.getString("versionName"),j.getString("url"),j.getString("sha256"),j.getLong("size"));}
  static String encode(UpdateInfo info){try{JSONObject j=new JSONObject();j.put("schema",1);j.put("versionCode",info.code);j.put("versionName",info.name);j.put("url",info.url);j.put("sha256",info.sha256);j.put("size",info.size);return j.toString();}catch(JSONException e){throw new AssertionError(e);}}
  void check(boolean manual){if(busy){if(manual)activity.toast("Eine Update-Prüfung oder ein Download läuft bereits");return;}busy=true;prefs.edit().putLong("lastCheck",System.currentTimeMillis()).apply();if(manual)activity.toast("Suche nach Updates …");

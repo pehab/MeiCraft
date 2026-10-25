@@ -16,12 +16,17 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle state){super.onCreate(state);file=new AtomicFile(new File(getFilesDir(),"world.mcworld"));
         boolean recovered=false;
         try{world=World.decode(file.readFully());}catch(Exception e){world=new World(20261025L);recovered=file.getBaseFile().exists();}
-        game=new GameView(this,world);setContentView(game);updates=new UpdateController(this);immersive();
+        game=new GameView(this,world);setContentView(game.root);updates=new UpdateController(this);immersive();if(Build.VERSION.SDK_INT>=33)getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,this::menu);
         if(recovered)new AlertDialog.Builder(this).setTitle("Spielstand nicht lesbar").setMessage("Die gespeicherte Datei konnte nicht geladen werden. Sie bleibt als Sicherung erhalten. Eine neue Welt wurde geöffnet.").setPositiveButton("OK",null).show();
         if(recovered){try{java.nio.file.Files.copy(file.getBaseFile().toPath(),new File(getFilesDir(),"world-damaged-"+System.currentTimeMillis()).toPath());}catch(Exception ignored){}}
         if(!getPreferences(0).getBoolean("introduced",false))new AlertDialog.Builder(this).setTitle("Willkommen bei meiCraft").setMessage("Deine kleine Offline-Bauwelt.\n\nLinks: bewegen · rechter Joystick: umsehen\n−: Block abbauen · +: Block setzen\n↑ / ↓: fliegen · unten: Baumaterial wählen\n\nDas Fadenkreuz zeigt auf den Block. Unter ☰ findest du alle Materialien, Laufmodus und eine neue Welt. Dein Fortschritt wird automatisch lokal gespeichert.").setPositiveButton("Losbauen",(d,w)->getPreferences(0).edit().putBoolean("introduced",true).apply()).show();
     }
-    void immersive(){getWindow().getDecorView().setSystemUiVisibility(5894);}
+    void immersive(){
+        if(Build.VERSION.SDK_INT>=30){WindowInsetsController controller=getWindow().getInsetsController();if(controller!=null){controller.hide(WindowInsets.Type.systemBars());controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);}}
+        else immersiveLegacy();
+    }
+    // Android 8–10 have no WindowInsetsController; use their supported fullscreen API.
+    @SuppressWarnings("deprecation") private void immersiveLegacy(){getWindow().getDecorView().setSystemUiVisibility(5894);}
     void save(){if(world==null)return;final byte[] data;try{synchronized(world){data=world.encode();}}catch(IOException e){toast("Speichern fehlgeschlagen");return;}disk.execute(()->{FileOutputStream stream=null;try{stream=file.startWrite();stream.write(data);file.finishWrite(stream);}catch(Exception e){if(stream!=null)file.failWrite(stream);runOnUiThread(()->toast("Spielstand konnte nicht gespeichert werden"));}});}
     void menu(){if(paused)return;paused=true;game.clearInput();
         new AlertDialog.Builder(this).setTitle("meiCraft · Deine Bauwelt").setItems(new String[]{"Weiterbauen","Baumaterial wählen",world.flying?"Laufen statt fliegen":"Fliegen statt laufen","Spielstand speichern","Neue Welt …","Steuerung","Updates"},(dialog,which)->{
@@ -40,5 +45,5 @@ public final class MainActivity extends Activity {
     @Override protected void onPause(){if(updates!=null)updates.onPause();if(game!=null){game.clearInput();game.gl.onPause();}save();handler.removeCallbacks(autosave);super.onPause();}
     @Override protected void onDestroy(){if(updates!=null)updates.onDestroy();handler.removeCallbacks(autosave);disk.shutdown();super.onDestroy();}
     @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(!focused&&game!=null)game.clearInput();}
-    @Override public void onBackPressed(){menu();}
+    @Override public boolean onKeyUp(int code,KeyEvent event){if(Build.VERSION.SDK_INT<33&&code==KeyEvent.KEYCODE_BACK){menu();return true;}return super.onKeyUp(code,event);}
 }

@@ -8,14 +8,14 @@ JAVA_BIN="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}/bin"
 mkdir -p build/test-apk/classes build/test-apk/dex build/test-assets
 APP_VERSION="$(sed -n 's/^versionName=//p' version.properties)"
 cp "build/meiCraft-$APP_VERSION.apk" build/test-assets/current.apk
-"$BT/aapt2" link -I "$SDK/platforms/android-35/android.jar" --manifest tests/AndroidManifest.xml -A build/test-assets -o build/test-apk/resources.apk
-"$JAVA_BIN/java" -m jdk.compiler/com.sun.tools.javac.Main -encoding UTF-8 -source 17 -target 17 -classpath "$SDK/platforms/android-35/android.jar:build/classes" -d build/test-apk/classes tests/SmokeInstrumentation.java
+"$BT/aapt2" link -I "$SDK/platforms/android-36/android.jar" --manifest tests/AndroidManifest.xml -A build/test-assets -o build/test-apk/resources.apk
+"$JAVA_BIN/java" -m jdk.compiler/com.sun.tools.javac.Main -Xlint:deprecation -Werror -encoding UTF-8 -source 17 -target 17 -classpath "$SDK/platforms/android-36/android.jar:build/classes" -d build/test-apk/classes tests/SmokeInstrumentation.java
 python3 - <<'PY'
 import zipfile,pathlib
 with zipfile.ZipFile('build/test-apk/classes.jar','w') as z:
  for p in pathlib.Path('build/test-apk/classes').rglob('*.class'):z.write(p,p.relative_to('build/test-apk/classes'))
 PY
-"$BT/d8" --lib "$SDK/platforms/android-35/android.jar" --classpath build/classes.jar --min-api 26 --output build/test-apk/dex build/test-apk/classes.jar
+"$BT/d8" --lib "$SDK/platforms/android-36/android.jar" --classpath build/classes.jar --min-api 26 --output build/test-apk/dex build/test-apk/classes.jar
 cp build/test-apk/resources.apk build/test-apk/unsigned.apk
 python3 - <<'PY'
 import zipfile,pathlib

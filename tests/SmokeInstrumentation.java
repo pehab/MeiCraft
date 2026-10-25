@@ -23,20 +23,21 @@ public final class SmokeInstrumentation extends Instrumentation {
   });
  }
  void testSticks(MainActivity activity,GameView game)throws Exception{
+  float lx=game.hud.joyX,ly=game.hud.joyY,rx=game.hud.lookJoyX,ry=game.hud.lookJoyY;
   runOnMainSync(()->activity.paused=false);
-  stickEvent(game,0,new int[]{31},new float[][]{{111,350}});
-  stickEvent(game,5|(1<<8),new int[]{31,42},new float[][]{{111,350},{849,390}});
+  stickEvent(game,0,new int[]{31},new float[][]{{lx,ly-40}});
+  stickEvent(game,5|(1<<8),new int[]{31,42},new float[][]{{lx,ly-40},{rx,ry}});
   check(game.forward>.5f&&game.lookVertical==0,"move and centered look joystick accept independent fingers");
-  stickEvent(game,2,new int[]{31,42},new float[][]{{111,350},{849,393}});
+  stickEvent(game,2,new int[]{31,42},new float[][]{{lx,ly-40},{rx,ry+3}});
   check(game.lookVertical==0,"look deadzone prevents drift");
-  stickEvent(game,2,new int[]{31,42},new float[][]{{111,350},{849,442}});
+  stickEvent(game,2,new int[]{31,42},new float[][]{{lx,ly-40},{rx,ry+52}});
   check(game.forward>.5f&&game.lookVertical>.9f,"both joysticks remain active together");
   runOnMainSync(()->activity.paused=true);
   CountDownLatch done=new CountDownLatch(1);Throwable[] failure=new Throwable[1];game.gl.queueEvent(()->{try{synchronized(game.world){game.world.pitch=0;game.tick(1);check(game.world.pitch< -1.3f,"held look joystick looks down without repeated swipes");game.tick(1);check(game.world.pitch>=-1.48f,"vertical view stops at its safe limit");}}catch(Throwable t){failure[0]=t;}finally{done.countDown();}});check(done.await(30,TimeUnit.SECONDS),"look simulation completes");if(failure[0]!=null)throw new AssertionError(failure[0]);
   runOnMainSync(()->activity.paused=false);
-  stickEvent(game,6|(1<<8),new int[]{31,42},new float[][]{{111,350},{849,442}});
+  stickEvent(game,6|(1<<8),new int[]{31,42},new float[][]{{lx,ly-40},{rx,ry+52}});
   check(game.lookVertical==0&&game.forward>.5f,"releasing look stops rotation while movement remains active");
-  stickEvent(game,3,new int[]{31},new float[][]{{111,350}});
+  stickEvent(game,3,new int[]{31},new float[][]{{lx,ly-40}});
   check(game.forward==0&&game.strafe==0&&game.lookVertical==0&&game.lookHorizontal==0,"cancel clears both joysticks");
  }
  @Override public void onCreate(Bundle args){super.onCreate(args);phase=args==null?"full":args.getString("phase","full");start();}
@@ -60,6 +61,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   }
   if("verify".equals(phase)){check(game.world.get(30,30,30)==11&&game.world.selected==12,"install -r preserves world and selected material");check(!activity.updates.prefs.getBoolean("automatic",true),"update preference persists across APK replacement");}
   testSticks(activity,game);
+  runOnMainSync(()->activity.paused=false);sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK);waitForIdleSync();check(activity.paused,"system back opens game menu");sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK);waitForIdleSync();check(!activity.paused,"back dismisses menu without leaving game");
   runOnMainSync(()->activity.paused=true);
   CountDownLatch done=new CountDownLatch(1);Throwable[] failure=new Throwable[1];
   game.gl.queueEvent(()->{try{
@@ -77,16 +79,18 @@ public final class SmokeInstrumentation extends Instrumentation {
    }
   }catch(Throwable t){failure[0]=t;}finally{done.countDown();}});
   check(done.await(60,TimeUnit.SECONDS),"GL thread completed");if(failure[0]!=null)throw new AssertionError("GL smoke",failure[0]);
-  runOnMainSync(()->activity.paused=false);tap(game,790,250);runOnMainSync(()->activity.paused=true);
+  runOnMainSync(()->activity.paused=false);tap(game,game.hud.mineX,game.hud.actionY);runOnMainSync(()->activity.paused=true);
   CountDownLatch editDone=new CountDownLatch(1);game.gl.queueEvent(()->{synchronized(game.world){try{check(game.world.get(48,34,45)==0,"break removes targeted block");game.world.set(48,34,44,3);}catch(Throwable t){failure[0]=t;}}editDone.countDown();});check(editDone.await(30,TimeUnit.SECONDS),"break queue completed");if(failure[0]!=null)throw new AssertionError(failure[0]);
-  runOnMainSync(()->activity.paused=false);tap(game,899,250);runOnMainSync(()->activity.paused=true);CountDownLatch placeDone=new CountDownLatch(1);game.gl.queueEvent(()->{try{synchronized(game.world){check(game.world.get(48,34,45)==9,"place adds selected block adjacent to target");game.renderer.dirty(48,45);}}catch(Throwable t){failure[0]=t;}finally{placeDone.countDown();}});check(placeDone.await(30,TimeUnit.SECONDS),"place queue completed");if(failure[0]!=null)throw new AssertionError(failure[0]);
-  runOnMainSync(()->activity.paused=false);tap(game,508,497);runOnMainSync(()->activity.paused=true);check(game.world.selected==9,"hotbar touch selects material");
+  runOnMainSync(()->activity.paused=false);tap(game,game.hud.placeX,game.hud.actionY);runOnMainSync(()->activity.paused=true);CountDownLatch placeDone=new CountDownLatch(1);game.gl.queueEvent(()->{try{synchronized(game.world){check(game.world.get(48,34,45)==9,"place adds selected block adjacent to target");game.renderer.dirty(48,45);}}catch(Throwable t){failure[0]=t;}finally{placeDone.countDown();}});check(placeDone.await(30,TimeUnit.SECONDS),"place queue completed");if(failure[0]!=null)throw new AssertionError(failure[0]);
+  runOnMainSync(()->activity.paused=false);tap(game,game.hud.barX+248,game.hud.barY+25);runOnMainSync(()->activity.paused=true);check(game.world.selected==9,"hotbar touch selects material");
   runOnMainSync(activity::save);activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);World saved=World.decode(activity.file.readFully());check(saved.get(48,34,45)==9,"edited block written to disk");check(saved.selected==9,"selected material written to disk");
   check(java.util.Arrays.asList(context.getPackageManager().getPackageInfo(context.getPackageName(),android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions).contains("android.permission.INTERNET"),"update permission present");
   runOnMainSync(()->{synchronized(game.world){World w=game.world;w.yaw=.55f;w.pitch=-.38f;w.y=26;w.x=48.5f;w.z=48.5f;}activity.paused=false;});
   Thread.sleep(1500);
   android.graphics.Bitmap screenshot=getUiAutomation().takeScreenshot();
   if(screenshot!=null){try(FileOutputStream out=context.openFileOutput("smoke.png",0)){screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}ByteArrayOutputStream image=new ByteArrayOutputStream();screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,image);result.putString("screenshot",android.util.Base64.encodeToString(image.toByteArray(),android.util.Base64.NO_WRAP));screenshot.recycle();}
+  runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));Thread.sleep(1200);runOnMainSync(()->{game.hud.layoutHud();check(game.hud.designW==540&&game.hud.designH==960,"portrait has a full responsive control layout");});testSticks(activity,game);
+  android.graphics.Bitmap portrait=getUiAutomation().takeScreenshot();if(portrait!=null){ByteArrayOutputStream image=new ByteArrayOutputStream();portrait.compress(android.graphics.Bitmap.CompressFormat.PNG,100,image);result.putString("portraitScreenshot",android.util.Base64.encodeToString(image.toByteArray(),android.util.Base64.NO_WRAP));portrait.recycle();}
   result.putString("summary","PASS: "+checks+" Android assertions");finish(Activity.RESULT_OK,result);
  }catch(Throwable t){result.putString("error",android.util.Log.getStackTraceString(t));finish(Activity.RESULT_CANCELED,result);}}
 }

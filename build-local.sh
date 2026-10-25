@@ -15,16 +15,17 @@ version=dict(line.split('=',1) for line in Path('version.properties').read_text(
 code=int(os.environ.get('MEICRAFT_VERSION_CODE',version['versionCode']))
 assert 0<=code<2147483647
 s=Path('app/src/main/AndroidManifest.xml').read_text().replace('<manifest ', '<manifest package="de.meiapps.meicraft" android:versionCode="'+str(code)+'" android:versionName="'+version['versionName']+'" ',1)
+s=s.replace('<uses-feature ', '<uses-sdk android:minSdkVersion="26" android:targetSdkVersion="36"/><uses-feature ',1)
 Path('build/AndroidManifest.xml').write_text(s)
 PYMANIFEST
-"$BT/aapt2" link -I "$SDK/platforms/android-35/android.jar" --manifest build/AndroidManifest.xml --java build/generated -A app/src/main/assets -o build/resources.apk build/resources.zip
-"$JAVA_BIN/java" -m jdk.compiler/com.sun.tools.javac.Main -encoding UTF-8 -source 17 -target 17 -classpath "$SDK/platforms/android-35/android.jar" -d build/classes $(find app/src/main/java -name '*.java')
+"$BT/aapt2" link -I "$SDK/platforms/android-36/android.jar" --manifest build/AndroidManifest.xml --java build/generated -A app/src/main/assets -o build/resources.apk build/resources.zip
+"$JAVA_BIN/java" -m jdk.compiler/com.sun.tools.javac.Main -Xlint:deprecation -Werror -encoding UTF-8 -source 17 -target 17 -classpath "$SDK/platforms/android-36/android.jar" -d build/classes $(find app/src/main/java -name '*.java')
 python3 - <<'PY'
 import zipfile,pathlib
 with zipfile.ZipFile('build/classes.jar','w') as z:
  for p in pathlib.Path('build/classes').rglob('*.class'): z.write(p,p.relative_to('build/classes'))
 PY
-"$BT/d8" --lib "$SDK/platforms/android-35/android.jar" --min-api 26 --output build/dex build/classes.jar
+"$BT/d8" --lib "$SDK/platforms/android-36/android.jar" --min-api 26 --output build/dex build/classes.jar
 cp build/resources.apk build/unsigned.apk
 python3 - <<'PY'
 import zipfile,pathlib

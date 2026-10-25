@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+adb shell settings put system accelerometer_rotation 0
+adb shell settings put system user_rotation 1
 adb shell settings put global airplane_mode_on 1
 adb shell svc wifi disable
 adb shell svc data disable
@@ -18,5 +20,7 @@ if 'PASS: ' not in s or 'INSTRUMENTATION_CODE: -1' not in s or 'INSTRUMENTATION_
  print(s[:12000]);raise SystemExit('Android smoke test failed')
 match=re.search(r'INSTRUMENTATION_RESULT: screenshot=([A-Za-z0-9+/=]+)',s)
 if match:Path('build/smoke.png').write_bytes(base64.b64decode(match.group(1)))
+portrait=re.search(r'INSTRUMENTATION_RESULT: portraitScreenshot=([A-Za-z0-9+/=]+)',s)
+if portrait:Path('build/portrait.png').write_bytes(base64.b64decode(portrait.group(1)))
 print(re.search(r'INSTRUMENTATION_RESULT: summary=(.*)',s).group(1))
 PY

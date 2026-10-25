@@ -2,7 +2,7 @@
 
 Ein eigenständiges, vollständig offline spielbares 3D-Klötzchenspiel für Android. Native Java-App mit OpenGL ES 2.0, eigener Weltgenerierung und selbst erzeugten Texturen. Keine Konten, Werbung oder Käufe. Zum Spielen sind weder Server noch Internet nötig.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Android 8.0 oder neuer · Querformat · Version 0.1.1
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Android 8.0 oder neuer · Hoch- und Querformat · Version 0.1.1
 
 ![Spielansicht](docs/screenshot.png)
 
@@ -24,7 +24,7 @@ Links am Kreis bewegen, am rechten Joystick horizontal und vertikal umsehen. Mit
 
 ## Bauen und testen
 
-Voraussetzungen: JDK 17, Android SDK Platform 35 und Build Tools 35.0.0. Keine Laufzeitbibliotheken oder externen Spiel-Assets.
+Voraussetzungen: JDK 17, Android SDK Platform 36 und Build Tools 35.0.0. Keine Laufzeitbibliotheken oder externen Spiel-Assets.
 
 ```sh
 export ANDROID_SDK_ROOT=/pfad/zum/android-sdk
@@ -37,6 +37,8 @@ bash scripts/build-upgrade-fixture.sh
 `build-local.sh` baut ohne Gradle-Downloads direkt mit dem Android SDK. Die APK liegt unter `build/meiCraft-0.1.1.apk`. Beim ersten lokalen Build wird ein privater Schlüssel unter `.signing/` erstellt und für weitere Builds wiederverwendet. Dieser Ordner wird niemals ins Repository eingecheckt. Für Updates einer bereits installierten Release-APK muss der ursprünglich verwendete Schlüssel wiederhergestellt werden.
 
 Alternativ Android Studio öffnen oder `./gradlew assembleDebug lintDebug` ausführen. Der Gradle Wrapper ist auf 8.11.1 mit Prüfsumme fixiert. Wenn `.signing/` vorhanden ist, verwendet auch Gradle diesen Schlüssel.
+
+Lint und Java-Kompilierung behandeln Warnungen als Fehler. CI prüft Android 11 und Android 16 sowie beide Ausrichtungen.
 
 ### Android-Smoke-Test
 
