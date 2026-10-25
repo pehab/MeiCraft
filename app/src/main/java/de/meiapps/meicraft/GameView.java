@@ -94,7 +94,7 @@ final class GameView {
                 if(x>=paletteX&&x<=paletteX+49&&y>=barY){clearInput();activity.palette();return true;}
                 if(at(x,y,mineX,actionY,33)){if(world.story){mineId=id;mineHeld=true;}else edit(false);return true;}if(at(x,y,placeX,actionY,33)){edit(true);return true;}
                 if(at(x,y,upX,flyY,34)||world.flying&&at(x,y,downX,flyY,34)){verticalId=id;vertical=x>(upX+downX)/2?1:-1;return true;}
-                if(x<240&&y>designH/2&&moveId<0){moveId=id;updateMove(x,y);return true;}
+                if(x<240&&y>(designH==540?250:designH/2)&&moveId<0){moveId=id;updateMove(x,y);return true;}
                 if(lookId<0){lookId=id;lookX=x;lookY=y;return true;}
             }
             if(action==MotionEvent.ACTION_MOVE){for(int n=0;n<event.getPointerCount();n++){int pointer=event.getPointerId(n);float a=(event.getX(n)-ox)/s,b=(event.getY(n)-oy)/s;if(pointer==moveId)updateMove(a,b);if(pointer==lookId){synchronized(inputLock){turnX+=a-lookX;turnY+=b-lookY;}lookX=a;lookY=b;}if(pointer==mineId&&!at(a,b,mineX,actionY,60)){endMining();}}}

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+adb shell settings put global window_animation_scale 0
+adb shell settings put global transition_animation_scale 0
+adb shell settings put global animator_duration_scale 0
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 1
 adb shell settings put global airplane_mode_on 1

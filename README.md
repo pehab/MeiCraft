@@ -18,6 +18,8 @@ Der **Storymodus** speichert in einer eigenen Datei. Über **STORY** oben im Spi
 
 Die Werkbank stellt Bretter, Ziegel und Grasblöcke her. Im Ofen entstehen Glas und Eisenbarren; später lassen sich Eisenblöcke bauen. Die sieben Einführungskapitel gehen anschließend in freies Bauen mit begrenzten Ressourcen über. Hunger, Gegner, Multiplayer und fließendes Wasser sind noch nicht enthalten. Die Welt ist 96 × 96 × 48 Blöcke groß.
 
+![Storymodus](docs/story.png)
+
 ## Steuerung
 
 **Die ursprüngliche Steuerung bleibt:** links am virtuellen Joystick bewegen, rechts wischen zum Umsehen. Mit **+** neben dem anvisierten Block bauen. In der Kreativwelt baut **−** sofort ab; im Storymodus hältst du **−** gedrückt. **↑** springt oder schwimmt aufwärts. In der Kreativwelt können **↑ / ↓** zum Fliegen genutzt werden. Gesammelte Blöcke helfen beim Bau von Stufen aus Gruben.
