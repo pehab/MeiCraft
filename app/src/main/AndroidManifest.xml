@@ -3,9 +3,12 @@
  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
  <uses-feature android:glEsVersion="0x00020000" android:required="true"/>
  <!-- Android 13+ opts in to the native back dispatcher; older Android uses MainActivity.onKeyUp. -->
- <application tools:targetApi="33" android:enableOnBackInvokedCallback="true" android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen" android:label="meiCraft" android:icon="@drawable/icon" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true">
+ <application tools:targetApi="33" android:appCategory="game" android:enableOnBackInvokedCallback="true" android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen" android:label="meiCraft" android:icon="@drawable/icon" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true">
   <provider android:name=".UpdateProvider" android:authorities="de.meiapps.meicraft.updates" android:exported="false" android:grantUriPermissions="true"/>
   <!-- Android 13+ reads this opt-in; older Android versions use MainActivity.onKeyUp. -->
-  <activity android:name=".MainActivity" android:configChanges="orientation|screenSize|keyboardHidden" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+  <!-- Deliberately landscape-only game. appCategory=game is the documented exception
+       to Android 16/17 orientation restrictions, including on large screens:
+       https://developer.android.com/about/versions/17/changes/ff-restrictions-ignored#exceptions -->
+  <activity android:name=".MainActivity" android:screenOrientation="sensorLandscape" tools:ignore="DiscouragedApi" android:configChanges="orientation|screenSize|keyboardHidden" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
  </application>
 </manifest>

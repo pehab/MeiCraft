@@ -75,7 +75,9 @@ jobs:
             build/android-smoke.log
             build/android-update-seed.log
             build/smoke.png
-            build/portrait.png
+            build/landscape.png
+            build/worlds.png
+            build/android-worlds-reopen.log
             build/failure.png
             app/build/reports/
   verify-release-package:
