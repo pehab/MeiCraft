@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+import zipfile
 
 version = dict(line.split("=", 1) for line in Path("version.properties").read_text().splitlines() if "=" in line)
 name = version["versionName"]
@@ -27,8 +28,28 @@ def certificates(path):
         raise SystemExit("APK signing certificate missing")
     return fingerprints
 
+def payload(path):
+    # APK signature blocks are outside ZIP entries; JAR signature metadata is
+    # not executable content. Compare every other entry, including manifest,
+    # resources, assets and all DEX files.
+    with zipfile.ZipFile(path) as archive:
+        names = archive.namelist()
+        if len(names) != len(set(names)):
+            raise SystemExit("Duplicate APK ZIP entries")
+        return {name: archive.read(name) for name in names
+                if not name.startswith("META-INF/")}
+
+signed = Path("dist") / apk.name
+original = Path("dist/meiCraft-0.1.0.apk")
+if certificates(signed) != certificates(original):
+    raise SystemExit("Checked-in APK signing key differs from the installed baseline")
+if payload(signed) != payload(apk):
+    raise SystemExit("Checked-in APK does not match the validated source build")
 if certificates(apk) != certificates(baseline):
-    raise SystemExit("Signing key differs from baseline; update would not preserve the installation")
+    if os.environ.get("MEICRAFT_SIGNING_JSON"):
+        raise SystemExit("Configured signing key differs from the installed baseline")
+    print("Using original-key APK with byte-identical validated program contents.")
+    apk = signed
 output = Path("build/release")
 output.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(apk, output / apk.name)
