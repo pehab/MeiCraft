@@ -59,7 +59,7 @@ jobs:
       - name: Package APK from the validated source
         run: python3 scripts/prepare-release.py
       - uses: actions/upload-artifact@v6
-        if: github.event_name != 'pull_request' && matrix.api == 30
+        if: matrix.api == 30
         with:
           name: verified-release
           path: build/release/
@@ -78,18 +78,34 @@ jobs:
             build/portrait.png
             build/failure.png
             app/build/reports/
-  publish:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]')
+  verify-release-package:
     needs: build
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
+    steps:
+      - name: Download verified release package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh run download "$GITHUB_RUN_ID" --name verified-release --dir build/release
+      - name: Verify packaged APK checksum
+        working-directory: build/release
+        run: sha256sum --check *.apk.sha256
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]')
+    needs: verify-release-package
+    runs-on: ubuntu-24.04
+    permissions:
       contents: write
+      actions: read
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v6
-        with:
-          name: verified-release
-          path: build/release
+      - name: Download verified release package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh run download "$GITHUB_RUN_ID" --name verified-release --dir build/release
       - name: Verify signed release APK
         run: |
           VERSION=$(sed -n 's/^versionName=//p' version.properties)
