@@ -16,13 +16,14 @@ adb shell am instrument -w -e phase seed de.meiapps.meicraft.tests/de.meiapps.me
 grep -q "PASS: " build/android-update-seed.log
 APP_VERSION="$(sed -n 's/^versionName=//p' version.properties)"
 adb install -r "build/meiCraft-$APP_VERSION.apk"
+adb shell pm grant de.meiapps.meicraft android.permission.CAMERA
 adb shell am force-stop de.meiapps.meicraft
 adb shell am instrument -w -e phase verify de.meiapps.meicraft.tests/de.meiapps.meicraft.SmokeInstrumentation > build/android-smoke.log
 python3 - <<'PY'
 from pathlib import Path
 import re,base64
 s=Path('build/android-smoke.log').read_text()
-for label,file in [('screenshot','smoke.png'),('landscapeScreenshot','landscape.png'),('failureScreenshot','failure.png'),('nightScreenshot','night.png')]:
+for label,file in [('screenshot','smoke.png'),('landscapeScreenshot','landscape.png'),('failureScreenshot','failure.png'),('nightScreenshot','night.png'),('qrScreenshot','qr.png')]:
  chunks=re.findall(r'INSTRUMENTATION_STATUS: '+label+r'Chunk=([A-Za-z0-9+/=]+)',s)
  if chunks:Path('build/'+file).write_bytes(base64.b64decode(''.join(chunks)))
 if 'PASS: ' not in s or 'INSTRUMENTATION_CODE: -1' not in s or 'INSTRUMENTATION_RESULT: error=' in s:
@@ -42,3 +43,4 @@ if 'PASS: ' not in s or 'INSTRUMENTATION_CODE: -1' not in s or 'INSTRUMENTATION_
  print('\n'.join(line for line in s.splitlines() if 'Chunk=' not in line)[:12000]);raise SystemExit('World restart test failed')
 print(re.search(r'INSTRUMENTATION_RESULT: summary=(.*)',s).group(1))
 PYREOPEN
+

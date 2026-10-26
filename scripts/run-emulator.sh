@@ -21,7 +21,7 @@ for line in s.splitlines():
 lines.extend(k+'='+v for k,v in replacements.items());p.write_text('\n'.join(lines)+'\n')
 PYAVD
 adb start-server
-"$SDK/emulator/emulator" -avd meicraft-ci -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader -memory 2048 -cores 2 -camera-back none -camera-front none > build/emulator.log 2>&1 &
+"$SDK/emulator/emulator" -avd meicraft-ci -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader -memory 2048 -cores 2 -camera-back emulated -camera-front none > build/emulator.log 2>&1 &
 EMU_PID=$!
 trap 'adb logcat -d -s AndroidRuntime:E > build/android-crash.log 2>/dev/null || true; kill "$EMU_PID" 2>/dev/null || true' EXIT
 for n in $(seq 1 120); do
@@ -37,3 +37,4 @@ for n in $(seq 1 120); do
 done
 cat build/emulator.log
 exit 1
+

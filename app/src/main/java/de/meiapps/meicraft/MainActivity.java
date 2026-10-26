@@ -100,10 +100,10 @@ public final class MainActivity extends Activity {
  }
  void menu(){
   if(paused||busy)return;paused=true;game.clearInput();
-  new AlertDialog.Builder(this).setTitle(active.label()).setItems(new String[]{"Weiterbauen","Welten laden","Neue Welt …","Spielstand speichern","Baumaterial wählen",world.story?"Laufmodus · Story":world.flying?"Laufen statt fliegen":"Fliegen statt laufen",world.story?"Story und Werkbank":"Storymodus entdecken","Welt umbenennen","Weltmodus wechseln","Steuerung","Updates"},(d,n)->{
+  new AlertDialog.Builder(this).setTitle(active.label()).setItems(new String[]{"Weiterbauen","Welten laden","Neue Welt …","Spielstand speichern","Baumaterial wählen",world.story?"Laufmodus · Story":world.flying?"Laufen statt fliegen":"Fliegen statt laufen",world.story?"Story und Werkbank":"Storymodus entdecken","Welt umbenennen","Weltmodus wechseln","Steuerung","Updates","Welt per QR teilen","Welt per QR empfangen"},(d,n)->{
    switch(n){case 1:handler.post(this::showWorlds);break;case 2:handler.post(this::newWorld);break;case 3:save(true);break;case 4:handler.post(this::palette);break;
     case 5:if(world.story)toast("Im Storymodus läufst und springst du. ↑ hilft auch im Wasser.");else{synchronized(world){world.flying=!world.flying;}game.velocityY=0;}break;
-    case 6:handler.post(world.story?this::storyMenu:this::chooseMode);break;case 7:handler.post(this::renameWorld);break;case 8:handler.post(this::chooseMode);break;case 9:handler.post(this::help);break;case 10:handler.post(updates::settings);break;default:break;}
+    case 6:handler.post(world.story?this::storyMenu:this::chooseMode);break;case 7:handler.post(this::renameWorld);break;case 8:handler.post(this::chooseMode);break;case 9:handler.post(this::help);break;case 10:handler.post(updates::settings);break;case 11:handler.post(()->qrTransfer(true));break;case 12:handler.post(()->qrTransfer(false));break;default:break;}
   }).setOnDismissListener(d->resumePlay()).show();
  }
  void help(){paused=true;game.clearInput();new AlertDialog.Builder(this).setTitle("Steuerung").setMessage("Links am Kreis bewegen, rechts wischen zum Umsehen. Mit + setzt du den ausgewählten Block neben den anvisierten Block.\n\nStory: − zum Abbauen gedrückt halten. Du brauchst passende Werkzeuge und gesammelte Materialien. Gras gibt Erde. Unter STORY findest du Mikos Aufträge und Rezepte. Baue Stufen aus gesammelten Blöcken, um Gruben zu verlassen.\n\n↑ springt oder schwimmt aufwärts. In der Kreativwelt kannst du zusätzlich fliegen. Jede Welt speichert separat, alle 30 Sekunden und beim Verlassen. Zum Spielen ist kein Internet nötig.\n\nNeu im Storymodus: Tag/Nacht, Nachtschatten, Leben, Eisenschwert und Lavaeimer. Die Anleitung findest du unter STORY → Überleben und Lavagraben.").setPositiveButton("Verstanden",null).setOnDismissListener(d->resumePlay()).show();}
@@ -137,6 +137,26 @@ public final class MainActivity extends Activity {
     library.describe(renamed);runOnUiThread(()->{active=renamed;busy=false;dialog.dismiss();toast("Welt umbenannt");});
    }catch(IOException e){runOnUiThread(()->{busy=false;name.setError(e.getMessage());});}});
   });
+ }
+ @SuppressWarnings("deprecation") // Platform activity result API also works on Android 8 without a new UI framework.
+ void launchQr(boolean sending){startActivityForResult(new android.content.Intent(this,QrTransferActivity.class).putExtra("send",sending),QrTransferActivity.REQUEST);}
+ void qrTransfer(boolean sending){
+  if(busy)return;paused=true;game.clearInput();
+  if(!sending){launchQr(false);return;}
+  final byte[] packet;try{synchronized(world){packet=WorldTransfer.pack(active.name,world);}}
+  catch(IOException|IllegalArgumentException e){toast("Welt konnte nicht für QR vorbereitet werden.");resumePlay();return;}
+  busy=true;disk.execute(()->{try{
+   WorldLibrary.write(new AtomicFile(new File(getCacheDir(),QrTransferActivity.OUTGOING)),packet);
+   runOnUiThread(()->{busy=false;if(!isFinishing()&&!isDestroyed())launchQr(true);});
+  }catch(IOException e){runOnUiThread(()->{busy=false;resumePlay();toast("QR-Übertragung konnte nicht vorbereitet werden.");});}});
+ }
+ @SuppressWarnings("deprecation")
+ @Override protected void onActivityResult(int request,int result,android.content.Intent data){
+  super.onActivityResult(request,result,data);
+  if(request!=QrTransferActivity.REQUEST)return;
+  if(result==RESULT_OK&&data!=null){try{SavedWorld imported=library.entry(data.getStringExtra("worldId"));handler.post(()->openWorld(imported,null));}
+   catch(IOException e){resumePlay();toast("Importierte Welt konnte nicht geöffnet werden.");}}
+  else resumePlay();
  }
  void toast(String text){Toast.makeText(this,text,Toast.LENGTH_SHORT).show();}
  @Override protected void onResume(){super.onResume();if(updates!=null)updates.onResume();if(game!=null)game.gl.onResume();handler.removeCallbacks(autosave);handler.postDelayed(autosave,30000);immersive();}

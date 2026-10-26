@@ -35,7 +35,9 @@ public final class SmokeInstrumentation extends Instrumentation {
  void clickText(String text)throws Exception{
   for(int attempt=0;attempt<40;attempt++){
    android.view.accessibility.AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();
-   if(root!=null)for(android.view.accessibility.AccessibilityNodeInfo node:root.findAccessibilityNodeInfosByText(text)){
+   java.util.List<android.view.accessibility.AccessibilityNodeInfo> matches=root==null?java.util.Collections.emptyList():root.findAccessibilityNodeInfosByText(text);
+   matches.sort(java.util.Comparator.comparingInt(node->text.equalsIgnoreCase(node.getText()==null?"":node.getText().toString())?0:1));
+   for(android.view.accessibility.AccessibilityNodeInfo node:matches){
     android.graphics.Rect bounds=new android.graphics.Rect();node.getBoundsInScreen(bounds);if(!node.isVisibleToUser()||bounds.isEmpty())continue;
     // Native dialog rows expose a semantic click, independent of window animations.
     if(node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)){waitForIdleSync();return;}
@@ -154,6 +156,63 @@ public final class SmokeInstrumentation extends Instrumentation {
    activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);
   }
  }
+ void testQrTransfer(MainActivity activity,GameView game)throws Exception{
+  int initial=activity.library.list().size();
+  runOnMainSync(()->{synchronized(game.world){game.world.set(29,30,29,14);}});
+  ActivityMonitor senderMonitor=addMonitor(QrTransferActivity.class.getName(),null,false);
+  runOnMainSync(activity::menu);clickText("Welt per QR teilen");
+  QrTransferActivity sender=(QrTransferActivity)waitForMonitorWithTimeout(senderMonitor,15000);removeMonitor(senderMonitor);
+  check(sender!=null,"sharing menu opens the QR sender");
+  for(int i=0;i<100;i++){boolean[] ready={false};runOnMainSync(()->ready[0]=sender.image.getDrawable()!=null);if(ready[0])break;Thread.sleep(100);}
+  waitForIdleSync();clickText("Pause");check(sender.hold&&sender.frames.size()>1,"QR sequence can be paused");
+  check(activity.paused,"world simulation stays paused during QR export");
+  check(sender.getWindow().getAttributes().screenBrightness>.5f,"sender keeps the QR display bright");
+  Thread.sleep(300);android.graphics.Bitmap optical=getUiAutomation().takeScreenshot();
+  check(optical!=null,"sender screen can be captured for optical verification");
+  int width=optical.getWidth(),height=optical.getHeight();int[] rgb=new int[width*height];optical.getPixels(rgb,0,width,0,0,width,height);byte[] luma=new byte[rgb.length];
+  for(int i=0;i<rgb.length;i++){int pixel=rgb[i];luma[i]=(byte)((((pixel>>16)&255)*299+((pixel>>8)&255)*587+(pixel&255)*114)/1000);}
+  String visible=QrCodec.decode(luma,width,height);check(visible!=null&&visible.startsWith(WorldTransfer.PREFIX+":"),"actual sender screenshot decodes as a world fragment");
+  emitScreenshot(optical,"qrScreenshot");optical.recycle();
+  java.util.List<String> frames=new java.util.ArrayList<>(sender.frames);
+  clickText("Langsamer");check(sender.delay==1200,"sender offers slower scanning speed");
+  clickText("Zurück");for(int i=0;i<60&&activity.paused;i++)Thread.sleep(100);
+  check(!activity.paused,"canceling QR export resumes the original world");
+  ActivityMonitor receiverMonitor=addMonitor(QrTransferActivity.class.getName(),null,false);
+  runOnMainSync(activity::menu);clickText("Welt per QR empfangen");
+  QrTransferActivity receiver=(QrTransferActivity)waitForMonitorWithTimeout(receiverMonitor,15000);removeMonitor(receiverMonitor);
+  check(receiver!=null,"receiving menu opens the QR camera");
+  for(int i=0;i<100;i++){boolean[] ready={false};runOnMainSync(()->ready[0]=receiver.camera!=null&&receiver.camera.imageCount>0);if(ready[0])break;Thread.sleep(100);}
+  QrCamera[] opened={null};runOnMainSync(()->opened[0]=receiver.camera);
+  check(opened[0]!=null&&opened[0].imageCount>0,"real Camera2 preview delivers images in airplane mode");
+  receiver.acceptFrame(visible);receiver.worker.submit(()->{}).get(30,TimeUnit.SECONDS);waitForIdleSync();
+  check(receiver.collector.received()==1,"optically decoded screenshot enters receiver progress");
+  receiver.acceptFrame(visible);receiver.acceptFrame("not a world code");receiver.worker.submit(()->{}).get(30,TimeUnit.SECONDS);
+  check(receiver.collector.received()==1&&activity.library.list().size()==initial,"duplicates and unrelated QR codes cannot import a partial world");
+  try(InputStream in=new android.os.ParcelFileDescriptor.AutoCloseInputStream(getUiAutomation().executeShellCommand("input keyevent KEYCODE_HOME"))){byte[] bytes=new byte[512];while(in.read(bytes)!=-1){}}
+  for(int i=0;i<60&&!opened[0].closed();i++)Thread.sleep(100);
+  check(opened[0].closed(),"camera closes when the receiving Activity enters the background");
+  // Reordering an existing Activity does not create one: startActivitySync would wait forever.
+  runOnMainSync(()->activity.startActivity(new Intent(activity,QrTransferActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
+  for(int i=0;i<100&&!receiver.resumed;i++)Thread.sleep(100);waitForIdleSync();
+  check(receiver.resumed&&receiver.collector.received()==1,"returning to receiver preserves partial QR progress");
+  java.util.Collections.reverse(frames);
+  for(String text:frames){
+   com.google.zxing.common.BitMatrix matrix=QrCodec.encode(text);int side=matrix.getWidth()*3;byte[] pixels=new byte[side*side];
+   for(int y=0;y<side;y++)for(int x=0;x<side;x++)pixels[y*side+x]=(byte)(matrix.get(x/3,y/3)?0:255);
+   String decoded=QrCodec.decode(pixels,side,side);check(text.equals(decoded),"QR bitmap fragment decodes on Android");receiver.acceptFrame(decoded);
+  }
+  receiver.worker.submit(()->{}).get(30,TimeUnit.SECONDS);waitForIdleSync();
+  check(receiver.finishedScan&&receiver.incoming!=null,"all optical fragments produce a verified world preview");
+  check(receiver.camera==null,"camera closes automatically after receiving the complete world");
+  check(activity.library.list().size()==initial,"complete scan waits for explicit import before writing a world");
+  field("Name der Weltkopie","QR Burg");clickText("Als neue Welt importieren");awaitWorld(activity,"QR Burg");
+  check(game.world.get(29,30,29)==14,"imported copy contains the sender's edited block");
+  check(activity.library.list().size()==initial+1,"QR import creates an extra world without replacing old entries");
+  String first=activity.active.id;SavedWorld second=activity.library.importCopy("QR Burg",receiver.incoming.worldBytes);
+  check(!second.id.equals(first)&&second.name.equals("QR Burg (2)"),"duplicate world names get distinct copies and safe names");
+  check(activity.library.read(second).get(29,30,29)==14&&activity.library.read(activity.library.entry(first)).get(29,30,29)==14,"both imported copies remain readable");
+  check(World.decode(activity.slotFile(0).readFully()).get(30,30,30)==11,"QR import preserves original creative world");
+ }
  void field(String label,String value)throws Exception{
   for(int attempt=0;attempt<40;attempt++){
    android.view.accessibility.AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();
@@ -188,7 +247,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   chooseWorld(activity,"Burg am See");check(game.world.get(30,35,30)==7&&game.world.selected==7,"first creative world restores its blocks and selected material");
   chooseWorld(activity,"Testfeld");check(game.world.get(30,35,30)==9,"second creative world has independent block edits");
   chooseWorld(activity,"Meine Storywelt");check(game.world.story&&game.world.progress.inventory[9]==4,"creative world management preserves existing Story inventory");
-  chooseWorld(activity,"Burg am See");check(activity.library.list().size()==4,"two legacy worlds and two new worlds are listed");
+  chooseWorld(activity,"Burg am See");check(activity.library.list().size()==6,"legacy worlds, two QR copies and two new worlds are listed");
   runOnMainSync(activity::save);activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);
   check(new WorldLibrary(activity.getFilesDir()).entry(castle).name.equals("Burg am See"),"renamed metadata persists independently of Activity memory");
   // Failure to load must keep the current world and must not create an empty replacement.
@@ -200,7 +259,8 @@ public final class SmokeInstrumentation extends Instrumentation {
  void testReopened(MainActivity activity,GameView game,Bundle result)throws Exception{
    check(activity.active.name.equals("Burg am See")&&game.world.seed==445566,"process restart reopens the last selected named world");
    check(game.world.get(30,35,30)==7&&game.world.selected==7,"named world block edits survive a full process restart");
-   check(activity.library.list().size()==4,"all world entries survive process restart");
+   check(activity.library.list().size()==6,"all world entries including QR imports survive process restart");
+   for(SavedWorld entry:activity.library.list())if(entry.name.startsWith("QR Burg"))check(activity.library.read(entry).get(29,30,29)==14,"QR-imported blocks survive a full process restart");
    check(activity.getResources().getConfiguration().orientation==android.content.res.Configuration.ORIENTATION_LANDSCAPE,"restart stays in landscape with portrait device lock");
    runOnMainSync(activity::showWorlds);Thread.sleep(800);waitForIdleSync();android.graphics.Bitmap worlds=smallScreenshot();if(worlds!=null){emitScreenshot(worlds,"worldsScreenshot");worlds.recycle();}clickText("Zurück");
    result.putString("summary","PASS: "+checks+" world restart assertions");finish(Activity.RESULT_OK,result);
@@ -281,6 +341,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   testStory(activity,game);
   testSurvival(activity,game);
    testNature(activity,game);
+   testQrTransfer(activity,game);
   Thread.sleep(1500);
   android.graphics.Bitmap screenshot=smallScreenshot();
   if(screenshot!=null){try(FileOutputStream out=context.openFileOutput("smoke.png",0)){screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}emitScreenshot(screenshot,"screenshot");screenshot.recycle();}

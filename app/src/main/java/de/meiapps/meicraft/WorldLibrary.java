@@ -57,6 +57,20 @@ final class WorldLibrary {
         if (world.story != (entry.mode == 1)) throw new IOException("Weltmodus stimmt nicht überein");
         return world;
     }
+    SavedWorld importCopy(String name,byte[] bytes)throws IOException {
+        if(bytes==null||bytes.length>WorldTransfer.MAX_WORLD)throw new IOException("Ungültige Weltgröße");
+        World decoded=World.decode(bytes);int mode=decoded.story?1:0;
+        String base;try{base=SavedWorld.create(name,mode).name;}catch(IllegalArgumentException e){throw new IOException("Ungültiger Weltname",e);}
+        String unique=base;
+        for(int number=2;nameUsed(unique,mode,null);number++){
+            if(number>10000)throw new IOException("Zu viele gleichnamige Welten");
+            String suffix=" ("+number+")";unique=base.substring(0,Math.min(base.length(),48-suffix.length()))+suffix;
+        }
+        SavedWorld entry=SavedWorld.create(unique,mode);AtomicFile destination=file(entry);
+        if(destination.getBaseFile().exists())throw new IOException("Welt-ID bereits vorhanden");
+        try{write(destination,bytes);describe(entry);return entry;}
+        catch(IOException e){destination.delete();metadata(entry.id).delete();throw e;}
+    }
     static void write(AtomicFile destination, byte[] data) throws IOException {
         File parent = destination.getBaseFile().getParentFile();
         if (parent == null || !parent.isDirectory() && !parent.mkdirs()) throw new IOException("Speicherordner nicht verfügbar");
@@ -65,3 +79,4 @@ final class WorldLibrary {
         catch (IOException e) { if (stream != null) destination.failWrite(stream); throw e; }
     }
 }
+
