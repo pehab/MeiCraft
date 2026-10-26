@@ -16,7 +16,7 @@ final class GameView {
     final Object inputLock=new Object();
     float velocityY;boolean grounded;
     int moveId=-1,lookId=-1,verticalId=-1,mineId=-1;float lookX,lookY,knobX,knobY,mineTime;int[] miningTarget;volatile String status="";volatile long statusUntil;
-    static final int[] COLORS={0,0xff79b94f,0xff986a45,0xff8c9397,0xffdfcd91,0xff9c7246,0xff47944d,0xffbd6954,0xffb9e1e8,0xffbf955f,0xff3c9dbd,0xffffdb76,0xffe8f4f7,0xffaa8b77,0xffbac4ca};
+    static final int[] COLORS={0,0xff79b94f,0xff986a45,0xff8c9397,0xffdfcd91,0xff9c7246,0xff47944d,0xffbd6954,0xffb9e1e8,0xffbf955f,0xff3c9dbd,0xffffdb76,0xffe8f4f7,0xffaa8b77,0xffbac4ca,0xffff6624};
     GameView(MainActivity activity,World world){this.activity=activity;root=new FrameLayout(activity);this.world=world;
         gl=new GLSurfaceView(activity);gl.setEGLContextClientVersion(2);gl.setPreserveEGLContextOnPause(true);renderer=new VoxelRenderer(this);gl.setRenderer(renderer);root.addView(gl,new FrameLayout.LayoutParams(-1,-1));hud=new Hud(activity);root.addView(hud,new FrameLayout.LayoutParams(-1,-1));root.setKeepScreenOn(true);
     }
@@ -25,8 +25,8 @@ final class GameView {
     void clearInput(){synchronized(inputLock){forward=strafe=vertical=turnX=turnY=miningProgress=0;mineHeld=false;moveId=lookId=verticalId=mineId=-1;knobX=knobY=0;}endMining();}
     void endMining(){mineHeld=false;miningProgress=0;gl.queueEvent(()->{mineTime=0;miningTarget=null;});}
     void message(String text){status=text;statusUntil=System.currentTimeMillis()+1800;}
-    void edit(boolean place){gl.queueEvent(()->{World w=world;synchronized(w){int[] hit=w.ray(6);if(hit==null){message("Näher an einen Block herangehen");return;}int x=hit[place?3:0],y=hit[place?4:1],z=hit[place?5:2];if(place&&w.overlapsPlayer(x,y,z)){message("Hier stehst du selbst");return;}if(place&&w.story&&w.progress.inventory[w.selected]==0){message("Erst "+World.NAMES[w.selected]+" sammeln oder herstellen");return;}if(place?w.place(x,y,z,w.selected):w.mine(x,y,z)){renderer.dirty(x,z);}else message(place?"Hier kannst du keinen Block setzen":w.miningProblem(x,y,z));}});}
-    void mining(float dt){World w=world;if(!w.story||!mineHeld){mineTime=0;miningTarget=null;miningProgress=0;return;}int[] hit=w.ray(6);if(hit==null){mineTime=0;miningTarget=null;miningProgress=0;return;}String problem=w.miningProblem(hit[0],hit[1],hit[2]);if(!problem.isEmpty()){mineTime=0;miningProgress=0;miningTarget=null;if(statusUntil<System.currentTimeMillis())message(problem);return;}
+    void edit(boolean place){gl.queueEvent(()->{World w=world;synchronized(w){int[] hit=w.ray(6);if(hit==null){message("Näher an einen Block herangehen");return;}if(!place&&w.get(hit[0],hit[1],hit[2])==15){message(w.scoopLava(hit[0],hit[1],hit[2]));renderer.dirty(hit[0],hit[2]);return;}int x=hit[place?3:0],y=hit[place?4:1],z=hit[place?5:2];if(place&&w.overlapsPlayer(x,y,z)){message("Hier stehst du selbst");return;}if(place&&w.story&&w.progress.inventory[w.selected]==0){message("Erst "+World.NAMES[w.selected]+" sammeln oder herstellen");return;}if(place?w.place(x,y,z,w.selected):w.mine(x,y,z)){renderer.dirty(x,z);}else message(place?"Hier kannst du keinen Block setzen":w.miningProblem(x,y,z));}});}
+    void mining(float dt){World w=world;if(!w.story||!mineHeld){mineTime=0;miningTarget=null;miningProgress=0;return;}if(w.survival.attack(w)){mineTime=0;miningTarget=null;miningProgress=0;return;}int[] hit=w.ray(6);if(hit!=null&&w.get(hit[0],hit[1],hit[2])==15){if(mineTime==0){message(w.scoopLava(hit[0],hit[1],hit[2]));renderer.dirty(hit[0],hit[2]);}mineTime+=dt;miningProgress=0;return;}if(hit==null){mineTime=0;miningTarget=null;miningProgress=0;return;}String problem=w.miningProblem(hit[0],hit[1],hit[2]);if(!problem.isEmpty()){mineTime=0;miningProgress=0;miningTarget=null;if(statusUntil<System.currentTimeMillis())message(problem);return;}
         if(miningTarget==null||hit[0]!=miningTarget[0]||hit[1]!=miningTarget[1]||hit[2]!=miningTarget[2]){mineTime=0;miningTarget=hit;}
         mineTime+=dt;float duration=w.progress.seconds(w.get(hit[0],hit[1],hit[2]));miningProgress=Math.min(1,mineTime/duration);
         if(mineTime>=duration){if(w.mine(hit[0],hit[1],hit[2]))renderer.dirty(hit[0],hit[2]);else message("Dein Vorrat ist voll");mineTime=0;miningProgress=0;miningTarget=null;}
@@ -42,7 +42,9 @@ final class GameView {
             if(w.flying){velocityY=vertical*5.5f;}else if(swimming){velocityY=vertical>0?7:Math.max(-1.8f,velocityY-3*step);}else{if(vertical>0&&grounded){velocityY=7;grounded=false;}velocityY=Math.max(-20,velocityY-20*step);}
             float yy=w.y+velocityY*step;if(!w.collides(w.x,yy,w.z)){w.y=yy;grounded=false;}else{grounded=velocityY<0;velocityY=0;}
         }
+        if(w.survival.tick(w,dt)){velocityY=0;clearInput();}
         mining(dt);
+        if(!w.survival.notice.isEmpty()){message(w.survival.notice);w.survival.notice="";}
     }
     final class Hud extends View {
         final Paint p=new Paint(3);final RectF rect=new RectF();float scale=1,offsetX,offsetY;float joyX=111,joyY=390,designW=960,designH=540,mineX=826,placeX=897,actionY=300,upX=897,downX=826,flyY=390,barX=260,barY=472,paletteX=716;
@@ -59,7 +61,7 @@ final class GameView {
             mineX=portrait?379:826;placeX=portrait?489:897;actionY=portrait?660:300;upX=portrait?489:897;downX=portrait?379:826;flyY=portrait?790:390;barX=portrait?26:260;barY=portrait?900:472;paletteX=portrait?474:716;
             scale=Math.min((getWidth()-left-right)/designW,(getHeight()-top-bottom)/designH);offsetX=left+(getWidth()-left-right-designW*scale)/2;offsetY=top+(getHeight()-top-bottom-designH*scale)/2;
         }
-        @Override protected void onDraw(Canvas c){super.onDraw(c);layoutHud();c.save();c.translate(offsetX,offsetY);c.scale(scale,scale);
+        @Override protected void onDraw(Canvas c){World drawing=world;synchronized(drawing){super.onDraw(c);layoutHud();c.save();c.translate(offsetX,offsetY);c.scale(scale,scale);
             box(c,20,16,221,55,0xbb153d42);text(c,"meiCraft",34,41,23,0xffffdb76);text(c,world.story?"STORY · "+Story.TOOLS[world.progress.tool()]:"OFFLINE · KREATIV",35,59,11,0xffd1e8e6);
             box(c,designW-93,18,72,49,0xcc153d42);center(c,"☰",designW-57,51,25,Color.WHITE);
             World w=world;int[] hit=target;
@@ -67,15 +69,20 @@ final class GameView {
             if(hit!=null){box(c,(designW-266)/2,designW<960?82:20,266,31,0x99152c32);center(c,World.NAMES[w.get(hit[0],hit[1],hit[2])],designW/2,designW<960?103:41,15,Color.WHITE);}
             float cx=(getWidth()/2f-offsetX)/scale,cy=(getHeight()/2f-offsetY)/scale;p.setColor(0xddffffff);p.setStrokeWidth(2);c.drawLine(cx-10,cy,cx-3,cy,p);c.drawLine(cx+3,cy,cx+10,cy,p);c.drawLine(cx,cy-10,cx,cy-3,p);c.drawLine(cx,cy+3,cx,cy+10,p);
             joystick(c,joyX,joyY,knobX,knobY,"BEWEGEN");
-            button(c,mineX,actionY,"−","ABBAUEN");button(c,placeX,actionY,"+","SETZEN");
+            button(c,mineX,actionY,"−",w.story&&w.survival.aimed(w)!=null?"ANGRIFF":"ABBAUEN");button(c,placeX,actionY,"+","SETZEN");
             button(c,upX,flyY,"↑",w.flying?"HOCH":"SPRUNG");if(w.flying)button(c,downX,flyY,"↓","RUNTER");
             if(w.story&&miningProgress>0){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(3);p.setColor(0xffffd26b);rect.set(cx-18,cy-18,cx+18,cy+18);c.drawArc(rect,-90,360*miningProgress,false,p);p.setStyle(Paint.Style.FILL);}
             int first=hotbarFirst();for(int j=0;j<8;j++){int b=first+j;float xx=barX+j*56;box(c,xx,barY,49,52,b==w.selected?0xfff6d16c:0xbb193c43);box(c,xx+9,barY+8,31,27,COLORS[b]);center(c,""+(w.story?w.progress.inventory[b]:b),xx+24.5f,barY+45,10,b==w.selected?0xff193c43:Color.WHITE);}
             box(c,paletteX,barY,49,52,0xbb193c43);center(c,"…",paletteX+24,barY+32,25,Color.WHITE);
             center(c,World.NAMES[w.selected]+(w.story?" ("+w.progress.inventory[w.selected]+")":"")+"  ·  "+(w.flying?"Fliegen":"Laufen"),designW/2,barY-14,14,Color.WHITE);
+            if(w.story){
+                box(c,designW-310,80,290,48,0xcc153d42);
+                center(c,w.survival.phase()+" · "+w.survival.secondsToChange()+" s · Gegner "+(w.survival.enemiesEnabled?w.survival.mobs.size():"aus"),designW-165,99,12,Color.WHITE);
+                center(c,"Leben "+w.survival.health+"/10 · "+(w.progress.sword?"Eisenschwert":"Hand"),designW-165,118,12,w.survival.health<=4?0xffff8b75:0xffffdb76);
+            }
             if(statusUntil>System.currentTimeMillis()){box(c,(designW-420)/2,w.story?(designW<960?186:139):130,420,35,0xcc153d42);center(c,status,designW/2,(w.story?(designW<960?186:139):130)+23,14,Color.WHITE);}
             c.restore();
-        }
+        }}
         int hotbarFirst(){return world.selected<=8?1:world.selected<=12?5:World.NAMES.length-8;}
         void joystick(Canvas c,float x,float y,float dx,float dy,String label){
             p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(0x88ffffff);c.drawCircle(x,y,68,p);p.setStyle(Paint.Style.FILL);p.setColor(0x55122d34);c.drawCircle(x,y,66,p);p.setColor(0x99ffffff);c.drawCircle(x+dx,y+dy,27,p);center(c,label,x,y+90,10,0xffe1eeee);
