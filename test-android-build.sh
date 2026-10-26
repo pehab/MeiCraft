@@ -7,7 +7,7 @@ BT="$SDK/build-tools/36.0.0"
 JAVA_BIN="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}/bin"
 mkdir -p build/test-apk/classes build/test-apk/dex build/test-assets
 bash scripts/qr-dependency.sh
-QR_JAR=build/dependencies/zxing-core-3.5.3.jar
+QR_JAR=build/dependencies/zxing-core-3.5.4.jar
 APP_VERSION="$(sed -n 's/^versionName=//p' version.properties)"
 cp "build/meiCraft-$APP_VERSION.apk" build/test-assets/current.apk
 "$BT/aapt2" link -I "$SDK/platforms/android-37.0/android.jar" --manifest tests/AndroidManifest.xml -A build/test-assets -o build/test-apk/resources.apk

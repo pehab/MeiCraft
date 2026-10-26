@@ -35,7 +35,9 @@ public final class SmokeInstrumentation extends Instrumentation {
  void clickText(String text)throws Exception{
   for(int attempt=0;attempt<40;attempt++){
    android.view.accessibility.AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();
-   if(root!=null)for(android.view.accessibility.AccessibilityNodeInfo node:root.findAccessibilityNodeInfosByText(text)){
+   java.util.List<android.view.accessibility.AccessibilityNodeInfo> matches=root==null?java.util.Collections.emptyList():root.findAccessibilityNodeInfosByText(text);
+   matches.sort(java.util.Comparator.comparingInt(node->text.contentEquals(node.getText()==null?"":node.getText())?0:1));
+   for(android.view.accessibility.AccessibilityNodeInfo node:matches){
     android.graphics.Rect bounds=new android.graphics.Rect();node.getBoundsInScreen(bounds);if(!node.isVisibleToUser()||bounds.isEmpty())continue;
     // Native dialog rows expose a semantic click, independent of window animations.
     if(node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)){waitForIdleSync();return;}
@@ -165,7 +167,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   waitForIdleSync();clickText("Pause");check(sender.hold&&sender.frames.size()>1,"QR sequence can be paused");
   check(activity.paused,"world simulation stays paused during QR export");
   check(sender.getWindow().getAttributes().screenBrightness>.5f,"sender keeps the QR display bright");
-  Thread.sleep(300);android.graphics.Bitmap optical=smallScreenshot();
+  Thread.sleep(300);android.graphics.Bitmap optical=getUiAutomation().takeScreenshot();
   check(optical!=null,"sender screen can be captured for optical verification");
   int width=optical.getWidth(),height=optical.getHeight();int[] rgb=new int[width*height];optical.getPixels(rgb,0,width,0,0,width,height);byte[] luma=new byte[rgb.length];
   for(int i=0;i<rgb.length;i++){int pixel=rgb[i];luma[i]=(byte)((((pixel>>16)&255)*299+((pixel>>8)&255)*587+(pixel&255)*114)/1000);}

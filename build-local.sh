@@ -8,7 +8,7 @@ JAVA_BIN="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}/bin"
 rm -rf build/classes build/dex
 mkdir -p build/classes build/dex .signing
 bash scripts/qr-dependency.sh
-QR_JAR=build/dependencies/zxing-core-3.5.3.jar
+QR_JAR=build/dependencies/zxing-core-3.5.4.jar
 APP_VERSION="$(sed -n 's/^versionName=//p' version.properties)"
 "$BT/aapt2" compile --dir app/src/main/res -o build/resources.zip
 python3 - <<'PYMANIFEST'

@@ -7,7 +7,7 @@ import java.util.zip.CRC32;
 
 /** Versioned, bounded snapshots transferred as independently checked QR fragments. */
 final class WorldTransfer {
-    static final int CHUNK=480, MAX_WORLD=512*1024, MAX_PACKET=MAX_WORLD+256;
+    static final int CHUNK=320, MAX_WORLD=512*1024, MAX_PACKET=MAX_WORLD+256;
     static final int MAX_FRAMES=(MAX_PACKET+CHUNK-1)/CHUNK;
     static final String PREFIX="MEICRAFT1";
     final String name;

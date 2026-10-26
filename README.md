@@ -46,7 +46,7 @@ Speicherformat 4 erhält Quellen, Ströme, Höhlenergänzung und Fließ-Einstell
 
 Komplett offline, auch im Flugmodus: Auf dem sendenden Gerät **☰ → Welt per QR teilen**, auf dem anderen **☰ → Welt per QR empfangen** wählen und die Kamera auf den gesamten weißen Codebereich richten. Nur der Empfänger braucht die Kameraberechtigung. Die Kamera läuft ausschließlich im sichtbaren Empfangsfenster; Bilder werden auf dem Gerät verarbeitet und nicht gespeichert oder übertragen.
 
-Die Welt wird als wechselnde QR-Bilder angezeigt. Die Folge wiederholt sich automatisch, bis der Empfänger alle unterschiedlichen Bilder gesammelt hat. Reihenfolge und doppelt gescannte Bilder sind egal; der Fortschritt bleibt erhalten, wenn ein Bild verpasst wird. Bei Schwierigkeiten am Sender **Langsamer** wählen oder **Pause** und die Pfeile nutzen. Eine typische neue Storywelt ergibt ungefähr 33 Bilder; die genaue Zahl hängt vom Spielstand ab.
+Die Welt wird als wechselnde QR-Bilder angezeigt. Die Folge wiederholt sich automatisch, bis der Empfänger alle unterschiedlichen Bilder gesammelt hat. Reihenfolge und doppelt gescannte Bilder sind egal; der Fortschritt bleibt erhalten, wenn ein Bild verpasst wird. Bei Schwierigkeiten am Sender **Langsamer** wählen oder **Pause** und die Pfeile nutzen. Eine typische neue Storywelt ergibt ungefähr 50 Bilder; die genaue Zahl hängt vom Spielstand ab.
 
 Nach vollständiger Prüfung zeigt der Empfänger Weltname und Modus. **Als neue Welt importieren** speichert eine Kopie mit eigener ID und öffnet sie. Vorhandene Welten werden nicht überschrieben; gleiche Namen bekommen einen Zähler. Bauten, Vorräte, Ausrüstung, Quellen, Ströme und Storyfortschritt werden übernommen. Beide Geräte bauen danach unabhängig weiter. Gleichzeitiges gemeinsames Bauen ist noch nicht enthalten.
 
@@ -70,7 +70,7 @@ Die Release-Pipeline erzeugt Prüfsumme und Update-Manifest aus der geprüften A
 
 ## Bauen und prüfen
 
-JDK 17, Android SDK Platform 37.0 und Build Tools 36.0.0. Für den QR-Codec wird ZXing Core 3.5.3 verwendet; der direkte Build lädt die feste Version von Maven Central und prüft ihren SHA-256-Wert. Die App benötigt diese Verbindung nicht zum Teilen oder Spielen. [Fremdkomponenten](docs/THIRD-PARTY.md).
+JDK 17, Android SDK Platform 37.0 und Build Tools 36.0.0. Für den QR-Codec wird ZXing Core 3.5.4 verwendet; der direkte Build lädt die feste Version von Maven Central und prüft ihren SHA-256-Wert. Die App benötigt diese Verbindung nicht zum Teilen oder Spielen. [Fremdkomponenten](docs/THIRD-PARTY.md).
 
 ```sh
 export ANDROID_SDK_ROOT=/pfad/zum/android-sdk

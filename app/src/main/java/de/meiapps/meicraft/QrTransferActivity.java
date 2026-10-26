@@ -42,7 +42,7 @@ public final class QrTransferActivity extends Activity {
         if(sending){WindowManager.LayoutParams params=getWindow().getAttributes();params.screenBrightness=.9f;getWindow().setAttributes(params);}
         LinearLayout root=new LinearLayout(this);root.setPadding(dp(12),dp(12),dp(12),dp(12));root.setBackgroundColor(0xff153d42);root.setOrientation(LinearLayout.HORIZONTAL);
         FrameLayout visual=new FrameLayout(this);root.addView(visual,new LinearLayout.LayoutParams(0,-1,1));
-        if(sending){image=new ImageView(this);image.setBackgroundColor(Color.WHITE);image.setScaleType(ImageView.ScaleType.FIT_CENTER);image.setContentDescription("Welt als QR-Code");visual.addView(image,new FrameLayout.LayoutParams(-1,-1));}
+        if(sending){image=new ImageView(this);image.setBackgroundColor(Color.WHITE);image.setScaleType(ImageView.ScaleType.CENTER);image.setContentDescription("Welt als QR-Code");visual.addView(image,new FrameLayout.LayoutParams(-1,-1));}
         else{preview=new TextureView(this);preview.setContentDescription("Kameravorschau zum Empfangen einer Welt");visual.addView(preview,new FrameLayout.LayoutParams(-1,-1));}
         ScrollView scroll=new ScrollView(this);controls=new LinearLayout(this);controls.setOrientation(LinearLayout.VERTICAL);controls.setPadding(dp(14),0,0,0);scroll.addView(controls);root.addView(scroll,new LinearLayout.LayoutParams(dp(240),-1));
         label(sending?"Welt per QR teilen":"Welt per QR empfangen",21);
@@ -50,11 +50,11 @@ public final class QrTransferActivity extends Activity {
         status=label(sending?"Codes werden vorbereitet …":"Noch keine Bilder empfangen",16);status.setContentDescription("QR-Übertragungsstatus");
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);controls.addView(progress,new LinearLayout.LayoutParams(-1,dp(16)));
         if(sending){
-            pause=button("Pause",()->{hold=!hold;pause.setText(hold?"Weiter":"Pause");handler.removeCallbacks(next);if(!hold)handler.postDelayed(next,delay);});
-            speed=button("Langsamer",()->{delay=delay==700?1200:700;speed.setText(delay==700?"Langsamer":"Normales Tempo");});
+            pause=button("Pause",()->{hold=!hold;pause.setText(hold?R.string.qr_continue:R.string.qr_pause);handler.removeCallbacks(next);if(!hold)handler.postDelayed(next,delay);});
+            speed=button("Langsamer",()->{delay=delay==700?1200:700;speed.setText(delay==700?R.string.qr_slower:R.string.qr_normal_speed);});
             LinearLayout manual=new LinearLayout(this);controls.addView(manual);
-            Button previous=new Button(this);previous.setText("←");previous.setContentDescription("Vorheriges QR-Bild");manual.addView(previous,new LinearLayout.LayoutParams(0,-2,1));previous.setOnClickListener(v->manual(-1));
-            Button advance=new Button(this);advance.setText("→");advance.setContentDescription("Nächstes QR-Bild");manual.addView(advance,new LinearLayout.LayoutParams(0,-2,1));advance.setOnClickListener(v->manual(1));
+            Button previous=new Button(this);previous.setText(R.string.qr_previous);previous.setContentDescription("Vorheriges QR-Bild");manual.addView(previous,new LinearLayout.LayoutParams(0,-2,1));previous.setOnClickListener(v->manual(-1));
+            Button advance=new Button(this);advance.setText(R.string.qr_next);advance.setContentDescription("Nächstes QR-Bild");manual.addView(advance,new LinearLayout.LayoutParams(0,-2,1));advance.setOnClickListener(v->manual(1));
         }else{
             permission=button("Kamera erlauben",()->{permissionAsked=false;startCamera();});
             name=new EditText(this);name.setSingleLine(true);name.setTextColor(Color.WHITE);name.setHintTextColor(0xffcccccc);name.setHint("Name der Weltkopie");name.setContentDescription("Name der Weltkopie");name.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(48)});name.setVisibility(View.GONE);controls.addView(name,new LinearLayout.LayoutParams(-1,-2));
@@ -76,30 +76,30 @@ public final class QrTransferActivity extends Activity {
                 }
                 // Cache lives only for this exchange; it is not a public share endpoint.
                 file.delete();WorldTransfer transfer=WorldTransfer.unpack(packet);List<String> encoded=WorldTransfer.frames(packet);
-                handler.post(()->{if(isFinishing()||isDestroyed())return;frames=encoded;detail.setText(transfer.name+" · "+(transfer.world.story?"Story":"Kreativ")+"\n\nAm anderen Gerät alle "+frames.size()+" Bilder sammeln. Die Folge wiederholt sich automatisch. Bei Problemen ‚Langsamer‘ wählen.");progress.setMax(frames.size());showFrame(0);});
-            }catch(IOException|RuntimeException e){handler.post(()->status.setText("Welt konnte nicht vorbereitet werden. Bitte zurückgehen und erneut teilen."));}
+                handler.post(()->{if(isFinishing()||isDestroyed())return;frames=encoded;detail.setText(getString(R.string.qr_send_detail,transfer.name,getString(transfer.world.story?R.string.mode_story:R.string.mode_creative),frames.size()));progress.setMax(frames.size());showFrame(0);});
+            }catch(IOException|RuntimeException e){handler.post(()->status.setText(R.string.qr_prepare_failed));}
         });
     }
-    private void manual(int direction){if(frames.isEmpty())return;hold=true;pause.setText("Weiter");showFrame((frameIndex+direction+frames.size())%frames.size());}
+    private void manual(int direction){if(frames.isEmpty())return;hold=true;pause.setText(R.string.qr_continue);showFrame((frameIndex+direction+frames.size())%frames.size());}
     void showFrame(int index){
         handler.removeCallbacks(next);if(frames.isEmpty()||worker.isShutdown())return;
-        frameIndex=index;int ticket=++renderTicket;String text=frames.get(index);
+        frameIndex=index;int ticket=++renderTicket;String text=frames.get(index);int edge=Math.max(1,Math.min(image.getWidth(),image.getHeight()));
         worker.execute(()->{
-            try{BitMatrix matrix=QrCodec.encode(text);int w=matrix.getWidth(),h=matrix.getHeight();int[] pixels=new int[w*h];
-                for(int y=0;y<h;y++)for(int x=0;x<w;x++)pixels[y*w+x]=matrix.get(x,y)?Color.BLACK:Color.WHITE;
-                Bitmap bitmap=Bitmap.createBitmap(pixels,w,h,Bitmap.Config.ARGB_8888);
+            try{BitMatrix matrix=QrCodec.encode(text);int modules=matrix.getWidth(),scale=Math.max(1,edge/modules),side=modules*scale;int[] pixels=new int[side*side];
+                for(int y=0;y<side;y++)for(int x=0;x<side;x++)pixels[y*side+x]=matrix.get(x/scale,y/scale)?Color.BLACK:Color.WHITE;
+                Bitmap bitmap=Bitmap.createBitmap(pixels,side,side,Bitmap.Config.ARGB_8888);bitmap.setDensity(Bitmap.DENSITY_NONE);
                 handler.post(()->{if(isFinishing()||isDestroyed()||ticket!=renderTicket)return;
                     BitmapDrawable drawable=new BitmapDrawable(getResources(),bitmap);drawable.setFilterBitmap(false);drawable.setAntiAlias(false);image.setImageDrawable(drawable);
-                    status.setText("Bild "+(index+1)+" / "+frames.size()+" · wiederholt sich");progress.setProgress(index+1);
+                    status.setText(getString(R.string.qr_send_progress,index+1,frames.size()));progress.setProgress(index+1);
                     if(resumed&&!hold)handler.postDelayed(next,delay);
                 });
-            }catch(IOException e){handler.post(()->status.setText("QR-Code konnte nicht erzeugt werden."));}
+            }catch(IOException e){handler.post(()->status.setText(R.string.qr_encode_failed));}
         });
     }
     private void startCamera(){
         if(sending||!resumed||finishedScan||camera!=null)return;
         if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){
-            permission.setVisibility(View.VISIBLE);status.setText("Zum Scannen wird die Kamera benötigt. Bilder werden nur auf diesem Gerät verarbeitet.");
+            permission.setVisibility(View.VISIBLE);status.setText(R.string.qr_permission_info);
             if(!permissionAsked){permissionAsked=true;requestPermissions(new String[]{Manifest.permission.CAMERA},CAMERA_REQUEST);}return;
         }
         permission.setVisibility(View.GONE);camera=new QrCamera(this,preview,new QrCamera.Listener(){
@@ -116,11 +116,11 @@ public final class QrTransferActivity extends Activity {
                 if(!collector.add(text))return;int received=collector.received(),total=collector.total();
                 if(collector.complete()){
                     WorldTransfer transfer=WorldTransfer.unpack(collector.packet());finishedScan=true;incoming=transfer;
-                    handler.post(()->{if(isFinishing()||isDestroyed())return;stopCamera();progress.setMax(total);progress.setProgress(total);status.setText("Alle "+total+" Bilder geprüft · Welt vollständig");
-                        detail.setText(transfer.name+" · "+(transfer.world.story?"Story":"Kreativ")+"\n\nEs entsteht eine eigene Weltkopie. Eure vorhandenen Welten werden nicht überschrieben.");
+                    handler.post(()->{if(isFinishing()||isDestroyed())return;stopCamera();progress.setMax(total);progress.setProgress(total);status.setText(getString(R.string.qr_complete,total));
+                        detail.setText(getString(R.string.qr_receive_detail,transfer.name,getString(transfer.world.story?R.string.mode_story:R.string.mode_creative)));
                         name.setText(copyName(transfer.name));name.setVisibility(View.VISIBLE);importButton.setVisibility(View.VISIBLE);
                     });
-                }else handler.post(()->{if(!finishedScan){progress.setMax(total);progress.setProgress(received);status.setText("Empfangen: "+received+" / "+total+" Bilder");}});
+                }else handler.post(()->{if(!finishedScan){progress.setMax(total);progress.setProgress(received);status.setText(getString(R.string.qr_receive_progress,received,total));}});
             }catch(IOException e){handler.post(()->{if(!finishedScan)status.setText(e.getMessage());});}
         });}catch(RejectedExecutionException ignored){/* Activity closed while a camera callback was finishing. */}
     }
@@ -128,7 +128,7 @@ public final class QrTransferActivity extends Activity {
     private void reset(){
         if(importing)return;stopCamera();
         worker.execute(()->{collector=new WorldTransfer.Collector();incoming=null;finishedScan=false;handler.post(()->{
-            name.setVisibility(View.GONE);importButton.setVisibility(View.GONE);progress.setProgress(0);status.setText("Noch keine Bilder empfangen");startCamera();
+            name.setVisibility(View.GONE);importButton.setVisibility(View.GONE);progress.setProgress(0);status.setText(R.string.qr_waiting);startCamera();
         });});
     }
     private void importWorld(){
@@ -139,7 +139,7 @@ public final class QrTransferActivity extends Activity {
         worker.execute(()->{
             try{WorldLibrary library=new WorldLibrary(getFilesDir());SavedWorld imported=library.importCopy(chosen,transfer.worldBytes);
                 handler.post(()->{setResult(RESULT_OK,new Intent().putExtra("worldId",imported.id));finish();});
-            }catch(IOException e){handler.post(()->{importing=false;importButton.setEnabled(true);status.setText("Import fehlgeschlagen. Deine vorhandenen Welten bleiben erhalten.");});}
+            }catch(IOException e){handler.post(()->{importing=false;importButton.setEnabled(true);status.setText(R.string.qr_import_failed);});}
         });
     }
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==CAMERA_REQUEST)startCamera();}

@@ -1,4 +1,21 @@
 <resources>
     <string name="mode_creative">Kreativ</string>
     <string name="mode_story">Story</string>
+    <string name="qr_prepare_failed">Welt konnte nicht vorbereitet werden. Bitte zurückgehen und erneut teilen.</string>
+    <string name="qr_continue">Weiter</string>
+    <string name="qr_encode_failed">QR-Code konnte nicht erzeugt werden.</string>
+    <string name="qr_permission_info">Zum Scannen wird die Kamera benötigt. Bilder werden nur auf diesem Gerät verarbeitet.</string>
+    <string name="qr_waiting">Noch keine Bilder empfangen</string>
+    <string name="qr_import_failed">Import fehlgeschlagen. Deine vorhandenen Welten bleiben erhalten.</string>
+    <string name="qr_previous">←</string>
+    <string name="qr_next">→</string>
+    <string name="qr_pause">Pause</string>
+    <string name="qr_slower">Langsamer</string>
+    <string name="qr_normal_speed">Normales Tempo</string>
+    <string name="qr_send_detail">%1$s · %2$s\n\nAm anderen Gerät alle %3$d Bilder sammeln. Die Folge wiederholt sich automatisch. Bei Problemen ‚Langsamer‘ wählen.</string>
+    <string name="qr_send_progress">Bild %1$d / %2$d · wiederholt sich</string>
+    <string name="qr_complete">Alle %1$d Bilder geprüft · Welt vollständig</string>
+    <string name="qr_receive_detail">%1$s · %2$s\n\nEs entsteht eine eigene Weltkopie. Eure vorhandenen Welten werden nicht überschrieben.</string>
+    <string name="qr_receive_progress">Empfangen: %1$d / %2$d Bilder</string>
 </resources>
+
