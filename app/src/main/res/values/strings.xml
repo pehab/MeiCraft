@@ -12,10 +12,10 @@
     <string name="qr_pause">Pause</string>
     <string name="qr_slower">Langsamer</string>
     <string name="qr_normal_speed">Normales Tempo</string>
-    <string name="qr_send_detail">%1$s · %2$s\n\nAm anderen Gerät alle %3$d Bilder sammeln. Die Folge wiederholt sich automatisch. Bei Problemen ‚Langsamer‘ wählen.</string>
+    <plurals name="qr_send_detail"><item quantity="one">%1$s · %2$s\n\nAm anderen Gerät %3$d Bild sammeln.</item><item quantity="other">%1$s · %2$s\n\nAm anderen Gerät alle %3$d Bilder sammeln. Die Folge wiederholt sich automatisch. Bei Problemen ‚Langsamer‘ wählen.</item></plurals>
     <string name="qr_send_progress">Bild %1$d / %2$d · wiederholt sich</string>
-    <string name="qr_complete">Alle %1$d Bilder geprüft · Welt vollständig</string>
+    <plurals name="qr_complete"><item quantity="one">%1$d Bild geprüft · Welt vollständig</item><item quantity="other">Alle %1$d Bilder geprüft · Welt vollständig</item></plurals>
     <string name="qr_receive_detail">%1$s · %2$s\n\nEs entsteht eine eigene Weltkopie. Eure vorhandenen Welten werden nicht überschrieben.</string>
-    <string name="qr_receive_progress">Empfangen: %1$d / %2$d Bilder</string>
+    <plurals name="qr_receive_progress"><item quantity="one">Empfangen: %1$d / %2$d Bild</item><item quantity="other">Empfangen: %1$d / %2$d Bilder</item></plurals>
 </resources>
 

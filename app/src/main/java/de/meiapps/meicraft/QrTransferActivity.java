@@ -76,7 +76,7 @@ public final class QrTransferActivity extends Activity {
                 }
                 // Cache lives only for this exchange; it is not a public share endpoint.
                 file.delete();WorldTransfer transfer=WorldTransfer.unpack(packet);List<String> encoded=WorldTransfer.frames(packet);
-                handler.post(()->{if(isFinishing()||isDestroyed())return;frames=encoded;detail.setText(getString(R.string.qr_send_detail,transfer.name,getString(transfer.world.story?R.string.mode_story:R.string.mode_creative),frames.size()));progress.setMax(frames.size());showFrame(0);});
+                handler.post(()->{if(isFinishing()||isDestroyed())return;frames=encoded;detail.setText(getResources().getQuantityString(R.plurals.qr_send_detail,frames.size(),transfer.name,getString(transfer.world.story?R.string.mode_story:R.string.mode_creative),frames.size()));progress.setMax(frames.size());showFrame(0);});
             }catch(IOException|RuntimeException e){handler.post(()->status.setText(R.string.qr_prepare_failed));}
         });
     }
@@ -116,11 +116,11 @@ public final class QrTransferActivity extends Activity {
                 if(!collector.add(text))return;int received=collector.received(),total=collector.total();
                 if(collector.complete()){
                     WorldTransfer transfer=WorldTransfer.unpack(collector.packet());finishedScan=true;incoming=transfer;
-                    handler.post(()->{if(isFinishing()||isDestroyed())return;stopCamera();progress.setMax(total);progress.setProgress(total);status.setText(getString(R.string.qr_complete,total));
+                    handler.post(()->{if(isFinishing()||isDestroyed())return;stopCamera();progress.setMax(total);progress.setProgress(total);status.setText(getResources().getQuantityString(R.plurals.qr_complete,total,total));
                         detail.setText(getString(R.string.qr_receive_detail,transfer.name,getString(transfer.world.story?R.string.mode_story:R.string.mode_creative)));
                         name.setText(copyName(transfer.name));name.setVisibility(View.VISIBLE);importButton.setVisibility(View.VISIBLE);
                     });
-                }else handler.post(()->{if(!finishedScan){progress.setMax(total);progress.setProgress(received);status.setText(getString(R.string.qr_receive_progress,received,total));}});
+                }else handler.post(()->{if(!finishedScan){progress.setMax(total);progress.setProgress(received);status.setText(getResources().getQuantityString(R.plurals.qr_receive_progress,total,received,total));}});
             }catch(IOException e){handler.post(()->{if(!finishedScan)status.setText(e.getMessage());});}
         });}catch(RejectedExecutionException ignored){/* Activity closed while a camera callback was finishing. */}
     }
