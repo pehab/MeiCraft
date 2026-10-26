@@ -3,6 +3,7 @@ package de.meiapps.meicraft;
 import com.google.zxing.*;
 import com.google.zxing.common.*;
 import com.google.zxing.qrcode.*;
+import com.google.zxing.multi.qrcode.QRCodeMultiReader;
 import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel;
 import java.io.IOException;
 import java.util.*;
@@ -23,7 +24,17 @@ final class QrCodec {
         for(int attempt=0;attempt<2;attempt++){
             QRCodeReader reader=new QRCodeReader();
             try{return reader.decode(new BinaryBitmap(new HybridBinarizer(attempt==0?source:source.invert())),hints).getText();}
-            catch(ReaderException ignored){/* Missed or transitional frame: wait for the next image. */}
+            catch(ReaderException ignored){
+                // Dense world fragments can contain extra finder-like patterns. Try all candidates.
+                BinaryBitmap bitmap=new BinaryBitmap(new HybridBinarizer(attempt==0?source:source.invert()));
+                try{Result[] results=new QRCodeMultiReader().decodeMultiple(bitmap,hints);if(results.length>0)return results[0].getText();}
+                catch(ReaderException absent){/* No valid geometric candidate. */}
+                // Axis-aligned, isolated codes (including screenshots) can be sampled directly.
+                hints.put(DecodeHintType.PURE_BARCODE,Boolean.TRUE);
+                try{return reader.decode(bitmap,hints).getText();}
+                catch(ReaderException absent){/* Wait for the next camera image. */}
+                finally{hints.remove(DecodeHintType.PURE_BARCODE);}
+            }
             finally{reader.reset();}
         }
         return null;

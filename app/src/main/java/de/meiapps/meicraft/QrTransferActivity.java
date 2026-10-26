@@ -61,6 +61,7 @@ public final class QrTransferActivity extends Activity {
             importButton=button("Als neue Welt importieren",this::importWorld);importButton.setVisibility(View.GONE);
             button("Empfang zurücksetzen",this::reset);
         }
+        if(sending)image.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,oright,ob)->{if((r-l!=oright-ol||b-t!=ob-ot)&&!frames.isEmpty())showFrame(frameIndex);});
         button("Zurück",this::finish);setContentView(root);
         if(sending)prepare();
     }
@@ -83,7 +84,10 @@ public final class QrTransferActivity extends Activity {
     private void manual(int direction){if(frames.isEmpty())return;hold=true;pause.setText(R.string.qr_continue);showFrame((frameIndex+direction+frames.size())%frames.size());}
     void showFrame(int index){
         handler.removeCallbacks(next);if(frames.isEmpty()||worker.isShutdown())return;
-        frameIndex=index;int ticket=++renderTicket;String text=frames.get(index);int edge=Math.max(1,Math.min(image.getWidth(),image.getHeight()));
+        frameIndex=index;int edge=Math.min(image.getWidth(),image.getHeight());
+        // The first snapshot can finish before layout. Wait for a real viewport.
+        if(edge<=0)return;
+        int ticket=++renderTicket;String text=frames.get(index);
         worker.execute(()->{
             try{BitMatrix matrix=QrCodec.encode(text);int modules=matrix.getWidth(),scale=Math.max(1,edge/modules),side=modules*scale;int[] pixels=new int[side*side];
                 for(int y=0;y<side;y++)for(int x=0;x<side;x++)pixels[y*side+x]=matrix.get(x/scale,y/scale)?Color.BLACK:Color.WHITE;

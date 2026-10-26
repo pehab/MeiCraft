@@ -64,6 +64,13 @@ public final class WorldTransferTests {
         byte[] blank=new byte[320*240];Arrays.fill(blank,(byte)255);check(QrCodec.decode(blank,320,240)==null,"non-QR camera image ignored");
         check(QrCodec.decode(new byte[2],320,240)==null,"short camera buffer rejected");
         check(QrCodec.decode(new byte[1],Integer.MAX_VALUE,2)==null,"oversized image rejected before allocation");
+        // Exercise varied payload patterns: some contain misleading finder-like runs.
+        for(long seed:new long[]{7654321,1,2,17}){
+            List<String> variants=WorldTransfer.frames(WorldTransfer.pack("Meine Storywelt",new World(seed,true)));
+            for(String frame:variants){BitMatrix code=QrCodec.encode(frame);int edge=code.getWidth()*3;
+                check(frame.equals(QrCodec.decode(raster(code,3,0,false),edge,edge)),"varied world fragment remains optically readable");
+            }
+        }
         // Worst-case incompressible packets remain bounded and can finish after missed frames.
         byte[] maximum=new byte[WorldTransfer.MAX_PACKET];new Random(13).nextBytes(maximum);List<String> many=WorldTransfer.frames(maximum);
         WorldTransfer.Collector large=new WorldTransfer.Collector();for(int i=many.size()-1;i>=0;i--)if(i%2==0)large.add(many.get(i));
