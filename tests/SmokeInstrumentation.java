@@ -191,8 +191,10 @@ public final class SmokeInstrumentation extends Instrumentation {
   try(InputStream in=new android.os.ParcelFileDescriptor.AutoCloseInputStream(getUiAutomation().executeShellCommand("input keyevent KEYCODE_HOME"))){byte[] bytes=new byte[512];while(in.read(bytes)!=-1){}}
   for(int i=0;i<60&&!opened[0].closed();i++)Thread.sleep(100);
   check(opened[0].closed(),"camera closes when the receiving Activity enters the background");
-  Activity resumed=startActivitySync(new Intent(activity,QrTransferActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));waitForIdleSync();
-  check(resumed==receiver&&receiver.collector.received()==1,"returning to receiver preserves partial QR progress");
+  // Reordering an existing Activity does not create one: startActivitySync would wait forever.
+  runOnMainSync(()->activity.startActivity(new Intent(activity,QrTransferActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)));
+  for(int i=0;i<100&&!receiver.resumed;i++)Thread.sleep(100);waitForIdleSync();
+  check(receiver.resumed&&receiver.collector.received()==1,"returning to receiver preserves partial QR progress");
   java.util.Collections.reverse(frames);
   for(String text:frames){
    com.google.zxing.common.BitMatrix matrix=QrCodec.encode(text);int side=matrix.getWidth()*3;byte[] pixels=new byte[side*side];
