@@ -2,7 +2,7 @@
 
 Eigenständiges Offline-Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Keine Konten, Werbung oder Käufe. Nur die abschaltbare Update-Prüfung verwendet das Internet.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.3.0
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.4.0
 
 ## Kreativ und Story
 
@@ -16,7 +16,7 @@ Der **Storymodus** speichert in einer eigenen Datei. Über **STORY** oben im Spi
 4. Einen Ofen bauen und Erz mit Holz als Brennstoff schmelzen.
 5. Eisenwerkzeug herstellen, Gebäude mit Fenstern bauen und tief im Gestein Leuchtstein finden.
 
-Die Werkbank stellt Bretter, Ziegel und Grasblöcke her. Im Ofen entstehen Glas und Eisenbarren; später lassen sich Eisenblöcke bauen. Die sieben Einführungskapitel gehen anschließend in freies Bauen mit begrenzten Ressourcen über. Hunger, Rüstung, Explosionsgegner, Multiplayer und fließende Flüssigkeiten sind noch nicht enthalten. Die Welt ist 96 × 96 × 48 Blöcke groß.
+Die Werkbank stellt Bretter, Ziegel und Grasblöcke her. Im Ofen entstehen Glas und Eisenbarren; später lassen sich Eisenblöcke bauen. Die sieben Einführungskapitel gehen anschließend in freies Bauen mit begrenzten Ressourcen über. Hunger, Rüstung, Explosionsgegner und Multiplayer sind noch nicht enthalten. Die Welt ist 96 × 96 × 48 Blöcke groß.
 
 ## Nacht, Gegner und Lava · 0.3.0
 
@@ -24,9 +24,21 @@ Im Storymodus dauert ein Zyklus zwölf Minuten. Nach acht Minuten erscheinen dra
 
 Visiere einen Gegner an und halte **−** zum Nahkampf. Ein Eisenschwert kostet **2 Eisenbarren + 1 Holz** an der Werkbank. Die Anzeige zeigt Tagesphase, verbleibende Zeit bis zum Wechsel und zehn Lebenspunkte. Leben regeneriert nach einer Pause ohne Schaden. Bei einer Niederlage kehrst du zu einem sicheren Platz nahe dem ursprünglichen Start zurück; Bauwerke, Werkzeuge und Vorräte bleiben erhalten. Unter **STORY → Nachtgegner** kannst du Gegner ausschalten.
 
-**Lavagraben:** Grabe einen Graben, stelle einen Eiseneimer aus **3 Eisenbarren** her und suche in neuen Storywelten nach Lava in Steinbecken. Visiere die Lava an und tippe **−**, um den Eimer zu füllen. Wähle **Lava** in der Materialliste und gieße sie mit **+** in den Graben; der leere Eimer wird zurückgegeben. Auch Gegner nehmen durch Lava Schaden. Lava ist für dich ebenfalls gefährlich. Sie bleibt als gesetzter Block stehen und fließt noch nicht weiter.
+**Lavagraben:** Grabe einen Graben, stelle einen Eiseneimer aus **3 Eisenbarren** her und suche in neuen Storywelten nach Lava in Steinbecken. Visiere die Lava an und tippe **−**, um den Eimer zu füllen. Wähle **Lava** in der Materialliste und gieße sie mit **+** in den Graben; der leere Eimer wird zurückgegeben. Auch Gegner nehmen durch Lava Schaden. Lava ist für dich ebenfalls gefährlich. Ausgegossene Lava fließt langsam nach unten und begrenzt zur Seite.
 
-Bestehende Welten werden vollständig geladen, ohne neue Lavaquellen in Bauwerke zu setzen. Dort lässt sich ein Lavaeimer im Ofen aus **1 leerem Eimer + 1 Leuchtstein + 4 Stein + 2 Holz** herstellen. Das ist ein eigenes meiCraft-Rezept. Im Kreativmodus ist Lava unbegrenzt verfügbar; dort gibt es keine Gegner und keinen Lebensverlust. Uhrzeit, Gegner, Lebenspunkte und Ausrüstung werden pro Welt gespeichert; alte Speicherformate 1 und 2 bleiben lesbar.
+Bestehende Welten werden vollständig geladen, ohne neue Lavaquellen in Bauwerke zu setzen. Dort lässt sich ein Lavaeimer im Ofen aus **1 leerem Eimer + 1 Leuchtstein + 4 Stein + 2 Holz** herstellen. Das ist ein eigenes meiCraft-Rezept. Im Kreativmodus ist Lava unbegrenzt verfügbar; dort gibt es keine Gegner und keinen Lebensverlust. Uhrzeit, Gegner, Lebenspunkte und Ausrüstung werden pro Welt gespeichert; alte Speicherformate 1, 2 und 3 bleiben lesbar.
+
+## Wasser, Lavahöhlen und Gras · 0.4.0
+
+Neue Storywelten enthalten bis zu sechs Lavahöhlen tief im Gestein, 3–5 Blöcke über dem Weltboden. Die Mitte jedes Sees ist eine **nachfüllbare Lavaquelle**, beim Anvisieren entsprechend beschriftet. Mit einem leeren Eiseneimer und **−** erhältst du beliebig oft Lava aus dieser Quelle. Die anderen Lavablöcke sind endlich. Natürliche Wasserblöcke lassen sich ebenso mit dem Eiseneimer schöpfen und füllen sich nach.
+
+**Alte Storywelt:** Wähle einmal **STORY → Lavahöhlen in dieser Welt ergänzen**. Die Ergänzung prüft vollständige Gesteinsvolumen samt Rand gegen die ursprüngliche Welt und überspringt bearbeitete Bereiche. Beim Laden wird kein Block verändert. Ist der Untergrund überall bearbeitet, werden keine Höhlen ergänzt; das bisherige Ofenrezept bleibt verfügbar.
+
+Wähle Wasser oder Lava im Baumaterial und gieße mit **+** aus. Der leere Eimer kommt zurück. Ausgegossene Quellen fließen schrittweise nach unten und auf tragfähigem Untergrund zur Seite: Wasser bis zu vier Blöcke, Lava langsamer bis zu zwei Blöcke weit. Gefälle verlängern die seitliche Reichweite nicht. Die Quelle lässt sich wieder aufnehmen, danach trocknen abhängige Ströme aus. Strömende Blöcke lassen sich nicht in neue Eimer verwandeln. Die Zahl dynamischer Flüssigkeitsblöcke ist pro Welt begrenzt. Bestehende natürliche Seen bleiben ruhend. Unter **STORY → Flüssigkeiten fließen** lässt sich das Fließen pausieren.
+
+Bei Flächenkontakt mit Wasser wird der berührte Lavablock zu Stein; Wasser bleibt erhalten. Das kann auch eine natürliche Lavaquelle endgültig abkühlen. Sand direkt neben Lava wird nach bis zu drei Sekunden zu Glas; die Lava bleibt als Wärmequelle bestehen. Freiliegende Erde unter offenem Himmel wird neben Gras langsam grün, auch bei einer Höhenstufe Unterschied. **4 Erde + 1 Laub → 4 Grasblöcke** bleibt als sofortiges Werkbankrezept erhalten.
+
+Speicherformat 4 erhält Quellen, Ströme, Höhlenergänzung und Fließ-Einstellung getrennt pro Welt. Menüs und Hintergrund pausieren die gesamte Simulation. Feuer und Brandausbreitung folgen erst in einer späteren Ausbaustufe.
 
 ![Storymodus](docs/story.png)
 
@@ -58,7 +70,7 @@ bash scripts/build-upgrade-fixture.sh
 ./test-android-build.sh
 ```
 
-Die APK liegt unter `build/meiCraft-0.3.0.apk`. Der direkte SDK-Build benötigt keine Spielbibliotheken. `.signing/` enthält den privaten, lokal wiederverwendeten Schlüssel und ist aus Git ausgeschlossen. Updates veröffentlichter APKs brauchen den ursprünglichen Projektschlüssel. Das private Secret `MEICRAFT_SIGNING_JSON` hat die Felder `keystore` (Base64-PKCS12), `password` und `alias` (`meicraft`); `scripts/restore-signing.py` stellt daraus den lokalen Schlüssel wieder her. CI-Testschlüssel werden nie veröffentlicht.
+Die APK liegt unter `build/meiCraft-0.4.0.apk`. Der direkte SDK-Build benötigt keine Spielbibliotheken. `.signing/` enthält den privaten, lokal wiederverwendeten Schlüssel und ist aus Git ausgeschlossen. Updates veröffentlichter APKs brauchen den ursprünglichen Projektschlüssel. Das private Secret `MEICRAFT_SIGNING_JSON` hat die Felder `keystore` (Base64-PKCS12), `password` und `alias` (`meicraft`); `scripts/restore-signing.py` stellt daraus den lokalen Schlüssel wieder her. CI-Testschlüssel werden nie veröffentlicht.
 
 Alternativ Android Studio oder `./gradlew --warning-mode=fail assembleDebug lintDebug`. Versionen stehen in `version.properties`. Compiler-, Lint- und Gradle-Warnungen führen zu Fehlern. Der Gradle-Prüfpfad verwendet AGP 9.5.0-rc01 mit Kotlin-Build-Komponente 2.4.21, um deren dokumentierte Configuration.setVisible-Probleme mit Gradle 9.8.2 zu beheben. Die veröffentlichte APK entsteht direkt mit den stabilen SDK-Werkzeugen.
 
@@ -68,14 +80,15 @@ Auf einem Emulator ohne wertvollen Spielstand:
 bash scripts/smoke-android.sh
 ```
 
-CI prüft Android 11 und Android 17: tatsächliche Aktualisierung der bisherigen 0.2.0-APK (für CI neu signiert), Spielstanderhalt, ursprüngliche Wischsteuerung, Blick nach unten, Touch-Abbruch, festes Querformat und beide horizontalen Haltungen, System-Zurück, zeitgesteuertes Abbauen, Materialkosten, Werkzeug-Sperren, Rezeptdialoge sowie mehrere benannte Welten, Umbenennen, fehlgeschlagene Ladevorgänge und einen vollständigen Prozessneustart. Neue Geräteprüfungen testen zusätzlich Schwertangriffe über den Touch-Button, Lava aufnehmen/ausgießen, Gegner ausschalten, Nacht-Rendering und eingefrorene Pausen. Die Tests verändern ihre Testwelten.
+CI prüft Android 11 und Android 17: tatsächliche Aktualisierung der bisherigen 0.2.0-APK (für CI neu signiert), Spielstanderhalt, ursprüngliche Wischsteuerung, Blick nach unten, Touch-Abbruch, festes Querformat und beide horizontalen Haltungen, System-Zurück, zeitgesteuertes Abbauen, Materialkosten, Werkzeug-Sperren, Rezeptdialoge sowie mehrere benannte Welten, Umbenennen, fehlgeschlagene Ladevorgänge und einen vollständigen Prozessneustart. Neue Geräteprüfungen testen zusätzlich Schwertangriffe über den Touch-Button, Lava aufnehmen/ausgießen, Gegner ausschalten, Nacht-Rendering und eingefrorene Pausen. Zusätzliche Prüfungen testen Wasser über Touch-Eingaben, Ströme, Materialreaktionen, Graswachstum und Speicherung. Die Tests verändern ihre Testwelten.
 
 ## Code und Assets
 
-`World.java`: Terrain, Kollisionen, Raycasting, Ressourcenaktionen und Speicherformat. `Story.java`: Aufträge, Werkzeugstufen, Inventar und Rezepte. `Survival.java`: Tageszyklus, Gegner, Nahkampf, Schaden und Wiedereinstieg. `GameView.java`: bisherige Touch-Steuerung, Bewegung und HUD. `VoxelRenderer.java`: sichtbare Blockflächen in 16 × 16 großen Chunks, Texturen, Licht und Nebel. `MainActivity.java`: Dialoge, Weltwechsel und Lebenszyklus. `SavedWorld.java` und `WorldLibrary.java`: stabile Welt-IDs, Namen und getrennte atomare Speicherdateien.
+`World.java`: Terrain, Kollisionen, Raycasting, Ressourcenaktionen und Speicherformat. `Story.java`: Aufträge, Werkzeugstufen, Inventar und Rezepte. `Survival.java`: Tageszyklus, Gegner, Nahkampf, Schaden und Wiedereinstieg. `Nature.java`: Flüssigkeiten, Materialreaktionen, Graswachstum und geschützte Höhlenergänzung. `GameView.java`: bisherige Touch-Steuerung, Bewegung und HUD. `VoxelRenderer.java`: sichtbare Blockflächen in 16 × 16 großen Chunks, Texturen, Licht und Nebel. `MainActivity.java`: Dialoge, Weltwechsel und Lebenszyklus. `SavedWorld.java` und `WorldLibrary.java`: stabile Welt-IDs, Namen und getrennte atomare Speicherdateien.
 
 Alle Texturen sind prozedurale Originale. Neuerzeugen mit `python3 scripts/generate-textures.py` (Pillow). Keine Minecraft-Dateien oder Original-Assets; unabhängig von Mojang und Microsoft.
 
 ## Updatequelle
 
 Updates folgen der tatsächlichen Installationsquelle: Google Play für Play-Installationen, GitHub für direkt installierte APKs. [Bedienung, Signierung und Veröffentlichung](docs/UPDATES.md).
+

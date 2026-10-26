@@ -2,7 +2,7 @@ package de.meiapps.meicraft;
 import java.util.*;
 public final class StoryTests {
  static int checks;static void check(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
- static World flat(){World w=new World(31,true);Arrays.fill(w.blocks,(byte)0);w.x=10.5f;w.y=20.5f;w.z=10.5f;return w;}
+ static World flat(){World w=new World(31,true);Arrays.fill(w.blocks,(byte)0);w.nature.springs.clear();w.nature.active.clear();java.util.Arrays.fill(w.nature.levels,(byte)0);w.x=10.5f;w.y=20.5f;w.z=10.5f;return w;}
  static void collect(World w,int type,int count){for(int i=0;i<count;i++){w.set(20,20,20,type);check(w.mine(20,20,20),"collect unlocked material "+type);}}
  public static void main(String[]args)throws Exception{
   World w=flat();Story s=w.progress;check(w.story&&!w.flying&&s.tool()==0,"story starts walking with bare hands");check(!w.place(20,20,20,2),"building needs owned material");w.set(20,20,20,5);check(!w.mine(20,20,20),"wood locked initially");check(w.get(20,20,20)==5&&s.inventory[5]==0,"failed mining is atomic");
@@ -22,3 +22,4 @@ public final class StoryTests {
   System.out.println("PASS: "+checks+" story assertions");
  }
 }
+

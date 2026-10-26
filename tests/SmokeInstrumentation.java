@@ -75,7 +75,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   runOnMainSync(()->{activity.paused=true;activity.handler.removeCallbacks(activity.autosave);});
   try{
    onGl(game,()->{
-    World w=new World(5150,true);java.util.Arrays.fill(w.blocks,(byte)0);
+    World w=new World(5150,true);java.util.Arrays.fill(w.blocks,(byte)0);w.nature.springs.clear();w.nature.active.clear();java.util.Arrays.fill(w.nature.levels,(byte)0);
     for(int x=0;x<World.W;x++)for(int z=0;z<World.D;z++)w.blocks[World.index(x,32,z)]=3;
     w.x=48.5f;w.y=34.62f;w.z=48.5f;w.yaw=0;w.pitch=-.32f;w.survival.time=510;w.progress.chapter=5;w.progress.sword=true;
     w.survival.mobs.add(new Survival.Mob(48.5f,34.62f,46.5f));game.replace(w);activity.world=w;
@@ -101,6 +101,51 @@ public final class SmokeInstrumentation extends Instrumentation {
    android.graphics.Bitmap night=smallScreenshot();if(night!=null){emitScreenshot(night,"nightScreenshot");night.recycle();}
    float frozen=game.world.survival.time;Thread.sleep(200);check(game.world.survival.time==frozen,"paused game freezes night and enemies");
    World loaded=World.decode(game.world.encode());check(loaded.survival.night()&&loaded.survival.mobs.size()==1&&loaded.get(48,33,46)==15&&loaded.progress.sword,"night, enemies, lava and equipment survive a save/reload");
+  }finally{
+   onGl(game,()->{game.replace(original);activity.world=original;});
+   runOnMainSync(()->{activity.paused=false;activity.save();activity.handler.postDelayed(activity.autosave,30000);});
+   activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);
+  }
+ }
+ void testNature(MainActivity activity,GameView game)throws Exception{
+  World original=game.world;
+  runOnMainSync(()->{activity.paused=true;activity.handler.removeCallbacks(activity.autosave);});
+  try{
+   onGl(game,()->{
+    World w=new World(5150,true,false);java.util.Arrays.fill(w.blocks,(byte)0);
+    for(int x=0;x<World.W;x++)for(int z=0;z<World.D;z++)w.set(x,32,z,3);
+    w.x=48.5f;w.y=34.62f;w.z=48.5f;w.yaw=0;w.pitch=-.55f;
+    w.progress.chapter=5;w.progress.buckets=1;w.set(48,33,46,10);
+    game.replace(w);activity.world=w;
+   });
+   runOnMainSync(()->activity.paused=false);
+   stickEvent(game,0,new int[]{5},new float[][]{{game.hud.mineX,game.hud.actionY}});Thread.sleep(150);stickEvent(game,1,new int[]{5},new float[][]{{game.hud.mineX,game.hud.actionY}});
+   runOnMainSync(()->activity.paused=true);
+   onGl(game,()->{
+    check(game.world.get(48,33,46)==10&&game.world.progress.inventory[10]==1&&game.world.progress.buckets==0,"touch fills water bucket and natural water refills");
+    game.world.set(48,33,46,0);game.world.set(48,33,45,3);game.world.selected=10;
+   });
+   runOnMainSync(()->activity.paused=false);tap(game,game.hud.placeX,game.hud.actionY);runOnMainSync(()->activity.paused=true);
+   onGl(game,()->{
+    World w=game.world;check(w.get(48,33,46)==10&&w.progress.buckets==1&&w.progress.inventory[10]==0,"touch pours water and returns empty bucket");
+    for(int i=0;i<80;i++)w.nature.tick(w,.05f);
+    check(w.get(49,33,46)==10,"poured water flows on the device");
+    w.set(52,33,46,15);w.set(53,33,46,4);
+    for(int i=0;i<80;i++)w.nature.tick(w,.05f);
+    check(w.get(52,33,46)==3,"water-lava contact produces stone on the device");
+    w.set(44,33,43,15);w.set(43,33,43,4);
+    for(int i=0;i<80;i++)w.nature.tick(w,.05f);
+    check(w.get(43,33,43)==8,"lava heat makes glass on the device");
+    w.set(40,33,43,1);w.set(41,33,43,2);
+    for(int i=0;i<800;i++)w.nature.tick(w,.05f);
+    check(w.get(41,33,43)==1,"exposed dirt regrows grass on the device");
+    try{World restored=World.decode(w.encode());
+    check(java.util.Arrays.equals(w.blocks,restored.blocks)&&java.util.Arrays.equals(w.nature.levels,restored.nature.levels),"nature and flowing liquids survive save/reload on the device");}catch(java.io.IOException e){throw new AssertionError(e);}
+   });
+   runOnMainSync(activity::storyMenu);clickText("Flüssigkeiten fließen:");check(!game.world.nature.flowEnabled,"Story menu can pause fluid flow");clickText("Weiterbauen");
+   runOnMainSync(()->activity.paused=true);
+   float frozen=game.world.survival.time;byte[] blocks=game.world.blocks.clone();Thread.sleep(600);
+   check(game.world.survival.time==frozen&&java.util.Arrays.equals(blocks,game.world.blocks),"menus freeze nature and survival together");
   }finally{
    onGl(game,()->{game.replace(original);activity.world=original;});
    runOnMainSync(()->{activity.paused=false;activity.save();activity.handler.postDelayed(activity.autosave,30000);});
@@ -233,6 +278,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   runOnMainSync(()->{synchronized(game.world){World w=game.world;w.yaw=.55f;w.pitch=-.38f;w.y=26;w.x=48.5f;w.z=48.5f;}activity.paused=false;});
   testStory(activity,game);
   testSurvival(activity,game);
+   testNature(activity,game);
   Thread.sleep(1500);
   android.graphics.Bitmap screenshot=smallScreenshot();
   if(screenshot!=null){try(FileOutputStream out=context.openFileOutput("smoke.png",0)){screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}emitScreenshot(screenshot,"screenshot");screenshot.recycle();}
@@ -243,3 +289,4 @@ public final class SmokeInstrumentation extends Instrumentation {
   result.putString("summary","PASS: "+checks+" Android assertions");finish(Activity.RESULT_OK,result);
  }catch(Throwable t){result.putString("error",android.util.Log.getStackTraceString(t));try{android.graphics.Bitmap failure=smallScreenshot();if(failure!=null){emitScreenshot(failure,"failureScreenshot");failure.recycle();}android.view.accessibility.AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();if(root!=null)result.putString("activeWindowPackage",String.valueOf(root.getPackageName()));}catch(Exception ignored){}finish(Activity.RESULT_CANCELED,result);}}
 }
+

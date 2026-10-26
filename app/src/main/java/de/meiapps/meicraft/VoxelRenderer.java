@@ -65,6 +65,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
         if(world!=view.renderedWorld){for(Mesh m:meshes)m.dirty=true;view.renderedWorld=world;lampTimer=0;}
         synchronized(world){
             if(!view.activity.paused)view.tick(dt);
+            long changed=world.nature.takeDirtyChunks();for(int i=0;i<36;i++)if((changed&(1L<<i))!=0)meshes[i].dirty=true;
             float daylight=world.story?world.survival.daylight():1;float skyR=.025f+.505f*daylight*daylight,skyG=.035f+.725f*daylight*daylight,skyB=.09f+.77f*daylight*daylight;GLES20.glClearColor(skyR,skyG,skyB,1);GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT|GLES20.GL_DEPTH_BUFFER_BIT);
             float dx=-(float)Math.sin(world.yaw)*(float)Math.cos(world.pitch),dy=(float)Math.sin(world.pitch),dz=-(float)Math.cos(world.yaw)*(float)Math.cos(world.pitch);
             Matrix.setLookAtM(look,0,world.x,world.y,world.z,world.x+dx,world.y+dy,world.z+dz,0,1,0);Matrix.multiplyMM(matrix,0,projection,0,look,0);
@@ -121,3 +122,4 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
     }
 
 }
+
