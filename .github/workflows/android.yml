@@ -76,6 +76,7 @@ jobs:
             build/reports/
             build/android-smoke.log
             build/android-update-seed.log
+            build/qr.png
             build/night.png
             build/smoke.png
             build/landscape.png
@@ -125,3 +126,4 @@ jobs:
           if ! gh release view "v$VERSION" >/dev/null 2>&1; then
             gh release create "v$VERSION" "build/release/meiCraft-$VERSION.apk" "build/release/meiCraft-$VERSION.apk.sha256" build/release/meiCraft-update.json --target "$GITHUB_SHA" --title "meiCraft $VERSION" --notes-file "docs/RELEASE-$VERSION.md"
           fi
+

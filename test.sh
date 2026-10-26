@@ -2,13 +2,17 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p build/test-classes
-java -m jdk.compiler/com.sun.tools.javac.Main -d build/test-classes app/src/main/java/de/meiapps/meicraft/World.java app/src/main/java/de/meiapps/meicraft/Story.java app/src/main/java/de/meiapps/meicraft/Survival.java app/src/main/java/de/meiapps/meicraft/Nature.java app/src/main/java/de/meiapps/meicraft/UpdateInfo.java app/src/main/java/de/meiapps/meicraft/SavedWorld.java tests/WorldTests.java tests/UpdateTests.java tests/StoryTests.java tests/SavedWorldTests.java tests/SurvivalTests.java tests/NatureTests.java
-java -cp build/test-classes de.meiapps.meicraft.WorldTests
-java -cp build/test-classes de.meiapps.meicraft.UpdateTests
-java -cp build/test-classes de.meiapps.meicraft.StoryTests
-java -cp build/test-classes de.meiapps.meicraft.SavedWorldTests
+bash scripts/qr-dependency.sh
+QR_JAR=build/dependencies/zxing-core-3.5.3.jar
+java -m jdk.compiler/com.sun.tools.javac.Main -classpath "$QR_JAR" -d build/test-classes app/src/main/java/de/meiapps/meicraft/WorldTransfer.java app/src/main/java/de/meiapps/meicraft/QrCodec.java app/src/main/java/de/meiapps/meicraft/World.java app/src/main/java/de/meiapps/meicraft/Story.java app/src/main/java/de/meiapps/meicraft/Survival.java app/src/main/java/de/meiapps/meicraft/Nature.java app/src/main/java/de/meiapps/meicraft/UpdateInfo.java app/src/main/java/de/meiapps/meicraft/SavedWorld.java tests/WorldTests.java tests/UpdateTests.java tests/StoryTests.java tests/SavedWorldTests.java tests/SurvivalTests.java tests/NatureTests.java tests/WorldTransferTests.java
+java -cp "build/test-classes:$QR_JAR" de.meiapps.meicraft.WorldTests
+java -cp "build/test-classes:$QR_JAR" de.meiapps.meicraft.UpdateTests
+java -cp "build/test-classes:$QR_JAR" de.meiapps.meicraft.StoryTests
+java -cp "build/test-classes:$QR_JAR" de.meiapps.meicraft.SavedWorldTests
 
-java -cp build/test-classes de.meiapps.meicraft.SurvivalTests
+java -cp "build/test-classes:$QR_JAR" de.meiapps.meicraft.SurvivalTests
 
 
-java -cp build/test-classes de.meiapps.meicraft.NatureTests
+java -cp "build/test-classes:$QR_JAR" de.meiapps.meicraft.NatureTests
+
+java -cp "build/test-classes:$QR_JAR" de.meiapps.meicraft.WorldTransferTests

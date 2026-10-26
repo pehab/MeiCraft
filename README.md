@@ -2,7 +2,7 @@
 
 Eigenständiges Offline-Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Keine Konten, Werbung oder Käufe. Nur die abschaltbare Update-Prüfung verwendet das Internet.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.4.0
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.5.0
 
 ## Kreativ und Story
 
@@ -42,6 +42,16 @@ Speicherformat 4 erhält Quellen, Ströme, Höhlenergänzung und Fließ-Einstell
 
 ![Storymodus](docs/story.png)
 
+## Welten per Kamera teilen · 0.5.0
+
+Komplett offline, auch im Flugmodus: Auf dem sendenden Gerät **☰ → Welt per QR teilen**, auf dem anderen **☰ → Welt per QR empfangen** wählen und die Kamera auf den gesamten weißen Codebereich richten. Nur der Empfänger braucht die Kameraberechtigung. Die Kamera läuft ausschließlich im sichtbaren Empfangsfenster; Bilder werden auf dem Gerät verarbeitet und nicht gespeichert oder übertragen.
+
+Die Welt wird als wechselnde QR-Bilder angezeigt. Die Folge wiederholt sich automatisch, bis der Empfänger alle unterschiedlichen Bilder gesammelt hat. Reihenfolge und doppelt gescannte Bilder sind egal; der Fortschritt bleibt erhalten, wenn ein Bild verpasst wird. Bei Schwierigkeiten am Sender **Langsamer** wählen oder **Pause** und die Pfeile nutzen. Eine typische neue Storywelt ergibt ungefähr 33 Bilder; die genaue Zahl hängt vom Spielstand ab.
+
+Nach vollständiger Prüfung zeigt der Empfänger Weltname und Modus. **Als neue Welt importieren** speichert eine Kopie mit eigener ID und öffnet sie. Vorhandene Welten werden nicht überschrieben; gleiche Namen bekommen einen Zähler. Bauten, Vorräte, Ausrüstung, Quellen, Ströme und Storyfortschritt werden übernommen. Beide Geräte bauen danach unabhängig weiter. Gleichzeitiges gemeinsames Bauen ist noch nicht enthalten.
+
+Die QR-Folge enthält den vollständigen lokalen Spielstand, keinen Download-Link. Es werden weder WLAN, Bluetooth noch Internet benötigt. Pro Fragment wird CRC32, für die vollständige Übertragung SHA-256 und anschließend das Weltformat geprüft. Größenlimits gelten vor dem Zusammensetzen und Importieren. Fortschritt kann über **Empfang zurücksetzen** verworfen werden; beim Schließen des Empfangs oder nach einem vollständigen Prozessneustart wird eine unvollständige Übertragung nicht gespeichert.
+
 ## Steuerung
 
 **Die ursprüngliche Steuerung bleibt:** links am virtuellen Joystick bewegen, rechts wischen zum Umsehen. Mit **+** neben dem anvisierten Block bauen. In der Kreativwelt baut **−** sofort ab; im Storymodus hältst du **−** gedrückt. **↑** springt oder schwimmt aufwärts. In der Kreativwelt können **↑ / ↓** zum Fliegen genutzt werden. Gesammelte Blöcke helfen beim Bau von Stufen aus Gruben.
@@ -60,7 +70,7 @@ Die Release-Pipeline erzeugt Prüfsumme und Update-Manifest aus der geprüften A
 
 ## Bauen und prüfen
 
-JDK 17, Android SDK Platform 37.0 und Build Tools 36.0.0:
+JDK 17, Android SDK Platform 37.0 und Build Tools 36.0.0. Für den QR-Codec wird ZXing Core 3.5.3 verwendet; der direkte Build lädt die feste Version von Maven Central und prüft ihren SHA-256-Wert. Die App benötigt diese Verbindung nicht zum Teilen oder Spielen. [Fremdkomponenten](docs/THIRD-PARTY.md).
 
 ```sh
 export ANDROID_SDK_ROOT=/pfad/zum/android-sdk
@@ -70,7 +80,7 @@ bash scripts/build-upgrade-fixture.sh
 ./test-android-build.sh
 ```
 
-Die APK liegt unter `build/meiCraft-0.4.0.apk`. Der direkte SDK-Build benötigt keine Spielbibliotheken. `.signing/` enthält den privaten, lokal wiederverwendeten Schlüssel und ist aus Git ausgeschlossen. Updates veröffentlichter APKs brauchen den ursprünglichen Projektschlüssel. Das private Secret `MEICRAFT_SIGNING_JSON` hat die Felder `keystore` (Base64-PKCS12), `password` und `alias` (`meicraft`); `scripts/restore-signing.py` stellt daraus den lokalen Schlüssel wieder her. CI-Testschlüssel werden nie veröffentlicht.
+Die APK liegt unter `build/meiCraft-0.5.0.apk`. Der direkte SDK-Build benötigt keine Spielbibliotheken. `.signing/` enthält den privaten, lokal wiederverwendeten Schlüssel und ist aus Git ausgeschlossen. Updates veröffentlichter APKs brauchen den ursprünglichen Projektschlüssel. Das private Secret `MEICRAFT_SIGNING_JSON` hat die Felder `keystore` (Base64-PKCS12), `password` und `alias` (`meicraft`); `scripts/restore-signing.py` stellt daraus den lokalen Schlüssel wieder her. CI-Testschlüssel werden nie veröffentlicht.
 
 Alternativ Android Studio oder `./gradlew --warning-mode=fail assembleDebug lintDebug`. Versionen stehen in `version.properties`. Compiler-, Lint- und Gradle-Warnungen führen zu Fehlern. Der Gradle-Prüfpfad verwendet AGP 9.5.0-rc01 mit Kotlin-Build-Komponente 2.4.21, um deren dokumentierte Configuration.setVisible-Probleme mit Gradle 9.8.2 zu beheben. Die veröffentlichte APK entsteht direkt mit den stabilen SDK-Werkzeugen.
 
@@ -80,7 +90,7 @@ Auf einem Emulator ohne wertvollen Spielstand:
 bash scripts/smoke-android.sh
 ```
 
-CI prüft Android 11 und Android 17: tatsächliche Aktualisierung der bisherigen 0.2.0-APK (für CI neu signiert), Spielstanderhalt, ursprüngliche Wischsteuerung, Blick nach unten, Touch-Abbruch, festes Querformat und beide horizontalen Haltungen, System-Zurück, zeitgesteuertes Abbauen, Materialkosten, Werkzeug-Sperren, Rezeptdialoge sowie mehrere benannte Welten, Umbenennen, fehlgeschlagene Ladevorgänge und einen vollständigen Prozessneustart. Neue Geräteprüfungen testen zusätzlich Schwertangriffe über den Touch-Button, Lava aufnehmen/ausgießen, Gegner ausschalten, Nacht-Rendering und eingefrorene Pausen. Zusätzliche Prüfungen testen Wasser über Touch-Eingaben, Ströme, Materialreaktionen, Graswachstum und Speicherung. Die Tests verändern ihre Testwelten.
+CI prüft Android 11 und Android 17: tatsächliche Aktualisierung der bisherigen 0.2.0-APK (für CI neu signiert), Spielstanderhalt, ursprüngliche Wischsteuerung, Blick nach unten, Touch-Abbruch, festes Querformat und beide horizontalen Haltungen, System-Zurück, zeitgesteuertes Abbauen, Materialkosten, Werkzeug-Sperren, Rezeptdialoge sowie mehrere benannte Welten, Umbenennen, fehlgeschlagene Ladevorgänge und einen vollständigen Prozessneustart. Neue Geräteprüfungen testen zusätzlich Schwertangriffe über den Touch-Button, Lava aufnehmen/ausgießen, Gegner ausschalten, Nacht-Rendering und eingefrorene Pausen. Zusätzliche Prüfungen testen Wasser über Touch-Eingaben, Ströme, Materialreaktionen, Graswachstum und Speicherung. QR-Prüfungen erfassen den tatsächlich angezeigten Code, öffnen eine echte Camera2-Sitzung im Emulator, lesen QR-Bildfolgen ein und prüfen Kopie, Namenskollisionen und Prozessneustart im Flugmodus. Zwei reale Handys mit aufeinander gerichteten Kameras sind zusätzlich manuell zu prüfen. Die Tests verändern ihre Testwelten.
 
 ## Code und Assets
 

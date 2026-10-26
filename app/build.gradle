@@ -15,4 +15,7 @@ android {
  }
 }
 
+dependencies { implementation 'com.google.zxing:core:3.5.3' }
+
 tasks.withType(JavaCompile).configureEach { options.compilerArgs += ['-Xlint:deprecation', '-Werror'] }
+
