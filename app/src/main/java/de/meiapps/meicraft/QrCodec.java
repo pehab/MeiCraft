@@ -20,6 +20,12 @@ final class QrCodec {
     static String decode(byte[] luma,int width,int height){
         if(width<1||height<1||width>2048||height>2048||luma.length<(long)width*height)return null;
         LuminanceSource source=new PlanarYUVLuminanceSource(luma,width,height,0,0,width,height,false);
+        String result=decodeSource(source);
+        if(result!=null||width==height)return result;
+        // A centered code can be easier to detect without busy objects around the viewfinder.
+        int side=Math.min(width,height);return decodeSource(source.crop((width-side)/2,(height-side)/2,side,side));
+    }
+    private static String decodeSource(LuminanceSource source){
         Map<DecodeHintType,Object> hints=new EnumMap<>(DecodeHintType.class);hints.put(DecodeHintType.TRY_HARDER,Boolean.TRUE);
         for(int attempt=0;attempt<2;attempt++){
             QRCodeReader reader=new QRCodeReader();
