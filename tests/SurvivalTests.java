@@ -7,7 +7,7 @@ import java.util.zip.*;
 public final class SurvivalTests {
     static int checks;
     static void check(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
-    static World flat(){World w=new World(37,true);Arrays.fill(w.blocks,(byte)0);for(int x=0;x<World.W;x++)for(int z=0;z<World.D;z++)w.blocks[World.index(x,4,z)]=3;w.x=48.5f;w.y=6.62f;w.z=48.5f;return w;}
+    static World flat(){World w=new World(37,true);Arrays.fill(w.blocks,(byte)0);w.nature.springs.clear();w.nature.active.clear();java.util.Arrays.fill(w.nature.levels,(byte)0);for(int x=0;x<World.W;x++)for(int z=0;z<World.D;z++)w.blocks[World.index(x,4,z)]=3;w.x=48.5f;w.y=6.62f;w.z=48.5f;return w;}
     static void advance(World w,float seconds){for(int i=0;i<Math.round(seconds*20);i++)w.survival.tick(w,.05f);}
     static byte[] oldSave(World w,int format)throws Exception{
         ByteArrayOutputStream bytes=new ByteArrayOutputStream();try(DataOutputStream out=new DataOutputStream(new GZIPOutputStream(bytes))){out.writeInt(0x4d454943);out.writeInt(format);out.writeLong(w.seed);out.writeFloat(w.x);out.writeFloat(w.y);out.writeFloat(w.z);out.writeFloat(w.yaw);out.writeFloat(w.pitch);out.writeInt(w.selected);out.writeBoolean(w.flying);out.writeInt(w.blocks.length);out.write(w.blocks);if(format==2){out.writeBoolean(w.story);out.writeInt(w.progress.chapter);out.writeInt(w.progress.iron);out.writeInt(w.progress.placed);out.writeInt(w.progress.glassPlaced);out.writeInt(15);for(int i=0;i<15;i++)out.writeInt(w.progress.inventory[i]);}}return bytes.toByteArray();
@@ -59,3 +59,4 @@ public final class SurvivalTests {
         System.out.println("PASS: "+checks+" survival assertions");
     }
 }
+
