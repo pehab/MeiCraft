@@ -119,7 +119,9 @@ public final class SmokeInstrumentation extends Instrumentation {
     game.replace(w);activity.world=w;
    });
    runOnMainSync(()->activity.paused=false);
-   stickEvent(game,0,new int[]{5},new float[][]{{game.hud.mineX,game.hud.actionY}});Thread.sleep(150);stickEvent(game,1,new int[]{5},new float[][]{{game.hud.mineX,game.hud.actionY}});
+   stickEvent(game,0,new int[]{5},new float[][]{{game.hud.mineX,game.hud.actionY}});
+   for(int attempt=0;attempt<100;attempt++){boolean filled;synchronized(game.world){filled=game.world.progress.inventory[10]==1;}if(filled)break;Thread.sleep(50);}
+   stickEvent(game,1,new int[]{5},new float[][]{{game.hud.mineX,game.hud.actionY}});
    runOnMainSync(()->activity.paused=true);
    onGl(game,()->{
     check(game.world.get(48,33,46)==10&&game.world.progress.inventory[10]==1&&game.world.progress.buckets==0,"touch fills water bucket and natural water refills");
