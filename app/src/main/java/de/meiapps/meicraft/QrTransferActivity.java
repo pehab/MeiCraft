@@ -23,7 +23,7 @@ public final class QrTransferActivity extends Activity {
     WorldTransfer.Collector collector=new WorldTransfer.Collector();
     WorldTransfer incoming;
     QrCamera camera;
-    TextureView preview;
+    QrPreview preview;
     ImageView image;
     TextView status,detail;
     ProgressBar progress;
@@ -43,10 +43,10 @@ public final class QrTransferActivity extends Activity {
         LinearLayout root=new LinearLayout(this);root.setPadding(dp(12),dp(12),dp(12),dp(12));root.setBackgroundColor(0xff153d42);root.setOrientation(LinearLayout.HORIZONTAL);
         FrameLayout visual=new FrameLayout(this);root.addView(visual,new LinearLayout.LayoutParams(0,-1,1));
         if(sending){image=new ImageView(this);image.setBackgroundColor(Color.WHITE);image.setScaleType(ImageView.ScaleType.CENTER);image.setContentDescription("Welt als QR-Code");visual.addView(image,new FrameLayout.LayoutParams(-1,-1));}
-        else{preview=new TextureView(this);preview.setContentDescription("Kameravorschau zum Empfangen einer Welt");visual.addView(preview,new FrameLayout.LayoutParams(-1,-1));}
+        else{preview=new QrPreview(this);preview.setContentDescription("Kameravorschau zum Empfangen einer Welt");visual.addView(preview,new FrameLayout.LayoutParams(-1,-1,Gravity.CENTER));preview.setOnClickListener(v->{if(camera!=null)camera.refocus();});}
         ScrollView scroll=new ScrollView(this);controls=new LinearLayout(this);controls.setOrientation(LinearLayout.VERTICAL);controls.setPadding(dp(14),0,0,0);scroll.addView(controls);root.addView(scroll,new LinearLayout.LayoutParams(dp(240),-1));
         label(sending?"Welt per QR teilen":"Welt per QR empfangen",21);
-        detail=label(sending?"Auf dem anderen Gerät im Menü ‚Welt per QR empfangen‘ öffnen. Kamera auf den gesamten Code richten.":"Kamera auf die wechselnden Codes des anderen Geräts richten. Fehlende Bilder kommen in der nächsten Runde wieder.",14);
+        detail=label(sending?"Auf dem anderen Gerät im Menü ‚Welt per QR empfangen‘ öffnen. Kamera auf den gesamten Code richten.":"Den ganzen weißen Codebereich mittig ins Bild nehmen. Zum Scharfstellen auf das Kamerabild tippen. Bei Problemen am Sender ‚Langsamer‘ wählen.",14);
         status=label(sending?"Codes werden vorbereitet …":"Noch keine Bilder empfangen",16);status.setContentDescription("QR-Übertragungsstatus");
         progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);controls.addView(progress,new LinearLayout.LayoutParams(-1,dp(16)));
         if(sending){

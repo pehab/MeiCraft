@@ -156,6 +156,20 @@ public final class SmokeInstrumentation extends Instrumentation {
    activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);
   }
  }
+ void qrPreview(QrTransferActivity receiver,int orientation,int expectedRotation,String screenshot)throws Exception{
+  runOnMainSync(()->receiver.setRequestedOrientation(orientation));
+  boolean[] ready={false};
+  for(int i=0;i<100&&!ready[0];i++){Thread.sleep(100);runOnMainSync(()->{
+   QrPreview view=receiver.preview;
+   if(view.bufferWidth<1||view.getHeight()<1||view.getDisplay()==null||view.getDisplay().getRotation()!=expectedRotation)return;
+   int relative=view.relativeRotation();double aspect=relative%180==0?(double)view.bufferWidth/view.bufferHeight:(double)view.bufferHeight/view.bufferWidth;
+   ready[0]=Math.abs((double)view.getWidth()/view.getHeight()-aspect)<.015&&receiver.camera!=null&&receiver.camera.imageCount>0;
+  });}
+  check(ready[0],"camera preview preserves the sensor aspect ratio in landscape orientation "+orientation);
+  check(receiver.preview.getHolder().getSurface().isValid(),"rotating receiver keeps a valid automatic-orientation camera surface");
+  runOnMainSync(()->receiver.preview.performClick());
+  Thread.sleep(400);android.graphics.Bitmap previewImage=smallScreenshot();if(previewImage!=null){emitScreenshot(previewImage,screenshot);previewImage.recycle();}
+ }
  void testQrTransfer(MainActivity activity,GameView game)throws Exception{
   int initial=activity.library.list().size();
   runOnMainSync(()->{synchronized(game.world){game.world.set(29,30,29,14);}});
@@ -184,6 +198,8 @@ public final class SmokeInstrumentation extends Instrumentation {
   for(int i=0;i<100;i++){boolean[] ready={false};runOnMainSync(()->ready[0]=receiver.camera!=null&&receiver.camera.imageCount>0);if(ready[0])break;Thread.sleep(100);}
   QrCamera[] opened={null};runOnMainSync(()->opened[0]=receiver.camera);
   check(opened[0]!=null&&opened[0].imageCount>0,"real Camera2 preview delivers images in airplane mode");
+  qrPreview(receiver,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,android.view.Surface.ROTATION_270,"qrReceiverReverseScreenshot");
+  qrPreview(receiver,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,android.view.Surface.ROTATION_90,"qrReceiverScreenshot");
   receiver.acceptFrame(visible);receiver.worker.submit(()->{}).get(30,TimeUnit.SECONDS);waitForIdleSync();
   check(receiver.collector.received()==1,"optically decoded screenshot enters receiver progress");
   receiver.acceptFrame(visible);receiver.acceptFrame("not a world code");receiver.worker.submit(()->{}).get(30,TimeUnit.SECONDS);
@@ -199,7 +215,9 @@ public final class SmokeInstrumentation extends Instrumentation {
   for(String text:frames){
    com.google.zxing.common.BitMatrix matrix=QrCodec.encode(text);int side=matrix.getWidth()*3;byte[] pixels=new byte[side*side];
    for(int y=0;y<side;y++)for(int x=0;x<side;x++)pixels[y*side+x]=(byte)(matrix.get(x/3,y/3)?0:255);
-   String decoded=QrCodec.decode(pixels,side,side);check(text.equals(decoded),"QR bitmap fragment decodes on Android");receiver.acceptFrame(decoded);
+   int row=side+23;java.nio.ByteBuffer plane=java.nio.ByteBuffer.allocateDirect(row*(side-1)+side);
+   for(int y=0;y<side;y++)for(int x=0;x<side;x++)plane.put(y*row+x,pixels[y*side+x]);
+   String decoded=QrCodec.decode(QrCameraFrame.luma(plane,side,side,row,1),side,side);check(text.equals(decoded),"QR fragment decodes from a padded camera Y plane on Android");receiver.acceptFrame(decoded);
   }
   receiver.worker.submit(()->{}).get(30,TimeUnit.SECONDS);waitForIdleSync();
   check(receiver.finishedScan&&receiver.incoming!=null,"all optical fragments produce a verified world preview");

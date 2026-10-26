@@ -2,7 +2,7 @@
 
 Eigenständiges Offline-Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Keine Konten, Werbung oder Käufe. Nur die abschaltbare Update-Prüfung verwendet das Internet.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.5.0
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.5.1
 
 ## Kreativ und Story
 
@@ -44,7 +44,7 @@ Speicherformat 4 erhält Quellen, Ströme, Höhlenergänzung und Fließ-Einstell
 
 ## Welten per Kamera teilen · 0.5.0
 
-Komplett offline, auch im Flugmodus: Auf dem sendenden Gerät **☰ → Welt per QR teilen**, auf dem anderen **☰ → Welt per QR empfangen** wählen und die Kamera auf den gesamten weißen Codebereich richten. Nur der Empfänger braucht die Kameraberechtigung. Die Kamera läuft ausschließlich im sichtbaren Empfangsfenster; Bilder werden auf dem Gerät verarbeitet und nicht gespeichert oder übertragen.
+Komplett offline, auch im Flugmodus: Auf dem sendenden Gerät **☰ → Welt per QR teilen**, auf dem anderen **☰ → Welt per QR empfangen** wählen und die Kamera auf den gesamten weißen Codebereich richten. Die Kameravorschau richtet sich in beiden Querformaten automatisch aus und zeigt das vollständige Bild ohne Verzerrung. Den ganzen weißen Codebereich mittig ins Bild nehmen; zum Nachfokussieren auf die Vorschau tippen. Nur der Empfänger braucht die Kameraberechtigung. Die Kamera läuft ausschließlich im sichtbaren Empfangsfenster; Bilder werden auf dem Gerät verarbeitet und nicht gespeichert oder übertragen.
 
 Die Welt wird als wechselnde QR-Bilder angezeigt. Die Folge wiederholt sich automatisch, bis der Empfänger alle unterschiedlichen Bilder gesammelt hat. Reihenfolge und doppelt gescannte Bilder sind egal; der Fortschritt bleibt erhalten, wenn ein Bild verpasst wird. Bei Schwierigkeiten am Sender **Langsamer** wählen oder **Pause** und die Pfeile nutzen. Eine typische neue Storywelt ergibt ungefähr 50 Bilder; die genaue Zahl hängt vom Spielstand ab.
 
@@ -80,7 +80,7 @@ bash scripts/build-upgrade-fixture.sh
 ./test-android-build.sh
 ```
 
-Die APK liegt unter `build/meiCraft-0.5.0.apk`. Der direkte SDK-Build benötigt keine Spielbibliotheken. `.signing/` enthält den privaten, lokal wiederverwendeten Schlüssel und ist aus Git ausgeschlossen. Updates veröffentlichter APKs brauchen den ursprünglichen Projektschlüssel. Das private Secret `MEICRAFT_SIGNING_JSON` hat die Felder `keystore` (Base64-PKCS12), `password` und `alias` (`meicraft`); `scripts/restore-signing.py` stellt daraus den lokalen Schlüssel wieder her. CI-Testschlüssel werden nie veröffentlicht.
+Die APK liegt unter `build/meiCraft-0.5.1.apk`. Der direkte SDK-Build benötigt keine Spielbibliotheken. `.signing/` enthält den privaten, lokal wiederverwendeten Schlüssel und ist aus Git ausgeschlossen. Updates veröffentlichter APKs brauchen den ursprünglichen Projektschlüssel. Das private Secret `MEICRAFT_SIGNING_JSON` hat die Felder `keystore` (Base64-PKCS12), `password` und `alias` (`meicraft`); `scripts/restore-signing.py` stellt daraus den lokalen Schlüssel wieder her. CI-Testschlüssel werden nie veröffentlicht.
 
 Alternativ Android Studio oder `./gradlew --warning-mode=fail assembleDebug lintDebug`. Versionen stehen in `version.properties`. Compiler-, Lint- und Gradle-Warnungen führen zu Fehlern. Der Gradle-Prüfpfad verwendet AGP 9.5.0-rc01 mit Kotlin-Build-Komponente 2.4.21, um deren dokumentierte Configuration.setVisible-Probleme mit Gradle 9.8.2 zu beheben. Die veröffentlichte APK entsteht direkt mit den stabilen SDK-Werkzeugen.
 

@@ -10,6 +10,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -77,6 +78,8 @@ jobs:
             build/android-smoke.log
             build/android-update-seed.log
             build/qr.png
+            build/qr-receiver.png
+            build/qr-receiver-reverse.png
             build/night.png
             build/smoke.png
             build/landscape.png
