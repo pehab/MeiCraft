@@ -76,6 +76,7 @@ jobs:
             build/reports/
             build/android-smoke.log
             build/android-update-seed.log
+            build/night.png
             build/smoke.png
             build/landscape.png
             build/worlds.png

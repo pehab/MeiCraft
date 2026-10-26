@@ -3,7 +3,8 @@ package de.meiapps.meicraft;
 /** Offline progression and recipes, independent of Android and the renderer. */
 public final class Story {
  public final int[] inventory=new int[World.NAMES.length];
- public int chapter,iron,placed,glassPlaced;
+ public int chapter,iron,placed,glassPlaced,buckets;
+ public boolean sword;
  public static final String[] TOOLS={"Hand","Holzwerkzeug","Holzspitzhacke","Steinspitzhacke","Eisenspitzhacke"};
  public int tool(){return chapter>=5?4:chapter>=3?3:chapter>=2?2:chapter>=1?1:0;}
  public boolean furnace(){return chapter>=4;}
@@ -19,7 +20,11 @@ public final class Story {
  public String craft(int recipe){
   if(chapter<2)return "Baue zuerst die Werkbank im zweiten Auftrag.";
   int output=0,amount=0,costA=0,costB=0,typeA=0,typeB=0;
-  switch(recipe){case 0:output=9;amount=4;typeA=5;costA=1;break;case 1:output=7;amount=4;typeA=2;costA=4;typeB=3;costB=1;break;case 2:if(!furnace())return "Baue zuerst den Ofen.";output=8;amount=2;typeA=4;costA=2;typeB=5;costB=1;break;case 3:if(!furnace())return "Baue zuerst den Ofen.";if(inventory[13]<1||inventory[5]<1)return "Du brauchst 1 Eisenerz und 1 Holz.";if(iron>=1000000)return "Dein Vorrat ist voll.";inventory[13]--;inventory[5]--;iron++;return "1 Eisenbarren hergestellt";case 4:if(tool()<4)return "Stelle zuerst die Eisenspitzhacke her.";if(iron<9)return "Du brauchst 9 Eisenbarren.";if(!add(14,1))return "Dein Vorrat ist voll.";iron-=9;return "1 Eisenblock hergestellt";case 5:output=1;amount=4;typeA=2;costA=4;typeB=6;costB=1;break;default:return "Unbekanntes Rezept";}
+  switch(recipe){
+  case 6:if(iron<3)return "Du brauchst 3 Eisenbarren für einen Eiseneimer.";if(buckets>=1000000)return "Dein Vorrat ist voll.";iron-=3;buckets++;return "Eiseneimer hergestellt · − auf Lava zum Füllen";
+  case 7:if(iron<2||inventory[5]<1)return "Du brauchst 2 Eisenbarren und 1 Holz.";if(sword)return "Du hast schon ein Eisenschwert.";iron-=2;inventory[5]--;sword=true;return "Eisenschwert hergestellt · − zum Angreifen";
+  case 8:if(!furnace())return "Baue zuerst den Ofen.";if(buckets<1||inventory[11]<1||inventory[3]<4||inventory[5]<2)return "Du brauchst 1 leeren Eimer, 1 Leuchtstein, 4 Stein und 2 Holz.";if(!add(15,1))return "Dein Vorrat ist voll.";buckets--;inventory[11]--;inventory[3]-=4;inventory[5]-=2;return "Lavaeimer im Ofen geschmolzen";
+  case 0:output=9;amount=4;typeA=5;costA=1;break;case 1:output=7;amount=4;typeA=2;costA=4;typeB=3;costB=1;break;case 2:if(!furnace())return "Baue zuerst den Ofen.";output=8;amount=2;typeA=4;costA=2;typeB=5;costB=1;break;case 3:if(!furnace())return "Baue zuerst den Ofen.";if(inventory[13]<1||inventory[5]<1)return "Du brauchst 1 Eisenerz und 1 Holz.";if(iron>=1000000)return "Dein Vorrat ist voll.";inventory[13]--;inventory[5]--;iron++;return "1 Eisenbarren hergestellt";case 4:if(tool()<4)return "Stelle zuerst die Eisenspitzhacke her.";if(iron<9)return "Du brauchst 9 Eisenbarren.";if(!add(14,1))return "Dein Vorrat ist voll.";iron-=9;return "1 Eisenblock hergestellt";case 5:output=1;amount=4;typeA=2;costA=4;typeB=6;costB=1;break;default:return "Unbekanntes Rezept";}
   if(inventory[typeA]<costA||inventory[typeB]<costB)return "Dafür fehlen noch Rohstoffe.";
   if(!add(output,amount))return "Dein Vorrat ist voll.";inventory[typeA]-=costA;inventory[typeB]-=costB;return amount+" "+World.NAMES[output]+" hergestellt";
  }

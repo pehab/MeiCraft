@@ -10,7 +10,8 @@ import javax.microedition.khronos.egl.EGLConfig;
 final class VoxelRenderer implements GLSurfaceView.Renderer {
     final GameView view;
     World world;
-    int program,texture,pos,uv,light,mvp,camera,fog;
+    int program,texture,pos,uv,light,mvp,camera,fog,ambient,lamps;
+    final float[] lampData=new float[32];float lampTimer;
     final float[] projection=new float[16],look=new float[16],matrix=new float[16];
     final Mesh[] meshes=new Mesh[36];
     long last;
@@ -27,10 +28,10 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
     VoxelRenderer(GameView view){this.view=view;for(int i=0;i<36;i++)meshes[i]=new Mesh();}
     static int shader(int type,String source){int s=GLES20.glCreateShader(type);GLES20.glShaderSource(s,source);GLES20.glCompileShader(s);int[] ok=new int[1];GLES20.glGetShaderiv(s,GLES20.GL_COMPILE_STATUS,ok,0);if(ok[0]==0)throw new IllegalStateException(GLES20.glGetShaderInfoLog(s));return s;}
     @Override public void onSurfaceCreated(GL10 unused,EGLConfig config){
-        String vs="uniform mat4 uM;uniform vec3 uCamera;attribute vec3 aPos;attribute vec2 aUv;attribute float aLight;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){gl_Position=uM*vec4(aPos,1.0);vUv=aUv;vLight=aLight;vDistance=distance(aPos,uCamera);}";
-        String fs="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){vec3 c=texture2D(uTex,vUv).rgb*vLight;float f=smoothstep(27.0,55.0,vDistance);gl_FragColor=vec4(mix(c,uFog,f),1.0);}";
+        String vs="uniform mat4 uM;uniform vec3 uCamera;attribute vec3 aPos;attribute vec2 aUv;attribute float aLight;varying vec2 vUv;varying float vLight;varying float vDistance;varying vec3 vWorld;void main(){vWorld=aPos;gl_Position=uM*vec4(aPos,1.0);vUv=aUv;vLight=aLight;vDistance=distance(aPos,uCamera);}";
+        String fs="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;uniform float uAmbient;uniform vec4 uLamps[8];varying vec3 vWorld;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){float brightness=uAmbient;for(int i=0;i<8;i++){brightness=max(brightness,uLamps[i].w*max(0.0,1.0-distance(vWorld,uLamps[i].xyz)/6.0));}vec3 c=texture2D(uTex,vUv).rgb*min(vLight,1.0)*(vLight>1.1?1.0:brightness);float f=smoothstep(27.0,55.0,vDistance);gl_FragColor=vec4(mix(c,uFog,f),1.0);}";
         program=GLES20.glCreateProgram();GLES20.glAttachShader(program,shader(GLES20.GL_VERTEX_SHADER,vs));GLES20.glAttachShader(program,shader(GLES20.GL_FRAGMENT_SHADER,fs));GLES20.glLinkProgram(program);int[] linked=new int[1];GLES20.glGetProgramiv(program,GLES20.GL_LINK_STATUS,linked,0);if(linked[0]==0)throw new IllegalStateException(GLES20.glGetProgramInfoLog(program));
-        pos=GLES20.glGetAttribLocation(program,"aPos");uv=GLES20.glGetAttribLocation(program,"aUv");light=GLES20.glGetAttribLocation(program,"aLight");mvp=GLES20.glGetUniformLocation(program,"uM");camera=GLES20.glGetUniformLocation(program,"uCamera");fog=GLES20.glGetUniformLocation(program,"uFog");
+        pos=GLES20.glGetAttribLocation(program,"aPos");uv=GLES20.glGetAttribLocation(program,"aUv");light=GLES20.glGetAttribLocation(program,"aLight");mvp=GLES20.glGetUniformLocation(program,"uM");camera=GLES20.glGetUniformLocation(program,"uCamera");fog=GLES20.glGetUniformLocation(program,"uFog");ambient=GLES20.glGetUniformLocation(program,"uAmbient");lamps=GLES20.glGetUniformLocation(program,"uLamps[0]");
         int[] ids=new int[37];GLES20.glGenBuffers(36,ids,0);for(int i=0;i<36;i++){meshes[i].buffer=ids[i];meshes[i].dirty=true;}
         GLES20.glGenTextures(1,ids,0);texture=ids[0];GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,texture);
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_NEAREST);GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MAG_FILTER,GLES20.GL_NEAREST);
@@ -47,11 +48,11 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             int block=world.get(x,y,z);if(block==0)continue;
             for(int face=0;face<6;face++){
                 int neighbor=world.get(x+N[face][0],y+N[face][1],z+N[face][2]);
-                if(neighbor!=0 && !(neighbor==10&&block!=10))continue;
+                if(neighbor!=0 && !((neighbor==10||neighbor==15)&&block!=neighbor))continue;
                 if(y==0&&face==3)continue;
-                int tile=block==13?16:block==14?17:block;if(block==1)tile=face==2?1:face==3?2:13;if(block==5&&face>=2&&face<=3)tile=14;
+                int tile=block==13?16:block==14?17:block==15?18:block;if(block==1)tile=face==2?1:face==3?2:13;if(block==5&&face>=2&&face<=3)tile=14;
                 float u0=(tile*32+.5f)/1024f,u1=(tile*32+31.5f)/1024f;
-                float shade=block==11?1:SHADE[face];
+                float shade=block==11||block==15?1.2f:SHADE[face];
                 for(int corner:ORDER){float[] f=F[face];float u=(corner==0||corner==1)?u0:u1;float v=(corner==0||corner==3)?31.5f/32:.5f/32;data.add(x+f[corner*3],y+f[corner*3+1],z+f[corner*3+2],u,v,shade);}
             }
         }
@@ -61,21 +62,46 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
     @Override public void onDrawFrame(GL10 gl){
         long now=System.nanoTime();float dt=Math.min(.05f,(now-last)*1e-9f);last=now;
         world=view.world;if(world==null)return;
-        if(world!=view.renderedWorld){for(Mesh m:meshes)m.dirty=true;view.renderedWorld=world;}
+        if(world!=view.renderedWorld){for(Mesh m:meshes)m.dirty=true;view.renderedWorld=world;lampTimer=0;}
         synchronized(world){
             if(!view.activity.paused)view.tick(dt);
-            GLES20.glClearColor(.53f,.76f,.86f,1);GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT|GLES20.GL_DEPTH_BUFFER_BIT);
+            float daylight=world.story?world.survival.daylight():1;float skyR=.025f+.505f*daylight*daylight,skyG=.035f+.725f*daylight*daylight,skyB=.09f+.77f*daylight*daylight;GLES20.glClearColor(skyR,skyG,skyB,1);GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT|GLES20.GL_DEPTH_BUFFER_BIT);
             float dx=-(float)Math.sin(world.yaw)*(float)Math.cos(world.pitch),dy=(float)Math.sin(world.pitch),dz=-(float)Math.cos(world.yaw)*(float)Math.cos(world.pitch);
             Matrix.setLookAtM(look,0,world.x,world.y,world.z,world.x+dx,world.y+dy,world.z+dz,0,1,0);Matrix.multiplyMM(matrix,0,projection,0,look,0);
-            GLES20.glUseProgram(program);GLES20.glUniformMatrix4fv(mvp,1,false,matrix,0);GLES20.glUniform3f(camera,world.x,world.y,world.z);GLES20.glUniform3f(fog,.53f,.76f,.86f);
+            GLES20.glUseProgram(program);GLES20.glUniformMatrix4fv(mvp,1,false,matrix,0);GLES20.glUniform3f(camera,world.x,world.y,world.z);GLES20.glUniform3f(fog,skyR,skyG,skyB);GLES20.glUniform1f(ambient,daylight);lampTimer-=dt;if(lampTimer<=0){findLamps();lampTimer=.5f;}GLES20.glUniform4fv(lamps,8,lampData,0);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,texture);GLES20.glUniform1i(GLES20.glGetUniformLocation(program,"uTex"),0);
             GLES20.glEnableVertexAttribArray(pos);GLES20.glEnableVertexAttribArray(uv);GLES20.glEnableVertexAttribArray(light);
             for(int i=0;i<36;i++){Mesh m=meshes[i];if(m.dirty)mesh(i%6,i/6,m);float cx=i%6*16+8-world.x,cz=i/6*16+8-world.z;if(cx*cx+cz*cz>64*64)continue;
                 GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,m.buffer);GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,0);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,24,12);GLES20.glVertexAttribPointer(light,1,GLES20.GL_FLOAT,false,24,20);GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,m.count);
             }
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,0);
-            view.target=world.ray(6);outline(view.target);view.hud.postInvalidate();
+            drawMobs();view.target=world.ray(6);if(world.survival.aimed(world)==null)outline(view.target);view.hud.postInvalidate();
         }
+    }
+    void findLamps(){
+        java.util.Arrays.fill(lampData,0);float[] distances=new float[8];java.util.Arrays.fill(distances,Float.MAX_VALUE);
+        int cx=(int)world.x,cy=(int)world.y,cz=(int)world.z;
+        for(int x=cx-8;x<=cx+8;x++)for(int z=cz-8;z<=cz+8;z++)for(int y=cy-6;y<=cy+5;y++){
+            int b=world.get(x,y,z);if(b!=11&&b!=15)continue;float d=(x+.5f-world.x)*(x+.5f-world.x)+(y+.5f-world.y)*(y+.5f-world.y)+(z+.5f-world.z)*(z+.5f-world.z);
+            for(int i=0;i<8;i++)if(d<distances[i]){for(int j=7;j>i;j--){distances[j]=distances[j-1];System.arraycopy(lampData,(j-1)*4,lampData,j*4,4);}distances[i]=d;lampData[i*4]=x+.5f;lampData[i*4+1]=y+.5f;lampData[i*4+2]=z+.5f;lampData[i*4+3]=1;break;}
+        }
+    }
+    final Floats creatures=new Floats();
+    final FloatBuffer creatureBuffer=ByteBuffer.allocateDirect(100000*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+    void cube(float x,float y,float z,float sx,float sy,float sz,int tile){
+        for(int face=0;face<6;face++)for(int corner:ORDER){float[] f=F[face];float u=(tile*32+((corner==0||corner==1)?.5f:31.5f))/1024f,v=(corner==0||corner==3)?31.5f/32:.5f/32;
+            creatures.add(x+f[corner*3]*sx,y+f[corner*3+1]*sy,z+f[corner*3+2]*sz,u,v,SHADE[face]);}
+    }
+    void drawMobs(){
+        if(!world.story||world.survival.mobs.isEmpty())return;creatures.size=0;
+        for(Survival.Mob m:world.survival.mobs){float feet=m.y-1.6f,swing=(float)Math.sin(world.survival.time*5+m.x)*.1f;
+            cube(m.x-.3f,feet+.5f,m.z-.22f,.6f,.65f,.44f,19);
+            cube(m.x-.34f,feet+1.15f,m.z-.34f,.68f,.55f,.68f,20);
+            cube(m.x-.25f,feet,m.z-.18f+swing,.2f,.5f,.36f,19);cube(m.x+.05f,feet,m.z-.18f-swing,.2f,.5f,.36f,19);
+            cube(m.x-.48f,feet+.52f,m.z-.15f,.18f,.58f,.3f,19);cube(m.x+.3f,feet+.52f,m.z-.15f,.18f,.58f,.3f,19);
+        }
+        creatureBuffer.clear();creatureBuffer.put(creatures.values,0,creatures.size);creatureBuffer.position(0);GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,creatureBuffer);
+        creatureBuffer.position(3);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,24,creatureBuffer);creatureBuffer.position(5);GLES20.glVertexAttribPointer(light,1,GLES20.GL_FLOAT,false,24,creatureBuffer);GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,creatures.size/6);
     }
     final FloatBuffer outlineBuffer=ByteBuffer.allocateDirect(24*6*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
     void outline(int[] hit){

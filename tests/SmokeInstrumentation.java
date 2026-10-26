@@ -65,6 +65,48 @@ public final class SmokeInstrumentation extends Instrumentation {
   runOnMainSync(()->activity.switchMode(1));awaitSlot(activity,1);check(game.world.progress.inventory[9]==4&&game.world.progress.tool()==2,"story restores inventory and tools");
   CountDownLatch clean=new CountDownLatch(1);game.gl.queueEvent(()->{synchronized(game.world){World w=game.world;for(int x=44;x<=52;x++)for(int z=40;z<=52;z++)for(int y=32;y<=38;y++)w.set(x,y,z,0);w.x=spawn[0];w.y=spawn[1];w.z=spawn[2];w.yaw=.55f;w.pitch=-.38f;w.selected=9;for(VoxelRenderer.Mesh mesh:game.renderer.meshes)mesh.dirty=true;}clean.countDown();});check(clean.await(30,TimeUnit.SECONDS),"story showcase ready");
  }
+ void onGl(GameView game,Runnable task)throws Exception{
+  CountDownLatch done=new CountDownLatch(1);Throwable[] error=new Throwable[1];
+  game.gl.queueEvent(()->{try{synchronized(game.world){task.run();}}catch(Throwable t){error[0]=t;}finally{done.countDown();}});
+  check(done.await(30,TimeUnit.SECONDS),"survival GL operation completed");if(error[0]!=null)throw new AssertionError(error[0]);
+ }
+ void testSurvival(MainActivity activity,GameView game)throws Exception{
+  World original=game.world;
+  runOnMainSync(()->{activity.paused=true;activity.handler.removeCallbacks(activity.autosave);});
+  try{
+   onGl(game,()->{
+    World w=new World(5150,true);java.util.Arrays.fill(w.blocks,(byte)0);
+    for(int x=0;x<World.W;x++)for(int z=0;z<World.D;z++)w.blocks[World.index(x,32,z)]=3;
+    w.x=48.5f;w.y=34.62f;w.z=48.5f;w.yaw=0;w.pitch=-.32f;w.survival.time=510;w.progress.chapter=5;w.progress.sword=true;
+    w.survival.mobs.add(new Survival.Mob(48.5f,34.62f,46.5f));game.replace(w);activity.world=w;
+   });
+   runOnMainSync(()->activity.paused=false);
+   stickEvent(game,0,new int[]{5},new float[][]{{game.hud.mineX,game.hud.actionY}});for(int i=0;i<120;i++){Thread.sleep(50);boolean gone;synchronized(game.world){gone=game.world.survival.mobs.isEmpty();}if(gone)break;}stickEvent(game,1,new int[]{5},new float[][]{{game.hud.mineX,game.hud.actionY}});
+   runOnMainSync(()->activity.paused=true);
+   onGl(game,()->check(game.world.survival.mobs.isEmpty(),"held attack button defeats an aimed enemy using the sword"));
+   onGl(game,()->{World w=game.world;w.set(48,33,46,15);w.progress.buckets=1;w.yaw=0;w.pitch=-.55f;game.renderer.dirty(48,46);});
+   runOnMainSync(()->activity.paused=false);stickEvent(game,0,new int[]{5},new float[][]{{game.hud.mineX,game.hud.actionY}});Thread.sleep(200);stickEvent(game,1,new int[]{5},new float[][]{{game.hud.mineX,game.hud.actionY}});
+   runOnMainSync(()->activity.paused=true);
+   onGl(game,()->{check(game.world.get(48,33,46)==0&&game.world.progress.inventory[15]==1&&game.world.progress.buckets==0,"touch mining scoops lava into a finite bucket");game.world.selected=15;game.world.set(48,33,45,3);game.renderer.dirty(48,45);});
+   runOnMainSync(()->activity.paused=false);tap(game,game.hud.placeX,game.hud.actionY);runOnMainSync(()->activity.paused=true);
+   onGl(game,()->check(game.world.get(48,33,46)==15&&game.world.progress.inventory[15]==0&&game.world.progress.buckets==1,"touch placement pours lava and returns an empty bucket"));
+   runOnMainSync(activity::storyMenu);clickText("Nachtgegner:");check(!game.world.survival.enemiesEnabled,"Story settings can disable night enemies");clickText("Weiterbauen");
+   runOnMainSync(()->activity.paused=true);
+   onGl(game,()->{
+    World w=game.world;w.survival.enemiesEnabled=true;w.survival.time=520;w.yaw=0;w.pitch=-.08f;
+    w.survival.mobs.add(new Survival.Mob(48.5f,34.62f,43.5f));w.set(46,33,46,11);game.renderer.dirty(46,46);
+   });
+   Thread.sleep(800);
+   onGl(game,()->check(GLES20.glGetError()==GLES20.GL_NO_ERROR,"night lighting, lava and enemy meshes render without OpenGL errors"));
+   android.graphics.Bitmap night=smallScreenshot();if(night!=null){emitScreenshot(night,"nightScreenshot");night.recycle();}
+   float frozen=game.world.survival.time;Thread.sleep(200);check(game.world.survival.time==frozen,"paused game freezes night and enemies");
+   World loaded=World.decode(game.world.encode());check(loaded.survival.night()&&loaded.survival.mobs.size()==1&&loaded.get(48,33,46)==15&&loaded.progress.sword,"night, enemies, lava and equipment survive a save/reload");
+  }finally{
+   onGl(game,()->{game.replace(original);activity.world=original;});
+   runOnMainSync(()->{activity.paused=false;activity.save();activity.handler.postDelayed(activity.autosave,30000);});
+   activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);
+  }
+ }
  void field(String label,String value)throws Exception{
   for(int attempt=0;attempt<40;attempt++){
    android.view.accessibility.AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();
@@ -190,6 +232,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   check(java.util.Arrays.asList(context.getPackageManager().getPackageInfo(context.getPackageName(),android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions).contains("android.permission.INTERNET"),"update permission present");
   runOnMainSync(()->{synchronized(game.world){World w=game.world;w.yaw=.55f;w.pitch=-.38f;w.y=26;w.x=48.5f;w.z=48.5f;}activity.paused=false;});
   testStory(activity,game);
+  testSurvival(activity,game);
   Thread.sleep(1500);
   android.graphics.Bitmap screenshot=smallScreenshot();
   if(screenshot!=null){try(FileOutputStream out=context.openFileOutput("smoke.png",0)){screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}emitScreenshot(screenshot,"screenshot");screenshot.recycle();}

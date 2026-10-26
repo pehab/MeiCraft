@@ -2,7 +2,7 @@
 
 Eigenständiges Offline-Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Keine Konten, Werbung oder Käufe. Nur die abschaltbare Update-Prüfung verwendet das Internet.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.2.1
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.3.0
 
 ## Kreativ und Story
 
@@ -16,7 +16,17 @@ Der **Storymodus** speichert in einer eigenen Datei. Über **STORY** oben im Spi
 4. Einen Ofen bauen und Erz mit Holz als Brennstoff schmelzen.
 5. Eisenwerkzeug herstellen, Gebäude mit Fenstern bauen und tief im Gestein Leuchtstein finden.
 
-Die Werkbank stellt Bretter, Ziegel und Grasblöcke her. Im Ofen entstehen Glas und Eisenbarren; später lassen sich Eisenblöcke bauen. Die sieben Einführungskapitel gehen anschließend in freies Bauen mit begrenzten Ressourcen über. Hunger, Gegner, Multiplayer und fließendes Wasser sind noch nicht enthalten. Die Welt ist 96 × 96 × 48 Blöcke groß.
+Die Werkbank stellt Bretter, Ziegel und Grasblöcke her. Im Ofen entstehen Glas und Eisenbarren; später lassen sich Eisenblöcke bauen. Die sieben Einführungskapitel gehen anschließend in freies Bauen mit begrenzten Ressourcen über. Hunger, Rüstung, Explosionsgegner, Multiplayer und fließende Flüssigkeiten sind noch nicht enthalten. Die Welt ist 96 × 96 × 48 Blöcke groß.
+
+## Nacht, Gegner und Lava · 0.3.0
+
+Im Storymodus dauert ein Zyklus zwölf Minuten. Nach acht Minuten erscheinen draußen bis zu sechs **Nachtschatten**; beim Morgengrauen verschwinden sie. Der Himmel und die Landschaft werden dunkel, Leuchtstein und Lava leuchten. Mauern blockieren die Gegner, Gräben halten sie auf. Nahe Leuchtsteinen und Lava entstehen keine neuen Gegner. Zeit und Gegner stehen in Menüs und im Hintergrund still.
+
+Visiere einen Gegner an und halte **−** zum Nahkampf. Ein Eisenschwert kostet **2 Eisenbarren + 1 Holz** an der Werkbank. Die Anzeige zeigt Tagesphase, verbleibende Zeit bis zum Wechsel und zehn Lebenspunkte. Leben regeneriert nach einer Pause ohne Schaden. Bei einer Niederlage kehrst du zu einem sicheren Platz nahe dem ursprünglichen Start zurück; Bauwerke, Werkzeuge und Vorräte bleiben erhalten. Unter **STORY → Nachtgegner** kannst du Gegner ausschalten.
+
+**Lavagraben:** Grabe einen Graben, stelle einen Eiseneimer aus **3 Eisenbarren** her und suche in neuen Storywelten nach Lava in Steinbecken. Visiere die Lava an und tippe **−**, um den Eimer zu füllen. Wähle **Lava** in der Materialliste und gieße sie mit **+** in den Graben; der leere Eimer wird zurückgegeben. Auch Gegner nehmen durch Lava Schaden. Lava ist für dich ebenfalls gefährlich. Sie bleibt als gesetzter Block stehen und fließt noch nicht weiter.
+
+Bestehende Welten werden vollständig geladen, ohne neue Lavaquellen in Bauwerke zu setzen. Dort lässt sich ein Lavaeimer im Ofen aus **1 leerem Eimer + 1 Leuchtstein + 4 Stein + 2 Holz** herstellen. Das ist ein eigenes meiCraft-Rezept. Im Kreativmodus ist Lava unbegrenzt verfügbar; dort gibt es keine Gegner und keinen Lebensverlust. Uhrzeit, Gegner, Lebenspunkte und Ausrüstung werden pro Welt gespeichert; alte Speicherformate 1 und 2 bleiben lesbar.
 
 ![Storymodus](docs/story.png)
 
@@ -34,7 +44,7 @@ Automatisches Speichern alle 30 Sekunden und beim Wechsel in den Hintergrund; zu
 
 Updates: täglich automatisch beim Öffnen, abschaltbar, zusätzlich unter **☰ → Updates**. Downloads brauchen eine Bestätigung. Die App prüft SHA-256, Größe, Paketname, Version und Signatur vor der Android-Installation. Ein Update mit gleichem Signierschlüssel erhält beide Welten; eine Deinstallation entfernt den lokalen Fortschritt.
 
-Die Release-Pipeline erzeugt Prüfsumme und Update-Manifest aus der geprüften APK. Fehlt das private Signier-Secret in CI, kann eine lokal mit dem ursprünglichen Schlüssel signierte APK unter `dist/` verwendet werden. Dafür müssen sämtliche APK-Inhalte (Code, Manifest, Ressourcen und Assets; ausgenommen Signaturdateien) bytegenau mit dem frischen CI-Build übereinstimmen. Veraltete Pakete oder abweichende Signaturen verhindern die Veröffentlichung. Gegner, Waffen und Rüstung sind in der [Roadmap](docs/ROADMAP.md) vorgemerkt.
+Die Release-Pipeline erzeugt Prüfsumme und Update-Manifest aus der geprüften APK. Fehlt das private Signier-Secret in CI, kann eine lokal mit dem ursprünglichen Schlüssel signierte APK unter `dist/` verwendet werden. Dafür müssen sämtliche APK-Inhalte (Code, Manifest, Ressourcen und Assets; ausgenommen Signaturdateien) bytegenau mit dem frischen CI-Build übereinstimmen. Veraltete Pakete oder abweichende Signaturen verhindern die Veröffentlichung. Weitere Gegnertypen und Rüstung sind in der [Roadmap](docs/ROADMAP.md) vorgemerkt.
 
 ## Bauen und prüfen
 
@@ -48,7 +58,7 @@ bash scripts/build-upgrade-fixture.sh
 ./test-android-build.sh
 ```
 
-Die APK liegt unter `build/meiCraft-0.2.1.apk`. Der direkte SDK-Build benötigt keine Spielbibliotheken. `.signing/` enthält den privaten, lokal wiederverwendeten Schlüssel und ist aus Git ausgeschlossen. Updates veröffentlichter APKs brauchen den ursprünglichen Projektschlüssel. Das private Secret `MEICRAFT_SIGNING_JSON` hat die Felder `keystore` (Base64-PKCS12), `password` und `alias` (`meicraft`); `scripts/restore-signing.py` stellt daraus den lokalen Schlüssel wieder her. CI-Testschlüssel werden nie veröffentlicht.
+Die APK liegt unter `build/meiCraft-0.3.0.apk`. Der direkte SDK-Build benötigt keine Spielbibliotheken. `.signing/` enthält den privaten, lokal wiederverwendeten Schlüssel und ist aus Git ausgeschlossen. Updates veröffentlichter APKs brauchen den ursprünglichen Projektschlüssel. Das private Secret `MEICRAFT_SIGNING_JSON` hat die Felder `keystore` (Base64-PKCS12), `password` und `alias` (`meicraft`); `scripts/restore-signing.py` stellt daraus den lokalen Schlüssel wieder her. CI-Testschlüssel werden nie veröffentlicht.
 
 Alternativ Android Studio oder `./gradlew --warning-mode=fail assembleDebug lintDebug`. Versionen stehen in `version.properties`. Compiler-, Lint- und Gradle-Warnungen führen zu Fehlern. Der Gradle-Prüfpfad verwendet AGP 9.5.0-rc01 mit Kotlin-Build-Komponente 2.4.21, um deren dokumentierte Configuration.setVisible-Probleme mit Gradle 9.8.2 zu beheben. Die veröffentlichte APK entsteht direkt mit den stabilen SDK-Werkzeugen.
 
@@ -58,11 +68,11 @@ Auf einem Emulator ohne wertvollen Spielstand:
 bash scripts/smoke-android.sh
 ```
 
-CI prüft Android 11 und Android 17: tatsächliche Aktualisierung der bisherigen 0.2.0-APK (für CI neu signiert), Spielstanderhalt, ursprüngliche Wischsteuerung, Blick nach unten, Touch-Abbruch, festes Querformat und beide horizontalen Haltungen, System-Zurück, zeitgesteuertes Abbauen, Materialkosten, Werkzeug-Sperren, Rezeptdialoge sowie mehrere benannte Welten, Umbenennen, fehlgeschlagene Ladevorgänge und einen vollständigen Prozessneustart. Die Tests verändern ihre Testwelten.
+CI prüft Android 11 und Android 17: tatsächliche Aktualisierung der bisherigen 0.2.0-APK (für CI neu signiert), Spielstanderhalt, ursprüngliche Wischsteuerung, Blick nach unten, Touch-Abbruch, festes Querformat und beide horizontalen Haltungen, System-Zurück, zeitgesteuertes Abbauen, Materialkosten, Werkzeug-Sperren, Rezeptdialoge sowie mehrere benannte Welten, Umbenennen, fehlgeschlagene Ladevorgänge und einen vollständigen Prozessneustart. Neue Geräteprüfungen testen zusätzlich Schwertangriffe über den Touch-Button, Lava aufnehmen/ausgießen, Gegner ausschalten, Nacht-Rendering und eingefrorene Pausen. Die Tests verändern ihre Testwelten.
 
 ## Code und Assets
 
-`World.java`: Terrain, Kollisionen, Raycasting, Ressourcenaktionen und Speicherformat. `Story.java`: Aufträge, Werkzeugstufen, Inventar und Rezepte. `GameView.java`: bisherige Touch-Steuerung, Bewegung und HUD. `VoxelRenderer.java`: sichtbare Blockflächen in 16 × 16 großen Chunks, Texturen, Licht und Nebel. `MainActivity.java`: Dialoge, Weltwechsel und Lebenszyklus. `SavedWorld.java` und `WorldLibrary.java`: stabile Welt-IDs, Namen und getrennte atomare Speicherdateien.
+`World.java`: Terrain, Kollisionen, Raycasting, Ressourcenaktionen und Speicherformat. `Story.java`: Aufträge, Werkzeugstufen, Inventar und Rezepte. `Survival.java`: Tageszyklus, Gegner, Nahkampf, Schaden und Wiedereinstieg. `GameView.java`: bisherige Touch-Steuerung, Bewegung und HUD. `VoxelRenderer.java`: sichtbare Blockflächen in 16 × 16 großen Chunks, Texturen, Licht und Nebel. `MainActivity.java`: Dialoge, Weltwechsel und Lebenszyklus. `SavedWorld.java` und `WorldLibrary.java`: stabile Welt-IDs, Namen und getrennte atomare Speicherdateien.
 
 Alle Texturen sind prozedurale Originale. Neuerzeugen mit `python3 scripts/generate-textures.py` (Pillow). Keine Minecraft-Dateien oder Original-Assets; unabhängig von Mojang und Microsoft.
 
