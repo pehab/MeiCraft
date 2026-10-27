@@ -33,7 +33,7 @@ final class MainMenuView extends ScrollView {
 
         tools=column();
         LinearLayout heading=row();TextView headingText=text("Deine Welten",20,INK);bold(headingText);heading.addView(headingText,new LinearLayout.LayoutParams(0,-2,1));
-        TextView version=text("v"+activity.versionName(),11,MUTED);version.setGravity(Gravity.CENTER_VERTICAL|Gravity.RIGHT);heading.addView(version,new LinearLayout.LayoutParams(-2,dp(30)));tools.addView(heading);
+        TextView version=text("v"+activity.versionName(),11,MUTED);version.setGravity(Gravity.CENTER_VERTICAL|Gravity.END);heading.addView(version,new LinearLayout.LayoutParams(-2,dp(30)));tools.addView(heading);
         TextView sub=text("Bauen. Entdecken. Gemeinsam Ideen teilen.",12,MUTED);sub.setPadding(0,dp(2),0,dp(12));tools.addView(sub);
 
         LinearLayout current=column();current.setPadding(dp(14),dp(12),dp(14),dp(12));current.setBackground(shape(0xff223b3e,14,0xff39524c));
@@ -98,11 +98,11 @@ final class MainMenuView extends ScrollView {
 
     /** Small drawn symbols avoid emoji and font-dependent icons. */
     private static final class Icon extends View {
-        private final Paint paint=new Paint(3);private final int kind;
+        private final Paint paint=new Paint(3);private final Path outline=new Path();private final int kind;
         Icon(Context context,int kind){super(context);this.kind=kind;setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);}
         @Override protected void onDraw(Canvas canvas){
             canvas.save();canvas.scale(getWidth()/24f,getHeight()/24f);paint.setColor(GOLD);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.6f);paint.setStrokeJoin(Paint.Join.ROUND);
-            if(kind==0){Path p=new Path();p.moveTo(3,7);p.lineTo(3,4);p.lineTo(10,4);p.lineTo(13,7);p.lineTo(21,7);p.lineTo(21,20);p.lineTo(3,20);p.close();canvas.drawPath(p,paint);canvas.drawLine(3,10,21,10,paint);}
+            if(kind==0){Path p=outline;p.rewind();p.moveTo(3,7);p.lineTo(3,4);p.lineTo(10,4);p.lineTo(13,7);p.lineTo(21,7);p.lineTo(21,20);p.lineTo(3,20);p.close();canvas.drawPath(p,paint);canvas.drawLine(3,10,21,10,paint);}
             else if(kind==1){canvas.drawRoundRect(3,3,21,21,3,3,paint);canvas.drawLine(12,7,12,17,paint);canvas.drawLine(7,12,17,12,paint);}
             else{canvas.drawRect(2,2,8,8,paint);canvas.drawRect(2,15,8,21,paint);canvas.drawRect(15,2,21,8,paint);canvas.drawLine(13,17,23,17,paint);float end=kind==2?23:13,back=kind==2?19:17;canvas.drawLine(end,17,back,13,paint);canvas.drawLine(end,17,back,21,paint);}
             canvas.restore();
@@ -112,26 +112,31 @@ final class MainMenuView extends ScrollView {
     /** A deterministic block landscape, rendered once with the static menu. */
     private static final class Landscape extends View {
         private final Paint p=new Paint();
+        private final Path face=new Path();
+        private final Shader sky=new LinearGradient(0,0,320,460,new int[]{0xff163c42,0xff386c68,0xffcfb779},null,Shader.TileMode.CLAMP);
+        private final Shader shade=new LinearGradient(0,0,0,460,new int[]{0x99101f24,0x00101f24,0x00101f24,0xcc101f24},new float[]{0,.42f,.76f,1},Shader.TileMode.CLAMP);
+        private static final int[] FAR_HILLS={294,294,270,246,246,270,294,270,246,246,222,246,270,294};
+        private static final int[] NEAR_HILLS={342,318,318,294,318,342,342,342,318,318,294,318,342,342};
         Landscape(Context context){super(context);setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);}
         private void box(Canvas c,float l,float t,float r,float b,int color){p.setColor(color);c.drawRect(l,t,r,b,p);}
         private void land(Canvas c,int[] heights,int color){for(int i=0;i<heights.length;i++)box(c,i*24,heights[i],(i+1)*24,460,color);}
         private void cube(Canvas c,float x,float y,float w,int top,int front,int side){
-            Path face=new Path();face.moveTo(x,y);face.lineTo(x+w,y-w/2);face.lineTo(x+2*w,y);face.lineTo(x+w,y+w/2);face.close();p.setColor(top);c.drawPath(face,p);
+            face.rewind();face.moveTo(x,y);face.lineTo(x+w,y-w/2);face.lineTo(x+2*w,y);face.lineTo(x+w,y+w/2);face.close();p.setColor(top);c.drawPath(face,p);
             face.reset();face.moveTo(x,y);face.lineTo(x+w,y+w/2);face.lineTo(x+w,y+w*1.5f);face.lineTo(x,y+w);face.close();p.setColor(front);c.drawPath(face,p);
             face.reset();face.moveTo(x+w,y+w/2);face.lineTo(x+2*w,y);face.lineTo(x+2*w,y+w);face.lineTo(x+w,y+w*1.5f);face.close();p.setColor(side);c.drawPath(face,p);
         }
         @Override protected void onDraw(Canvas c){
             float scale=Math.max(getWidth()/320f,getHeight()/460f);c.save();c.translate((getWidth()-320*scale)/2,(getHeight()-460*scale)/2);c.scale(scale,scale);
-            p.setShader(new LinearGradient(0,0,320,460,new int[]{0xff163c42,0xff386c68,0xffcfb779},null,Shader.TileMode.CLAMP));c.drawRect(0,0,320,460,p);p.setShader(null);
+            p.setShader(sky);c.drawRect(0,0,320,460,p);p.setShader(null);
             box(c,235,188,267,220,0xfff5dba0);box(c,50,205,53,208,0xffc6d5b3);box(c,278,155,280,157,0xffc6d5b3);
-            land(c,new int[]{294,294,270,246,246,270,294,270,246,246,222,246,270,294},0xff3e6c63);
-            land(c,new int[]{342,318,318,294,318,342,342,342,318,318,294,318,342,342},0xff28534e);
+            land(c,FAR_HILLS,0xff3e6c63);
+            land(c,NEAR_HILLS,0xff28534e);
             box(c,0,360,320,460,0xff408079);box(c,185,370,263,373,0xff81b4a0);box(c,215,382,285,384,0xff70a38d);box(c,26,395,95,398,0xff70a38d);
             cube(c,54,325,42,0xff89ad61,0xff526c46,0xff394f3c);cube(c,12,346,42,0xff789e55,0xff48643e,0xff304a39);
             cube(c,96,346,42,0xff88b266,0xff526d45,0xff364e3c);cube(c,54,367,42,0xff759854,0xff46613c,0xff304937);
             box(c,81,280,90,337,0xff604e39);box(c,57,260,114,289,0xff3a7050);box(c,66,243,105,266,0xff54845a);box(c,75,234,96,250,0xff6c975d);
             cube(c,223,335,18,0xffffdf81,0xffbf984e,0xff997440);box(c,241,355,245,359,0xffffedb5);
-            p.setShader(new LinearGradient(0,0,0,460,new int[]{0x99101f24,0x00101f24,0x00101f24,0xcc101f24},new float[]{0,.42f,.76f,1},Shader.TileMode.CLAMP));c.drawRect(0,0,320,460,p);p.setShader(null);c.restore();
+            p.setShader(shade);c.drawRect(0,0,320,460,p);p.setShader(null);c.restore();
         }
     }
 }
