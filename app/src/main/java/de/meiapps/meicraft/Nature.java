@@ -18,6 +18,9 @@ public final class Nature {
     public static boolean liquid(int block){return block==10||block==15;}
     void changed(int x,int y,int z){
         int i=World.index(x,y,z);levels[i]=0;active.clear(i);springs.clear(i);
+        dirty(x,z);
+    }
+    void dirty(int x,int z){
         for(int cz=Math.max(0,(z-1)/16);cz<=Math.min(5,(z+1)/16);cz++)
             for(int cx=Math.max(0,(x-1)/16);cx<=Math.min(5,(x+1)/16);cx++)dirtyChunks|=1L<<(cz*6+cx);
     }
@@ -28,9 +31,11 @@ public final class Nature {
 
     public void tick(World w,float dt){
         if(!Float.isFinite(dt)||dt<=0)return;
+        w.forge.animation+=Math.min(dt,.1f);
         clock+=Math.min(dt,.1f);if(clock<.5f)return;clock-=.5f;step++;
         react(w);
         if(flowEnabled){flow(w,10);if(step%3==0)flow(w,15);}
+        w.forge.step(w);
         // One full pass every 36 seconds. Growth needs open sky and nearby grass.
         grow(w,128);
     }

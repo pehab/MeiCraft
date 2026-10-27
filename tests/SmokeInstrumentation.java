@@ -41,6 +41,11 @@ public final class SmokeInstrumentation extends Instrumentation {
     android.graphics.Rect bounds=new android.graphics.Rect();node.getBoundsInScreen(bounds);if(!node.isVisibleToUser()||bounds.isEmpty())continue;
     // Native dialog rows expose a semantic click, independent of window animations.
     if(node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)){waitForIdleSync();return;}
+    boolean actionable=node.isClickable();
+    for(android.view.accessibility.AccessibilityNodeInfo parent=node.getParent();parent!=null&&!actionable;parent=parent.getParent()){
+     String kind=String.valueOf(parent.getClassName());actionable=parent.isClickable()||kind.contains("ListView");
+    }
+    if(!actionable)continue; // Explanatory home labels are not substitutes for a pending dialog row.
     long now=SystemClock.uptimeMillis();android.view.MotionEvent down=android.view.MotionEvent.obtain(now,now,0,bounds.centerX(),bounds.centerY(),0);sendPointerSync(down);down.recycle();android.view.MotionEvent up=android.view.MotionEvent.obtain(now,now+30,1,bounds.centerX(),bounds.centerY(),0);sendPointerSync(up);up.recycle();waitForIdleSync();return;
    }
    if(attempt%4==3)scrollForward(root);Thread.sleep(100);
@@ -156,6 +161,70 @@ public final class SmokeInstrumentation extends Instrumentation {
    activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);
   }
  }
+ void testForge(MainActivity activity,GameView game)throws Exception{
+  World original=game.world;World fixture=new World(20261027,false);java.util.Arrays.fill(fixture.blocks,(byte)0);fixture.forge.initialize(fixture);
+  fixture.story=true;fixture.progress.chapter=7;fixture.nature.flowEnabled=false;fixture.survival.enemiesEnabled=false;fixture.survival.time=180;
+  for(int x=24;x<=38;x++)for(int z=24;z<=38;z++)fixture.set(x,4,z,3);
+  fixture.set(30,5,35,3);fixture.set(30,6,35,3);fixture.x=30.5f;fixture.y=8.62f;fixture.z=35.5f;fixture.yaw=.1f;fixture.pitch=-.5f;
+  int[] pattern=Forge.pattern(28,6,29,0,false);
+  for(int n=0;n<6;n++){int cell=pattern[n];fixture.set(cell%World.W,5,cell/World.W%World.D,15);fixture.set(cell%World.W,6,cell/World.W%World.D,Forge.PATTERN[n][2]);}
+  fixture.set(32,5,30,15);fixture.set(32,6,30,13);
+  runOnMainSync(()->{activity.paused=true;activity.handler.removeCallbacks(activity.autosave);});
+  try{
+   onGl(game,()->{game.replace(fixture);activity.world=fixture;});runOnMainSync(()->activity.paused=false);
+   boolean heated=false;for(int n=0;n<300;n++){synchronized(fixture){heated=fixture.forge.heat(32,6,30)>=.3f;}if(heated)break;Thread.sleep(50);}
+   check(heated,"live game clock heats ore and hidden ritual on Android");
+   runOnMainSync(()->activity.paused=true);onGl(game,()->{});
+   byte[] before;int age;synchronized(fixture){before=fixture.blocks.clone();age=fixture.forge.ores.get(World.index(32,6,30));World saved=World.decode(fixture.encode());check(saved.forge.ores.size()==1&&saved.forge.rituals.size()==1,"Android save/reload preserves both forge timers");}
+   Thread.sleep(700);synchronized(fixture){check(java.util.Arrays.equals(before,fixture.blocks)&&fixture.forge.ores.get(World.index(32,6,30))==age,"menus freeze active smelting and ritual progress");}
+   android.graphics.Bitmap heatedImage=smallScreenshot();if(heatedImage!=null){emitScreenshot(heatedImage,"forgeHeatScreenshot");heatedImage.recycle();}
+   runOnMainSync(()->activity.paused=false);
+   boolean finished=false;for(int n=0;n<600;n++){synchronized(fixture){finished=fixture.get(32,6,30)==16&&fixture.get(Math.min(pattern[2],pattern[3])%World.W,6,Math.min(pattern[2],pattern[3])/World.W%World.D)==11;}if(finished)break;Thread.sleep(50);}
+   check(finished,"real-time Android reactions produce raw iron and a glowstone");
+   int lava=0;synchronized(fixture){for(int cell:pattern)if(fixture.get(cell%World.W,5,cell/World.W%World.D)==15)lava++;}check(lava==6,"Android ritual leaves six reusable lava sources");
+   runOnMainSync(()->activity.paused=true);onGl(game,()->{float dx=32.5f-fixture.x,dz=30.5f-fixture.z;fixture.yaw=(float)Math.atan2(-dx,-dz);fixture.pitch=(float)Math.atan2(6.5f-fixture.y,Math.sqrt(dx*dx+dz*dz));});
+   game.gl.requestRender();Thread.sleep(200);android.graphics.Bitmap readyImage=smallScreenshot();if(readyImage!=null){emitScreenshot(readyImage,"forgeReadyScreenshot");readyImage.recycle();}
+   runOnMainSync(()->activity.paused=false);stickEvent(game,0,new int[]{5},new float[][]{{game.hud.mineX,game.hud.actionY}});
+   boolean collected=false;for(int n=0;n<100;n++){synchronized(fixture){collected=fixture.progress.iron==1;}if(collected)break;Thread.sleep(50);}
+   stickEvent(game,1,new int[]{5},new float[][]{{game.hud.mineX,game.hud.actionY}});check(collected&&fixture.get(32,6,30)==0,"touch mining raw iron yields exactly one iron bar");
+  }finally{runOnMainSync(()->activity.paused=true);onGl(game,()->{game.replace(original);activity.world=original;});runOnMainSync(()->{activity.paused=false;activity.save();activity.handler.postDelayed(activity.autosave,30000);});activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);}
+ }
+ boolean worldExists(WorldLibrary library,String id)throws Exception{for(SavedWorld entry:library.list())if(entry.id.equals(id))return true;return false;}
+ void deleteViaUi(MainActivity activity,String name,boolean confirm)throws Exception{
+  runOnMainSync(activity::showHome);clickText("Welten verwalten");clickText(name);clickText("Welt löschen");clickText(confirm?"Dauerhaft löschen":"Abbrechen");
+  for(int n=0;n<100&&activity.busy;n++)Thread.sleep(50);activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);waitForIdleSync();
+ }
+ void testHomeAndDeletion(MainActivity activity,GameView game)throws Exception{
+  String original=activity.active.id;int initial=activity.library.list().size();runOnMainSync(activity::showHome);check(activity.homeVisible&&activity.paused,"main menu pauses the world");waitForIdleSync();Thread.sleep(250);
+  android.graphics.Bitmap homeImage=smallScreenshot();if(homeImage!=null){emitScreenshot(homeImage,"homeScreenshot");homeImage.recycle();}
+  clickText("Über meiCraft");clickText("Zurück");check(activity.homeVisible&&activity.paused,"closing About returns to the paused home screen");
+  clickText("Steuerung");clickText("Verstanden");check(activity.paused,"closing help does not run the world behind the home screen");
+  SavedWorld temporary=activity.library.importCopy("Löschtest",game.world.encode());
+  deleteViaUi(activity,"Löschtest",false);check(worldExists(activity.library,temporary.id),"canceling delete retains the world");
+  deleteViaUi(activity,"Löschtest",true);check(!worldExists(activity.library,temporary.id)&&!activity.library.file(temporary).getBaseFile().exists(),"confirmed inactive world deletion removes metadata and snapshot");
+  check(activity.active.id.equals(original)&&activity.library.list().size()==initial,"deleting another world preserves the current world and all neighbors");
+  runOnMainSync(activity::newWorld);field("Weltname","Aktive Löschwelt");field("Seed","8754");clickText("Welt erstellen");awaitWorld(activity,"Aktive Löschwelt");SavedWorld activeDeleted=activity.active;
+  deleteViaUi(activity,"Aktive Löschwelt",true);check(activity.homeVisible&&activity.paused&&activity.active!=null&&!activity.active.id.equals(activeDeleted.id),"active deletion returns home with a different selected world");
+  runOnMainSync(activity::save);activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);check(!activity.library.file(activeDeleted).getBaseFile().exists()&&!worldExists(new WorldLibrary(activity.getFilesDir()),activeDeleted.id),"later autosaves cannot resurrect a deleted active world");
+  chooseWorld(activity,"Burg am See");check(activity.active.id.equals(original)&&activity.library.list().size()==initial,"world selection still works after active and inactive deletion");
+  File root=new File(activity.getCacheDir(),"isolated-delete-"+System.nanoTime());WorldLibrary isolated=new WorldLibrary(root);SavedWorld creative=SavedWorld.legacy(0),story=SavedWorld.legacy(1);
+  byte[] snapshot=game.world.encode();WorldLibrary.write(isolated.file(creative),snapshot);isolated.describe(creative);WorldLibrary.write(new android.util.AtomicFile(new File(root,"world.mcworld.bak")),snapshot);
+  isolated.delete(creative);check(isolated.list().size()==1&&!isolated.file(creative).getBaseFile().exists()&&!new File(root,"world.mcworld.bak").exists(),"legacy deletion removes the default save and its backup");
+  WorldLibrary.write(isolated.file(creative),snapshot);check(isolated.list().size()==1,"a stale default-world snapshot cannot recreate a deleted world");
+  boolean rejected=false;try{isolated.read(creative);}catch(IOException e){rejected=true;}check(rejected,"deleted default world cannot be silently regenerated");
+  isolated.delete(creative);isolated.delete(story);check(new WorldLibrary(root).list().isEmpty(),"deleting the last default world leaves an empty persistent library");
+  SavedWorld fresh=isolated.importCopy("Neue Welt nach dem Löschen",snapshot);check(isolated.list().size()==1,"a fresh world can be imported into an empty library");isolated.delete(fresh);check(isolated.list().isEmpty(),"the last named world can also be deleted");
+ }
+ void testEmptyLibrary(MainActivity activity,GameView game,Bundle result,boolean reopened)throws Exception{
+  if(!reopened){
+   SavedWorld last=activity.active;activity.disk.submit(()->{try{for(SavedWorld entry:activity.library.list())if(!entry.id.equals(last.id))activity.library.delete(entry);}catch(IOException e){throw new java.io.UncheckedIOException(e);}}).get(30,TimeUnit.SECONDS);
+   deleteViaUi(activity,last.name,true);
+  }
+  check(activity.homeVisible&&activity.paused&&activity.active==null&&activity.world==null&&game.world==null,"empty library remains at home without an active world");
+  check(activity.library.list().isEmpty(),"deleted worlds do not reappear after restart");
+  if(reopened){clickText("Neue Welt");field("Weltname","Neuanfang");field("Seed","12345");clickText("Welt erstellen");awaitWorld(activity,"Neuanfang");check(activity.library.list().size()==1,"new world creation works after deleting every world and restarting");}
+  result.putString("summary","PASS: "+checks+" empty library assertions");finish(Activity.RESULT_OK,result);
+ }
  void qrPreview(QrTransferActivity receiver,int orientation,int expectedRotation,String screenshot)throws Exception{
   runOnMainSync(()->receiver.setRequestedOrientation(orientation));
   boolean[] ready={false};
@@ -174,7 +243,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   int initial=activity.library.list().size();
   runOnMainSync(()->{synchronized(game.world){game.world.set(29,30,29,14);}});
   ActivityMonitor senderMonitor=addMonitor(QrTransferActivity.class.getName(),null,false);
-  runOnMainSync(activity::menu);clickText("Welt per QR teilen");
+  runOnMainSync(activity::showHome);clickText("Welt per QR teilen");clickText(activity.active.name);
   QrTransferActivity sender=(QrTransferActivity)waitForMonitorWithTimeout(senderMonitor,15000);removeMonitor(senderMonitor);
   check(sender!=null,"sharing menu opens the QR sender");
   for(int i=0;i<100;i++){boolean[] ready={false};runOnMainSync(()->ready[0]=sender.image.getDrawable()!=null);if(ready[0])break;Thread.sleep(100);}
@@ -189,10 +258,10 @@ public final class SmokeInstrumentation extends Instrumentation {
   emitScreenshot(optical,"qrScreenshot");optical.recycle();
   java.util.List<String> frames=new java.util.ArrayList<>(sender.frames);
   clickText("Langsamer");check(sender.delay==1200,"sender offers slower scanning speed");
-  clickText("Zurück");for(int i=0;i<60&&activity.paused;i++)Thread.sleep(100);
-  check(!activity.paused,"canceling QR export resumes the original world");
+  clickText("Zurück");waitForIdleSync();
+  check(activity.homeVisible&&activity.paused,"canceling QR export returns to the paused home screen");
   ActivityMonitor receiverMonitor=addMonitor(QrTransferActivity.class.getName(),null,false);
-  runOnMainSync(activity::menu);clickText("Welt per QR empfangen");
+  clickText("Welt per QR empfangen");
   QrTransferActivity receiver=(QrTransferActivity)waitForMonitorWithTimeout(receiverMonitor,15000);removeMonitor(receiverMonitor);
   check(receiver!=null,"receiving menu opens the QR camera");
   for(int i=0;i<100;i++){boolean[] ready={false};runOnMainSync(()->ready[0]=receiver.camera!=null&&receiver.camera.imageCount>0);if(ready[0])break;Thread.sleep(100);}
@@ -249,12 +318,12 @@ public final class SmokeInstrumentation extends Instrumentation {
   check(!activity.busy&&!activity.paused&&activity.active.name.equals(name),"world loaded: "+name);
  }
  void chooseWorld(MainActivity activity,String name)throws Exception{
-  runOnMainSync(activity::menu);clickText("Welten laden");clickText(name);awaitWorld(activity,name);
+  runOnMainSync(activity::showHome);clickText("Welten verwalten");clickText(name);clickText("Spielen");awaitWorld(activity,name);
  }
  void testWorldLibrary(MainActivity activity,GameView game)throws Exception{
   runOnMainSync(()->activity.switchMode(0));awaitSlot(activity,0);
   check(game.world.get(30,30,30)==11,"legacy creative world is preserved before creating worlds");
-  runOnMainSync(activity::menu);clickText("Neue Welt");field("Weltname","Burg");field("Seed","445566");clickText("Welt erstellen");awaitWorld(activity,"Burg");
+  runOnMainSync(activity::showHome);clickText("Neue Welt");field("Weltname","Burg");field("Seed","445566");clickText("Welt erstellen");awaitWorld(activity,"Burg");
   String castle=activity.active.id;check(!castle.equals("creative")&&activity.slot==0&&game.world.seed==445566,"new named creative world uses a separate ID and seed");
   runOnMainSync(()->{activity.paused=true;synchronized(game.world){game.world.set(30,35,30,7);game.world.selected=7;}activity.paused=false;activity.renameWorld();});field("Weltname","Burg am See");clickText("Umbenennen");awaitWorld(activity,"Burg am See");
   check(activity.active.id.equals(castle),"renaming preserves the world file identity");
@@ -305,7 +374,9 @@ public final class SmokeInstrumentation extends Instrumentation {
   Context context=getTargetContext();context.getSharedPreferences("MainActivity",0).edit().putBoolean("introduced",true).commit();
   MainActivity activity=(MainActivity)startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));waitForIdleSync();
   Thread.sleep(1800);
+  if(!"seed".equals(phase)){check(activity.homeVisible&&activity.paused,"launch opens the paused main menu");if(activity.world!=null)runOnMainSync(activity::resumeFromHome);}
   GameView game=activity.game;
+  if("empty-seed".equals(phase)||"empty-reopen".equals(phase)){testEmptyLibrary(activity,game,result,"empty-reopen".equals(phase));return;}
   if("worlds-reopen".equals(phase)){testReopened(activity,game,result);return;}
   if("seed".equals(phase)){
    runOnMainSync(()->activity.paused=true);
@@ -359,6 +430,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   testStory(activity,game);
   testSurvival(activity,game);
    testNature(activity,game);
+   testForge(activity,game);
    testQrTransfer(activity,game);
   Thread.sleep(1500);
   android.graphics.Bitmap screenshot=smallScreenshot();
@@ -366,6 +438,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,960);testSwipeControl(activity,game);
   orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,960);
   testWorldLibrary(activity,game);
+  testHomeAndDeletion(activity,game);
   android.graphics.Bitmap portrait=smallScreenshot();if(portrait!=null){emitScreenshot(portrait,"landscapeScreenshot");portrait.recycle();}
   result.putString("summary","PASS: "+checks+" Android assertions");finish(Activity.RESULT_OK,result);
  }catch(Throwable t){result.putString("error",android.util.Log.getStackTraceString(t));try{android.graphics.Bitmap failure=smallScreenshot();if(failure!=null){emitScreenshot(failure,"failureScreenshot");failure.recycle();}android.view.accessibility.AccessibilityNodeInfo root=getUiAutomation().getRootInActiveWindow();if(root!=null)result.putString("activeWindowPackage",String.valueOf(root.getPackageName()));}catch(Exception ignored){}finish(Activity.RESULT_CANCELED,result);}}

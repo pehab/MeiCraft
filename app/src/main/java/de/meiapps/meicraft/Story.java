@@ -8,9 +8,9 @@ public final class Story {
  public static final String[] TOOLS={"Hand","Holzwerkzeug","Holzspitzhacke","Steinspitzhacke","Eisenspitzhacke"};
  public int tool(){return chapter>=5?4:chapter>=3?3:chapter>=2?2:chapter>=1?1:0;}
  public boolean furnace(){return chapter>=4;}
- public static int needed(int block){switch(block){case 1:case 2:return 0;case 4:case 5:case 6:case 9:case 12:return 1;case 3:case 7:return 2;case 8:case 13:return 3;default:return 4;}}
+ public static int needed(int block){switch(block){case 1:case 2:return 0;case 4:case 5:case 6:case 9:case 12:return 1;case 3:case 7:return 2;case 8:case 13:case 16:return 3;default:return 4;}}
  public boolean canMine(int block){return block>0&&block<World.NAMES.length&&tool()>=needed(block);}
- public float seconds(int block){float base=block==3?1.25f:block==13?1.7f:block==11?2f:block==5?.9f:.5f;return base/(1+.18f*tool());}
+ public float seconds(int block){float base=block==3?1.25f:block==13||block==16?1.7f:block==11?2f:block==5?.9f:.5f;return base/(1+.18f*tool());}
  public boolean add(int block,int amount){if(block<=0||block>=inventory.length||amount<0||inventory[block]>1000000-amount)return false;inventory[block]+=amount;return true;}
  public boolean ready(){switch(chapter){case 0:return inventory[2]>=8;case 1:return inventory[2]>=8&&inventory[5]>=6;case 2:return inventory[3]>=12&&inventory[5]>=4;case 3:return inventory[3]>=8&&inventory[5]>=4;case 4:return iron>=4&&inventory[5]>=4;case 5:return placed>=30&&glassPlaced>=2;case 6:return inventory[11]>=4;default:return false;}}
  public String title(){switch(chapter){case 0:return "1 · Der Bauplatz";case 1:return "2 · Die Werkbank";case 2:return "3 · Härterer Stein";case 3:return "4 · Ein heißer Ofen";case 4:return "5 · Das Eisenwerkzeug";case 5:return "6 · Dein Zuhause";case 6:return "7 · Tief im Berg";default:return "Baumeister · Frei weiterbauen";}}
@@ -29,3 +29,4 @@ public final class Story {
   if(!add(output,amount))return "Dein Vorrat ist voll.";inventory[typeA]-=costA;inventory[typeB]-=costB;return amount+" "+World.NAMES[output]+" hergestellt";
  }
 }
+

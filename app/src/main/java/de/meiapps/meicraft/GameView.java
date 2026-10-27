@@ -16,7 +16,7 @@ final class GameView {
     final Object inputLock=new Object();
     float velocityY;boolean grounded;
     int moveId=-1,lookId=-1,verticalId=-1,mineId=-1;float lookX,lookY,knobX,knobY,mineTime;int[] miningTarget;volatile String status="";volatile long statusUntil;
-    static final int[] COLORS={0,0xff79b94f,0xff986a45,0xff8c9397,0xffdfcd91,0xff9c7246,0xff47944d,0xffbd6954,0xffb9e1e8,0xffbf955f,0xff3c9dbd,0xffffdb76,0xffe8f4f7,0xffaa8b77,0xffbac4ca,0xffff6624};
+    static final int[] COLORS={0,0xff79b94f,0xff986a45,0xff8c9397,0xffdfcd91,0xff9c7246,0xff47944d,0xffbd6954,0xffb9e1e8,0xffbf955f,0xff3c9dbd,0xffffdb76,0xffe8f4f7,0xffaa8b77,0xffbac4ca,0xffff6624,0xff634a42};
     GameView(MainActivity activity,World world){this.activity=activity;root=new FrameLayout(activity);this.world=world;
         gl=new GLSurfaceView(activity);gl.setEGLContextClientVersion(2);gl.setPreserveEGLContextOnPause(true);renderer=new VoxelRenderer(this);gl.setRenderer(renderer);root.addView(gl,new FrameLayout.LayoutParams(-1,-1));hud=new Hud(activity);root.addView(hud,new FrameLayout.LayoutParams(-1,-1));root.setKeepScreenOn(true);
     }
@@ -45,6 +45,7 @@ final class GameView {
         w.nature.tick(w,dt);
         if(w.survival.tick(w,dt)){velocityY=0;clearInput();}
         mining(dt);
+        if(!w.forge.notice.isEmpty()){message(w.forge.notice);w.forge.notice="";}
         if(!w.survival.notice.isEmpty()){message(w.survival.notice);w.survival.notice="";}
     }
     final class Hud extends View {
@@ -62,12 +63,12 @@ final class GameView {
             mineX=portrait?379:826;placeX=portrait?489:897;actionY=portrait?660:300;upX=portrait?489:897;downX=portrait?379:826;flyY=portrait?790:390;barX=portrait?26:260;barY=portrait?900:472;paletteX=portrait?474:716;
             scale=Math.min((getWidth()-left-right)/designW,(getHeight()-top-bottom)/designH);offsetX=left+(getWidth()-left-right-designW*scale)/2;offsetY=top+(getHeight()-top-bottom-designH*scale)/2;
         }
-        @Override protected void onDraw(Canvas c){World drawing=world;synchronized(drawing){super.onDraw(c);layoutHud();c.save();c.translate(offsetX,offsetY);c.scale(scale,scale);
+        @Override protected void onDraw(Canvas c){World drawing=world;if(drawing==null)return;synchronized(drawing){super.onDraw(c);layoutHud();c.save();c.translate(offsetX,offsetY);c.scale(scale,scale);
             box(c,20,16,221,55,0xbb153d42);text(c,"meiCraft",34,41,23,0xffffdb76);text(c,world.story?"STORY · "+Story.TOOLS[world.progress.tool()]:"OFFLINE · KREATIV",35,59,11,0xffd1e8e6);
             box(c,designW-93,18,72,49,0xcc153d42);center(c,"☰",designW-57,51,25,Color.WHITE);
             World w=world;int[] hit=target;
             {box(c,250,18,80,49,w.story&&w.progress.ready()?0xfff6d16c:0xcc153d42);center(c,"STORY",290,49,14,w.story&&w.progress.ready()?0xff153d42:Color.WHITE);if(w.story){float yy=designW<960?122:80;box(c,20,yy,designW<960?500:410,48,0xbb153d42);text(c,w.progress.goal(),31,yy+20,12,Color.WHITE);text(c,"− halten: abbauen · STORY: Auftrag / Rezepte",31,yy+38,11,0xffd1e8e6);}}
-            if(hit!=null){box(c,(designW-266)/2,designW<960?82:20,266,31,0x99152c32);center(c,(w.nature.spring(hit[0],hit[1],hit[2])?"Lavaquelle · nachfüllbar":w.nature.stream(hit[0],hit[1],hit[2])?World.NAMES[w.get(hit[0],hit[1],hit[2])]+" · fließend":World.NAMES[w.get(hit[0],hit[1],hit[2])]),designW/2,designW<960?103:41,15,Color.WHITE);}
+            if(hit!=null){box(c,(designW-266)/2,designW<960?82:20,266,31,0x99152c32);center(c,(w.nature.spring(hit[0],hit[1],hit[2])?"Lavaquelle · nachfüllbar":w.nature.stream(hit[0],hit[1],hit[2])?World.NAMES[w.get(hit[0],hit[1],hit[2])]+" · fließend":World.NAMES[w.get(hit[0],hit[1],hit[2])]+(w.forge.heat(hit[0],hit[1],hit[2])>0?" · glüht "+Math.round(w.forge.heat(hit[0],hit[1],hit[2])*100)+" %":"")),designW/2,designW<960?103:41,15,Color.WHITE);}
             float cx=(getWidth()/2f-offsetX)/scale,cy=(getHeight()/2f-offsetY)/scale;p.setColor(0xddffffff);p.setStrokeWidth(2);c.drawLine(cx-10,cy,cx-3,cy,p);c.drawLine(cx+3,cy,cx+10,cy,p);c.drawLine(cx,cy-10,cx,cy-3,p);c.drawLine(cx,cy+3,cx,cy+10,p);
             joystick(c,joyX,joyY,knobX,knobY,"BEWEGEN");
             button(c,mineX,actionY,"−",w.story&&w.survival.aimed(w)!=null?"ANGRIFF":hit!=null&&Nature.liquid(w.get(hit[0],hit[1],hit[2]))?"EIMER":"ABBAUEN");button(c,placeX,actionY,"+","SETZEN");

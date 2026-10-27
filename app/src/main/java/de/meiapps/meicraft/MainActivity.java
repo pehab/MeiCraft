@@ -12,20 +12,21 @@ import java.util.concurrent.*;
 public final class MainActivity extends Activity {
  GameView game; UpdateController updates; volatile World world;
  AtomicFile file; WorldLibrary library; SavedWorld active;
- volatile int slot; volatile boolean paused, busy;
+ volatile int slot; volatile boolean paused, busy,homeVisible;
+ MainMenuView home;
  final ExecutorService disk=Executors.newSingleThreadExecutor();
  final Handler handler=new Handler(Looper.getMainLooper());
  final Runnable autosave=new Runnable(){public void run(){save();handler.postDelayed(this,30000);}};
 
  SavedWorld selectedWorld(int mode){
   String id=getSharedPreferences("worlds",0).getString("selected-"+mode,SavedWorld.legacy(mode).id);
-  try { SavedWorld selected=library.entry(id); if(selected.mode==mode)return selected; }
-  catch(IOException ignored) { }
-  return SavedWorld.legacy(mode);
+  try{SavedWorld selected=library.entry(id);if(selected.mode==mode)return selected;}catch(IOException ignored){}
+  try{for(SavedWorld candidate:library.list())if(candidate.mode==mode)return candidate;}catch(IOException ignored){}
+  return null;
  }
- AtomicFile slotFile(int mode){return library.file(selectedWorld(mode));}
- void rememberActive(){getSharedPreferences("worlds",0).edit().putInt("active",slot)
-  .putString("activeWorld",active.id).putString("selected-"+slot,active.id).apply();}
+ AtomicFile slotFile(int mode){SavedWorld selected=selectedWorld(mode);return selected==null?null:library.file(selected);}
+ void rememberActive(){android.content.SharedPreferences.Editor editor=getSharedPreferences("worlds",0).edit();
+  if(active==null)editor.remove("activeWorld");else editor.putInt("active",slot).putString("activeWorld",active.id).putString("selected-"+slot,active.id);editor.apply();}
  World load(AtomicFile source,int mode,boolean[] recovered){
   try{World loaded=World.decode(source.readFully());if(loaded.story!=(mode==1))throw new IOException("Wrong world mode");return loaded;}
   catch(Exception e){recovered[0]=source.getBaseFile().exists();if(recovered[0])try{java.nio.file.Files.copy(source.getBaseFile().toPath(),new File(getFilesDir(),source.getBaseFile().getName()+"-damaged-"+System.currentTimeMillis()).toPath());}catch(IOException ignored){}return new World(20261025L+mode,mode==1);}
@@ -35,17 +36,22 @@ public final class MainActivity extends Activity {
   int oldMode=getSharedPreferences("worlds",0).getInt("active",0)==1?1:0;
   String id=getSharedPreferences("worlds",0).getString("activeWorld",SavedWorld.legacy(oldMode).id);
   boolean missing=false;
-  try{active=library.entry(id);}catch(IOException e){active=SavedWorld.legacy(oldMode);missing=true;}
-  slot=active.mode;file=library.file(active);boolean[] recovered={false};world=load(file,slot,recovered);rememberActive();
+  try{active=library.entry(id);}catch(IOException e){try{List<SavedWorld> available=library.list();active=available.isEmpty()?null:available.get(0);}catch(IOException ignored){active=null;}missing=true;}
+  boolean[] recovered={false};if(active!=null){slot=active.mode;file=library.file(active);world=load(file,slot,recovered);}else{slot=0;file=null;world=null;}rememberActive();
   game=new GameView(this,world);setContentView(game.root);updates=new UpdateController(this);immersive();
   if(Build.VERSION.SDK_INT>=33)getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,this::menu);
   if(recovered[0])new AlertDialog.Builder(this).setTitle("Spielstand nicht lesbar").setMessage("Die alte Datei wurde als Sicherung behalten. Eine neue Welt wurde geöffnet.").setPositiveButton("OK",null).show();
-  else if(missing)toast("Die zuletzt gewählte Welt konnte nicht geöffnet werden. Unter Welten laden findest du deine Welten.");
-  if(!getPreferences(0).getBoolean("introduced",false))new AlertDialog.Builder(this).setTitle("Willkommen bei meiCraft").setMessage("Links bewegen, rechts wischen zum Umsehen. Mit − abbauen, mit + bauen. Im Menü legst du neue Welten an und lädst deine gespeicherten Welten. Jede Welt speichert separat; beim Start wird die zuletzt gespielte Welt geladen.").setPositiveButton("Losbauen",(d,w)->getPreferences(0).edit().putBoolean("introduced",true).apply()).show();
+  else if(missing)toast("Die zuletzt gewählte Welt konnte nicht geöffnet werden. Unter Welten verwalten findest du deine Welten.");
+  showHome();
  }
  void immersive(){if(Build.VERSION.SDK_INT>=30){WindowInsetsController c=getWindow().getInsetsController();if(c!=null){c.hide(WindowInsets.Type.systemBars());c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);}}else immersiveLegacy();}
  @SuppressWarnings("deprecation") private void immersiveLegacy(){getWindow().getDecorView().setSystemUiVisibility(5894);}
- void resumePlay(){paused=busy;}
+ void resumePlay(){paused=busy||homeVisible;}
+ void showHome(){if(busy)return;game.gl.setRenderMode(android.opengl.GLSurfaceView.RENDERMODE_WHEN_DIRTY);paused=true;homeVisible=true;game.clearInput();if(home!=null)game.root.removeView(home);home=new MainMenuView(this);game.root.addView(home,new android.widget.FrameLayout.LayoutParams(-1,-1));}
+ void hideHome(){game.gl.setRenderMode(android.opengl.GLSurfaceView.RENDERMODE_CONTINUOUSLY);homeVisible=false;if(home!=null){game.root.removeView(home);home=null;}}
+ void resumeFromHome(){if(busy||world==null)return;hideHome();resumePlay();}
+ void about(){if(busy)return;paused=true;new AlertDialog.Builder(this).setTitle("Über meiCraft · "+versionName()).setMessage("Ein eigenständiges Klötzchenspiel von meiApps.\n\nWelten werden auf diesem Gerät gespeichert. Spielen und Teilen per QR funktionieren offline. Die Kamera wird nur beim Weltempfang verwendet. Keine Konten, Werbung oder Käufe.\n\nUpdates verwenden je nach Installation den Play Store oder GitHub.").setPositiveButton("Zurück",null).setNeutralButton("Update-Einstellungen",(d,n)->handler.post(updates::settings)).setOnDismissListener(d->resumePlay()).show();}
+ String versionName(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(android.content.pm.PackageManager.NameNotFoundException e){return "";}}
  void save(){save(false);}
  void save(boolean announce){
   if(world==null||file==null||busy||disk.isShutdown())return;
@@ -56,14 +62,14 @@ public final class MainActivity extends Activity {
  }
  void openWorld(SavedWorld target,Long seed){
   if(busy||disk.isShutdown())return;
-  if(seed==null&&active.id.equals(target.id)){resumePlay();return;}
+  if(seed==null&&active!=null&&active.id.equals(target.id)){resumeFromHome();return;}
   final byte[] outgoing;final AtomicFile outgoingFile=file;
-  try{synchronized(world){outgoing=world.encode();}}catch(IOException e){toast("Aktuelle Welt konnte nicht gespeichert werden");resumePlay();return;}
+  try{if(world==null)outgoing=null;else synchronized(world){outgoing=world.encode();}}catch(IOException e){toast("Aktuelle Welt konnte nicht gespeichert werden");resumePlay();return;}
   busy=true;paused=true;game.clearInput();
   disk.execute(()->{
    boolean saved=false;
    try{
-    WorldLibrary.write(outgoingFile,outgoing);saved=true;
+    if(outgoing!=null)WorldLibrary.write(outgoingFile,outgoing);saved=true;
     final World next;
     if(seed!=null){
      if(library.nameUsed(target.name,target.mode,target.id))throw new IOException("Dieser Weltname ist in diesem Modus schon vergeben.");
@@ -74,7 +80,7 @@ public final class MainActivity extends Activity {
      if(isFinishing()||isDestroyed())return;
      game.gl.queueEvent(()->{game.replace(next);runOnUiThread(()->{
       if(isFinishing()||isDestroyed())return;
-      world=next;active=target;file=library.file(target);slot=target.mode;rememberActive();busy=false;paused=false;save();
+      world=next;active=target;file=library.file(target);slot=target.mode;rememberActive();busy=false;hideHome();paused=false;save();
       toast(target.name+" geladen");
       if(next.story&&!getPreferences(0).getBoolean("storyIntroduced",false)){
        getPreferences(0).edit().putBoolean("storyIntroduced",true).apply();chapter();
@@ -85,26 +91,53 @@ public final class MainActivity extends Activity {
     runOnUiThread(()->{busy=false;resumePlay();toast(message);});}
   });
  }
- void switchMode(int target){openWorld(selectedWorld(target),null);}
+ void switchMode(int target){SavedWorld selected=selectedWorld(target);if(selected!=null)openWorld(selected,null);else{slot=target;newWorld();}}
  void chooseMode(){if(busy)return;paused=true;game.clearInput();new AlertDialog.Builder(this).setTitle("Weltmodus wechseln").setItems(new String[]{"Kreativ · Freies Bauen","Story · Sammeln und Werkzeuge"},(d,n)->switchMode(n)).setOnDismissListener(d->resumePlay()).show();}
  void showWorlds(){
   if(busy)return;busy=true;paused=true;game.clearInput();
   disk.execute(()->{
    try{List<SavedWorld> worlds=library.list();runOnUiThread(()->{
     if(isFinishing()||isDestroyed())return;busy=false;
-    String[] labels=new String[worlds.size()];for(int i=0;i<labels.length;i++){SavedWorld entry=worlds.get(i);labels[i]=entry.label()+(active.id.equals(entry.id)?" · aktiv":"");}
+    String[] labels=new String[worlds.size()];for(int i=0;i<labels.length;i++){SavedWorld entry=worlds.get(i);labels[i]=entry.label()+(active!=null&&active.id.equals(entry.id)?" · aktiv":"");}
     new AlertDialog.Builder(this).setTitle("Welten laden").setItems(labels,(d,n)->openWorld(worlds.get(n),null))
      .setNeutralButton("Neue Welt",(d,n)->handler.post(this::newWorld)).setNegativeButton("Zurück",null).setOnDismissListener(d->resumePlay()).show();
    });}catch(IOException e){runOnUiThread(()->{busy=false;resumePlay();toast("Welten konnten nicht aufgelistet werden.");});}
   });
  }
  void menu(){
-  if(paused||busy)return;paused=true;game.clearInput();
-  new AlertDialog.Builder(this).setTitle(active.label()).setItems(new String[]{"Weiterbauen","Welten laden","Neue Welt …","Spielstand speichern","Baumaterial wählen",world.story?"Laufmodus · Story":world.flying?"Laufen statt fliegen":"Fliegen statt laufen",world.story?"Story und Werkbank":"Storymodus entdecken","Welt umbenennen","Weltmodus wechseln","Steuerung","Updates","Welt per QR teilen","Welt per QR empfangen"},(d,n)->{
-   switch(n){case 1:handler.post(this::showWorlds);break;case 2:handler.post(this::newWorld);break;case 3:save(true);break;case 4:handler.post(this::palette);break;
-    case 5:if(world.story)toast("Im Storymodus läufst und springst du. ↑ hilft auch im Wasser.");else{synchronized(world){world.flying=!world.flying;}game.velocityY=0;}break;
-    case 6:handler.post(world.story?this::storyMenu:this::chooseMode);break;case 7:handler.post(this::renameWorld);break;case 8:handler.post(this::chooseMode);break;case 9:handler.post(this::help);break;case 10:handler.post(updates::settings);break;case 11:handler.post(()->qrTransfer(true));break;case 12:handler.post(()->qrTransfer(false));break;default:break;}
+  if(homeVisible){moveTaskToBack(true);return;}if(paused||busy)return;if(world==null){showHome();return;}paused=true;game.clearInput();
+  new AlertDialog.Builder(this).setTitle(active.label()).setItems(new String[]{"Weiterbauen","Spielstand speichern","Baumaterial wählen",world.story?"Story und Werkbank":world.flying?"Laufen statt fliegen":"Fliegen statt laufen","Hauptmenü"},(d,n)->{
+   switch(n){case 1:save(true);break;case 2:handler.post(this::palette);break;case 3:if(world.story)handler.post(this::storyMenu);else{synchronized(world){world.flying=!world.flying;}game.velocityY=0;}break;case 4:handler.post(this::showHome);break;default:break;}
   }).setOnDismissListener(d->resumePlay()).show();
+ }
+ void manageWorlds(){worldPicker(false);}
+ void pickShareWorld(){worldPicker(true);}
+ void worldPicker(boolean share){
+  if(busy)return;paused=true;game.clearInput();busy=true;disk.execute(()->{try{List<SavedWorld> worlds=library.list();runOnUiThread(()->{if(isFinishing()||isDestroyed())return;busy=false;
+   String[] names=new String[worlds.size()];for(int i=0;i<names.length;i++)names[i]=worlds.get(i).label();
+   AlertDialog.Builder builder=new AlertDialog.Builder(this).setTitle(share?"Welche Welt teilen?":"Deine Welten").setNegativeButton("Zurück",null).setOnDismissListener(d->resumePlay());
+   if(worlds.isEmpty())builder.setMessage("Noch keine Welten vorhanden. Erstelle eine neue Welt oder empfange eine Weltkopie.");
+   else builder.setItems(names,(d,n)->handler.post(()->{if(share)shareWorld(worlds.get(n));else worldActions(worlds.get(n));}));
+   if(!share)builder.setNeutralButton("Neue Welt",(d,n)->handler.post(this::newWorld));builder.show();
+  });}catch(IOException e){runOnUiThread(()->{busy=false;resumePlay();toast("Welten konnten nicht aufgelistet werden.");});}});
+ }
+ void worldActions(SavedWorld target){
+  paused=true;new AlertDialog.Builder(this).setTitle(target.label()).setItems(new String[]{"Spielen","Umbenennen","Per QR teilen","Welt löschen"},(d,n)->handler.post(()->{switch(n){case 0:openWorld(target,null);break;case 1:renameWorld(target);break;case 2:shareWorld(target);break;case 3:confirmDelete(target);break;default:break;}})).setNegativeButton("Zurück",(d,n)->handler.post(this::manageWorlds)).setOnDismissListener(d->resumePlay()).show();
+ }
+ void confirmDelete(SavedWorld target){
+  if(busy)return;paused=true;new AlertDialog.Builder(this).setTitle("Welt löschen?").setMessage("„"+target.name+"“ dauerhaft von diesem Gerät löschen? Bauten und Vorräte dieser Welt gehen verloren. Bereits geteilte Weltkopien bleiben erhalten.").setPositiveButton("Dauerhaft löschen",(d,n)->deleteWorld(target)).setNegativeButton("Abbrechen",null).setOnDismissListener(d->resumePlay()).show();
+ }
+ void deleteWorld(SavedWorld target){
+  if(busy)return;busy=true;paused=true;game.clearInput();boolean deletingActive=active!=null&&active.id.equals(target.id);
+  disk.execute(()->{try{
+   library.delete(target);SavedWorld fallback=null;World next=null;
+   if(deletingActive){List<SavedWorld> remaining;try{remaining=library.list();}catch(IOException e){remaining=java.util.Collections.emptyList();}for(SavedWorld candidate:remaining)try{next=library.read(candidate);fallback=candidate;break;}catch(IOException ignored){}}
+   final SavedWorld replacement=fallback;final World replacementWorld=next;
+   runOnUiThread(()->{if(isFinishing()||isDestroyed())return;android.content.SharedPreferences prefs=getSharedPreferences("worlds",0);android.content.SharedPreferences.Editor edit=prefs.edit();if(target.id.equals(prefs.getString("selected-"+target.mode,"")))edit.remove("selected-"+target.mode);edit.apply();
+    if(deletingActive){game.gl.queueEvent(()->{game.replace(replacementWorld);runOnUiThread(()->{world=replacementWorld;active=replacement;file=replacement==null?null:library.file(replacement);slot=replacement==null?0:replacement.mode;rememberActive();busy=false;showHome();toast("Welt gelöscht");});});}
+    else{busy=false;showHome();toast("Welt gelöscht");}
+   });
+  }catch(IOException e){runOnUiThread(()->{busy=false;resumePlay();toast("Welt konnte nicht gelöscht werden.");});}});
  }
  void help(){paused=true;game.clearInput();new AlertDialog.Builder(this).setTitle("Steuerung").setMessage("Links am Kreis bewegen, rechts wischen zum Umsehen. Mit + setzt du den ausgewählten Block neben den anvisierten Block.\n\nStory: − zum Abbauen gedrückt halten. Du brauchst passende Werkzeuge und gesammelte Materialien. Gras gibt Erde. Unter STORY findest du Mikos Aufträge und Rezepte. Baue Stufen aus gesammelten Blöcken, um Gruben zu verlassen.\n\n↑ springt oder schwimmt aufwärts. In der Kreativwelt kannst du zusätzlich fliegen. Jede Welt speichert separat, alle 30 Sekunden und beim Verlassen. Zum Spielen ist kein Internet nötig.\n\nNeu im Storymodus: Tag/Nacht, Nachtschatten, Leben, Eisenschwert und Lavaeimer. Die Anleitung findest du unter STORY → Überleben und Lavagraben.").setPositiveButton("Verstanden",null).setOnDismissListener(d->resumePlay()).show();}
  void palette(){paused=true;game.clearInput();String[] names=new String[World.NAMES.length-1];synchronized(world){for(int i=1;i<World.NAMES.length;i++)names[i-1]=World.NAMES[i]+(world.story?" · "+world.progress.inventory[i]:"");}new AlertDialog.Builder(this).setTitle("Baumaterial").setItems(names,(d,n)->{synchronized(world){world.selected=n+1;}paused=false;}).setOnCancelListener(d->resumePlay()).show();}
@@ -127,28 +160,31 @@ public final class MainActivity extends Activity {
    final long worldSeed=value;dialog.dismiss();handler.post(()->openWorld(target,worldSeed));
   });
  }
- void renameWorld(){
-  if(busy)return;paused=true;game.clearInput();EditText name=new EditText(this);name.setSingleLine(true);name.setText(active.name);name.setContentDescription("Weltname");name.selectAll();name.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(48)});
+ void renameWorld(){if(active!=null)renameWorld(active);}
+ void renameWorld(SavedWorld target){
+  if(busy)return;paused=true;game.clearInput();EditText name=new EditText(this);name.setSingleLine(true);name.setText(target.name);name.setContentDescription("Weltname");name.selectAll();name.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(48)});
   AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Weltnamen ändern").setView(name).setPositiveButton("Umbenennen",null).setNegativeButton("Abbrechen",null).setOnDismissListener(d->resumePlay()).create();dialog.show();
   dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
-   if(busy)return;final SavedWorld renamed;try{renamed=new SavedWorld(active.id,name.getText().toString(),active.mode);}catch(IllegalArgumentException e){name.setError(e.getMessage());return;}
+   if(busy)return;final SavedWorld renamed;try{renamed=new SavedWorld(target.id,name.getText().toString(),target.mode);}catch(IllegalArgumentException e){name.setError(e.getMessage());return;}
    busy=true;disk.execute(()->{try{
     if(library.nameUsed(renamed.name,renamed.mode,renamed.id))throw new IOException("Dieser Weltname ist in diesem Modus schon vergeben.");
-    library.describe(renamed);runOnUiThread(()->{active=renamed;busy=false;dialog.dismiss();toast("Welt umbenannt");});
+    library.describe(renamed);runOnUiThread(()->{if(active!=null&&active.id.equals(renamed.id))active=renamed;busy=false;dialog.dismiss();if(homeVisible)showHome();toast("Welt umbenannt");});
    }catch(IOException e){runOnUiThread(()->{busy=false;name.setError(e.getMessage());});}});
   });
  }
  @SuppressWarnings("deprecation") // Platform activity result API also works on Android 8 without a new UI framework.
  void launchQr(boolean sending){startActivityForResult(new android.content.Intent(this,QrTransferActivity.class).putExtra("send",sending),QrTransferActivity.REQUEST);}
  void qrTransfer(boolean sending){
-  if(busy)return;paused=true;game.clearInput();
-  if(!sending){launchQr(false);return;}
-  final byte[] packet;try{synchronized(world){packet=WorldTransfer.pack(active.name,world);}}
-  catch(IOException|IllegalArgumentException e){toast("Welt konnte nicht für QR vorbereitet werden.");resumePlay();return;}
-  busy=true;disk.execute(()->{try{
+  if(busy)return;paused=true;game.clearInput();if(!sending){launchQr(false);return;}if(active!=null)shareWorld(active);else pickShareWorld();
+ }
+ void shareWorld(SavedWorld target){
+  if(busy)return;paused=true;game.clearInput();busy=true;
+  final World current=active!=null&&active.id.equals(target.id)?world:null;
+  disk.execute(()->{try{
+   byte[] packet;if(current!=null)synchronized(current){packet=WorldTransfer.pack(target.name,current);}else packet=WorldTransfer.pack(target.name,library.read(target));
    WorldLibrary.write(new AtomicFile(new File(getCacheDir(),QrTransferActivity.OUTGOING)),packet);
    runOnUiThread(()->{busy=false;if(!isFinishing()&&!isDestroyed())launchQr(true);});
-  }catch(IOException e){runOnUiThread(()->{busy=false;resumePlay();toast("QR-Übertragung konnte nicht vorbereitet werden.");});}});
+  }catch(IOException|IllegalArgumentException e){runOnUiThread(()->{busy=false;resumePlay();toast("QR-Übertragung konnte nicht vorbereitet werden.");});}});
  }
  @SuppressWarnings("deprecation")
  @Override protected void onActivityResult(int request,int result,android.content.Intent data){

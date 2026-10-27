@@ -19,6 +19,7 @@ public final class NatureTests {
             out.writeInt(0x4d454943);out.writeInt(format);out.writeLong(w.seed);out.writeFloat(w.x);out.writeFloat(w.y);out.writeFloat(w.z);out.writeFloat(w.yaw);out.writeFloat(w.pitch);out.writeInt(w.selected);out.writeBoolean(w.flying);out.writeInt(w.blocks.length);out.write(w.blocks);
             if(format>=2){out.writeBoolean(w.story);out.writeInt(w.progress.chapter);out.writeInt(w.progress.iron);out.writeInt(w.progress.placed);out.writeInt(w.progress.glassPlaced);int count=format==2?15:16;out.writeInt(count);for(int i=0;i<count;i++)out.writeInt(w.progress.inventory[i]);}
             if(format>=3){out.writeInt(w.progress.buckets);out.writeBoolean(w.progress.sword);w.survival.write(out);}
+            if(format>=4)w.nature.write(out);
         }
         return bytes.toByteArray();
     }
