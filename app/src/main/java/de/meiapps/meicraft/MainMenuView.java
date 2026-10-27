@@ -9,8 +9,8 @@ import android.widget.*;
 /** The persistent, paused home screen. World operations live here rather than in the play menu. */
 final class MainMenuView extends ScrollView {
     private final MainActivity activity;
-    MainMenuView(MainActivity activity){
-        super(activity);this.activity=activity;setFillViewport(true);setBackgroundColor(0xff102e34);
+    MainMenuView(android.content.Context context){
+        super(context);this.activity=(MainActivity)context;MainActivity activity=this.activity;setFillViewport(true);setBackgroundColor(0xff102e34);
         LinearLayout root=new LinearLayout(activity);root.setOrientation(LinearLayout.VERTICAL);root.setGravity(Gravity.CENTER_VERTICAL);int pad=dp(18);root.setPadding(pad,pad,pad,pad);addView(root);
         TextView title=label("meiCraft",38,0xffffdb76);title.setTypeface(Typeface.create("sans-serif-black",Typeface.BOLD));root.addView(title);
         root.addView(label("Deine Welten. Deine Geschichten.",14,0xffb6d9d6));

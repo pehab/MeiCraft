@@ -41,6 +41,11 @@ public final class SmokeInstrumentation extends Instrumentation {
     android.graphics.Rect bounds=new android.graphics.Rect();node.getBoundsInScreen(bounds);if(!node.isVisibleToUser()||bounds.isEmpty())continue;
     // Native dialog rows expose a semantic click, independent of window animations.
     if(node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)){waitForIdleSync();return;}
+    boolean actionable=node.isClickable();
+    for(android.view.accessibility.AccessibilityNodeInfo parent=node.getParent();parent!=null&&!actionable;parent=parent.getParent()){
+     String kind=String.valueOf(parent.getClassName());actionable=parent.isClickable()||kind.contains("ListView");
+    }
+    if(!actionable)continue; // Explanatory home labels are not substitutes for a pending dialog row.
     long now=SystemClock.uptimeMillis();android.view.MotionEvent down=android.view.MotionEvent.obtain(now,now,0,bounds.centerX(),bounds.centerY(),0);sendPointerSync(down);down.recycle();android.view.MotionEvent up=android.view.MotionEvent.obtain(now,now+30,1,bounds.centerX(),bounds.centerY(),0);sendPointerSync(up);up.recycle();waitForIdleSync();return;
    }
    if(attempt%4==3)scrollForward(root);Thread.sleep(100);
