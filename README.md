@@ -2,7 +2,19 @@
 
 Eigenständiges Offline-Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Keine Konten, Werbung oder Käufe. Nur die abschaltbare Update-Prüfung verwendet das Internet.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.5.1
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.6.0
+
+## Hauptmenü und Weltenverwaltung · 0.6.0
+
+Beim Start erscheint das Hauptmenü. **Weiterbauen** öffnet die zuletzt gewählte Welt; **Welten verwalten** bietet Spielen, Umbenennen, QR-Teilen und Löschen für jede Welt. Gelöscht wird erst nach ausdrücklicher Bestätigung. Auch die gerade geöffnete und die letzte Welt können entfernt werden; gelöschte Welten tauchen weder durch Autospeichern noch nach einem Neustart wieder auf. Nach dem Löschen aller Welten lassen sich neue Welten anlegen oder per QR empfangen.
+
+Im Hauptmenü liegen außerdem neue Welten, QR-Empfang, Update-Suche, Steuerung und **Über meiCraft** mit Version und Update-Einstellungen. Das Pausenmenü im Spiel enthält nur noch die direkten Spielaktionen und den Weg zum Hauptmenü. Im Hauptmenü steht die Spielzeit still.
+
+## Versteckte Reaktionen in der Welt · 0.6.0
+
+Lava kann mehr als leuchten: Manche Materialien verändern sich, wenn man sie längere Zeit direkt über einer Quelle platziert. Glühen, Funken und die Anzeige beim Anvisieren zeigen eine begonnene Reaktion. In neuen Storywelten kann eine verfallene Glutstätte einen Hinweis liefern. Diese Möglichkeiten stehen nicht in der Rezeptliste der Werkbank.
+
+Die Reaktionen funktionieren auch in bestehenden Welten, deren Landschaft beim Laden unverändert bleibt. Neu gespeicherte Welten verwenden Format 5 und erhalten laufende Reaktionen über Laden, App-Neustart und QR-Übertragung. Alte Formate 1–4 bleiben lesbar. Zum Empfangen von Welten aus 0.6.0 muss das andere Gerät ebenfalls aktualisiert sein.
 
 ## Kreativ und Story
 
@@ -80,7 +92,7 @@ bash scripts/build-upgrade-fixture.sh
 ./test-android-build.sh
 ```
 
-Die APK liegt unter `build/meiCraft-0.5.1.apk`. Der direkte SDK-Build benötigt keine Spielbibliotheken. `.signing/` enthält den privaten, lokal wiederverwendeten Schlüssel und ist aus Git ausgeschlossen. Updates veröffentlichter APKs brauchen den ursprünglichen Projektschlüssel. Das private Secret `MEICRAFT_SIGNING_JSON` hat die Felder `keystore` (Base64-PKCS12), `password` und `alias` (`meicraft`); `scripts/restore-signing.py` stellt daraus den lokalen Schlüssel wieder her. CI-Testschlüssel werden nie veröffentlicht.
+Die APK liegt unter `build/meiCraft-0.6.0.apk`. Der direkte SDK-Build benötigt keine Spielbibliotheken. `.signing/` enthält den privaten, lokal wiederverwendeten Schlüssel und ist aus Git ausgeschlossen. Updates veröffentlichter APKs brauchen den ursprünglichen Projektschlüssel. Das private Secret `MEICRAFT_SIGNING_JSON` hat die Felder `keystore` (Base64-PKCS12), `password` und `alias` (`meicraft`); `scripts/restore-signing.py` stellt daraus den lokalen Schlüssel wieder her. CI-Testschlüssel werden nie veröffentlicht.
 
 Alternativ Android Studio oder `./gradlew --warning-mode=fail assembleDebug lintDebug`. Versionen stehen in `version.properties`. Compiler-, Lint- und Gradle-Warnungen führen zu Fehlern. Der Gradle-Prüfpfad verwendet AGP 9.5.0-rc01 mit Kotlin-Build-Komponente 2.4.21, um deren dokumentierte Configuration.setVisible-Probleme mit Gradle 9.8.2 zu beheben. Die veröffentlichte APK entsteht direkt mit den stabilen SDK-Werkzeugen.
 

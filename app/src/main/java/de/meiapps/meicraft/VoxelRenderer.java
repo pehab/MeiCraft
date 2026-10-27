@@ -45,14 +45,14 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
     static final class Floats{float[] values=new float[8192];int size;void add(float a,float b,float c,float u,float v,float l){if(size+6>values.length)values=java.util.Arrays.copyOf(values,values.length*2);values[size++]=a;values[size++]=b;values[size++]=c;values[size++]=u;values[size++]=v;values[size++]=l;}}
     void mesh(int cx,int cz,Mesh mesh){Floats data=new Floats();
         for(int y=0;y<World.H;y++)for(int z=cz*16;z<cz*16+16;z++)for(int x=cx*16;x<cx*16+16;x++){
-            int block=world.get(x,y,z);if(block==0)continue;
+            int block=world.get(x,y,z);if(block==0)continue;float heat=world.forge.heat(x,y,z);
             for(int face=0;face<6;face++){
                 int neighbor=world.get(x+N[face][0],y+N[face][1],z+N[face][2]);
                 if(neighbor!=0 && !((neighbor==10||neighbor==15)&&block!=neighbor))continue;
                 if(y==0&&face==3)continue;
-                int tile=block==13?16:block==14?17:block==15?18:block;if(block==1)tile=face==2?1:face==3?2:13;if(block==5&&face>=2&&face<=3)tile=14;
+                int tile=block==16?21:block==13?(heat>0?22:16):block==14?(heat>0?23:17):block==15?18:block;if(block==1)tile=face==2?1:face==3?2:13;if(block==5&&face>=2&&face<=3)tile=14;
                 float u0=(tile*32+.5f)/1024f,u1=(tile*32+31.5f)/1024f;
-                float shade=block==11||block==15?1.2f:SHADE[face];
+                float shade=block==11||block==15||block==16||heat>0?1.2f:SHADE[face];
                 for(int corner:ORDER){float[] f=F[face];float u=(corner==0||corner==1)?u0:u1;float v=(corner==0||corner==3)?31.5f/32:.5f/32;data.add(x+f[corner*3],y+f[corner*3+1],z+f[corner*3+2],u,v,shade);}
             }
         }
@@ -83,24 +83,33 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
         java.util.Arrays.fill(lampData,0);float[] distances=new float[8];java.util.Arrays.fill(distances,Float.MAX_VALUE);
         int cx=(int)world.x,cy=(int)world.y,cz=(int)world.z;
         for(int x=cx-8;x<=cx+8;x++)for(int z=cz-8;z<=cz+8;z++)for(int y=cy-6;y<=cy+5;y++){
-            int b=world.get(x,y,z);if(b!=11&&b!=15)continue;float d=(x+.5f-world.x)*(x+.5f-world.x)+(y+.5f-world.y)*(y+.5f-world.y)+(z+.5f-world.z)*(z+.5f-world.z);
-            for(int i=0;i<8;i++)if(d<distances[i]){for(int j=7;j>i;j--){distances[j]=distances[j-1];System.arraycopy(lampData,(j-1)*4,lampData,j*4,4);}distances[i]=d;lampData[i*4]=x+.5f;lampData[i*4+1]=y+.5f;lampData[i*4+2]=z+.5f;lampData[i*4+3]=1;break;}
+            int b=world.get(x,y,z);float heat=world.forge.heat(x,y,z);if(b!=11&&b!=15&&b!=16&&heat<=0)continue;float d=(x+.5f-world.x)*(x+.5f-world.x)+(y+.5f-world.y)*(y+.5f-world.y)+(z+.5f-world.z)*(z+.5f-world.z);
+            for(int i=0;i<8;i++)if(d<distances[i]){for(int j=7;j>i;j--){distances[j]=distances[j-1];System.arraycopy(lampData,(j-1)*4,lampData,j*4,4);}distances[i]=d;lampData[i*4]=x+.5f;lampData[i*4+1]=y+.5f;lampData[i*4+2]=z+.5f;lampData[i*4+3]=b==16?.4f:heat>0?.25f+.7f*heat:1;break;}
         }
     }
     final Floats creatures=new Floats();
     final FloatBuffer creatureBuffer=ByteBuffer.allocateDirect(100000*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
     void cube(float x,float y,float z,float sx,float sy,float sz,int tile){
         for(int face=0;face<6;face++)for(int corner:ORDER){float[] f=F[face];float u=(tile*32+((corner==0||corner==1)?.5f:31.5f))/1024f,v=(corner==0||corner==3)?31.5f/32:.5f/32;
-            creatures.add(x+f[corner*3]*sx,y+f[corner*3+1]*sy,z+f[corner*3+2]*sz,u,v,SHADE[face]);}
+            creatures.add(x+f[corner*3]*sx,y+f[corner*3+1]*sy,z+f[corner*3+2]*sz,u,v,tile==24?1.2f:SHADE[face]);}
     }
     void drawMobs(){
-        if(!world.story||world.survival.mobs.isEmpty())return;creatures.size=0;
-        for(Survival.Mob m:world.survival.mobs){float feet=m.y-1.6f,swing=(float)Math.sin(world.survival.time*5+m.x)*.1f;
+        creatures.size=0;
+        if(world.story)for(Survival.Mob m:world.survival.mobs){float feet=m.y-1.6f,swing=(float)Math.sin(world.survival.time*5+m.x)*.1f;
             cube(m.x-.3f,feet+.5f,m.z-.22f,.6f,.65f,.44f,19);
             cube(m.x-.34f,feet+1.15f,m.z-.34f,.68f,.55f,.68f,20);
             cube(m.x-.25f,feet,m.z-.18f+swing,.2f,.5f,.36f,19);cube(m.x+.05f,feet,m.z-.18f-swing,.2f,.5f,.36f,19);
             cube(m.x-.48f,feet+.52f,m.z-.15f,.18f,.58f,.3f,19);cube(m.x+.3f,feet+.52f,m.z-.15f,.18f,.58f,.3f,19);
         }
+        int sparks=0;
+        for(java.util.Map.Entry<Integer,Float> hot:world.forge.glow.entrySet()){
+            int i=hot.getKey(),block=world.blocks[i]&255;if(block!=13&&block!=14)continue;
+            float x=i%World.W+.5f,y=i/(World.W*World.D)+1,z=i/World.W%World.D+.5f;
+            if(Math.abs(x-world.x)>12||Math.abs(z-world.z)>12||Math.abs(y-world.y)>8||sparks++>=48)continue;
+            float phase=(world.forge.animation*.8f+(i%17)/17f)%1f;
+            cube(x+(float)Math.sin(i+phase*5)*.24f,y+phase*.7f,z+(float)Math.cos(i+phase*4)*.24f,.055f,.055f,.055f,24);
+        }
+        if(creatures.size==0)return;
         creatureBuffer.clear();creatureBuffer.put(creatures.values,0,creatures.size);creatureBuffer.position(0);GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,creatureBuffer);
         creatureBuffer.position(3);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,24,creatureBuffer);creatureBuffer.position(5);GLES20.glVertexAttribPointer(light,1,GLES20.GL_FLOAT,false,24,creatureBuffer);GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,creatures.size/6);
     }

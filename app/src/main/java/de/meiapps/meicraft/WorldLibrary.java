@@ -13,7 +13,16 @@ final class WorldLibrary {
     }
     AtomicFile file(SavedWorld world) { return new AtomicFile(new File(root, world.dataPath())); }
     private AtomicFile metadata(String id) { return new AtomicFile(new File(directory, id + ".meta")); }
+    private AtomicFile tombstone(String id) { return new AtomicFile(new File(directory,id+".deleted")); }
+    private boolean deleted(String id) {File marker=tombstone(id).getBaseFile();return marker.exists()||new File(marker+".bak").exists();}
+    private void erase(SavedWorld world){file(world).delete();metadata(world.id).delete();}
+    void delete(SavedWorld world)throws IOException{
+        // Mark first: a crash, a stale save or a legacy fallback must never resurrect this world.
+        write(tombstone(world.id),new byte[]{1});erase(world);
+    }
     SavedWorld entry(String id) throws IOException {
+        try{new SavedWorld(id,"Prüfung","story".equals(id)?1:0);}catch(IllegalArgumentException e){throw new IOException("Ungültige Welt-ID",e);}
+        if(deleted(id))throw new IOException("Diese Welt wurde gelöscht.");
         if ("creative".equals(id) || "story".equals(id)) {
             AtomicFile meta = metadata(id);
             if (!meta.getBaseFile().exists() && !new File(meta.getBaseFile() + ".bak").exists())
@@ -25,7 +34,7 @@ final class WorldLibrary {
     }
     List<SavedWorld> list() throws IOException {
         LinkedHashMap<String, SavedWorld> entries = new LinkedHashMap<>();
-        entries.put("creative", entry("creative")); entries.put("story", entry("story"));
+        if(!deleted("creative"))entries.put("creative", entry("creative")); if(!deleted("story"))entries.put("story", entry("story"));
         if (directory.exists()) {
             File[] files = directory.listFiles();
             if (files == null) throw new IOException("Weltenordner nicht lesbar");
@@ -34,7 +43,7 @@ final class WorldLibrary {
                 if (name.endsWith(".meta.bak")) name = name.substring(0, name.length() - 4);
                 if (name.endsWith(".meta")) {
                     String id = name.substring(0, name.length() - 5);
-                    if (!entries.containsKey(id)) entries.put(id, entry(id));
+                    if (!deleted(id)&&!entries.containsKey(id)) entries.put(id, entry(id));
                 }
             }
         }
@@ -42,13 +51,14 @@ final class WorldLibrary {
         result.sort(Comparator.comparingInt((SavedWorld w) -> w.mode).thenComparing(w -> w.name, String.CASE_INSENSITIVE_ORDER));
         return result;
     }
-    void describe(SavedWorld world) throws IOException { write(metadata(world.id), world.encode()); }
+    void describe(SavedWorld world) throws IOException { if(deleted(world.id))throw new IOException("Diese Welt wurde gelöscht.");write(metadata(world.id), world.encode()); }
     boolean nameUsed(String name, int mode, String exceptId) throws IOException {
         for (SavedWorld world : list())
             if (world.mode == mode && !world.id.equals(exceptId) && world.name.equalsIgnoreCase(name.trim())) return true;
         return false;
     }
     World read(SavedWorld entry) throws IOException {
+        if(deleted(entry.id))throw new IOException("Diese Welt wurde gelöscht.");
         AtomicFile source = file(entry);
         if (("creative".equals(entry.id) || "story".equals(entry.id))
                 && !source.getBaseFile().exists() && !new File(source.getBaseFile() + ".bak").exists())
