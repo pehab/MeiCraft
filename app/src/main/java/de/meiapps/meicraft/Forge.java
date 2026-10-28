@@ -79,10 +79,12 @@ public final class Forge {
         Random random=new Random(w.seed^0x474c5554L);
         for(int attempt=0;attempt<600;attempt++){
             int x=8+random.nextInt(World.W-16),z=8+random.nextInt(World.D-16);if(Math.abs(x-w.x)+Math.abs(z-w.z)<24)continue;
-            int floor=World.H-7;while(floor>World.SEA+1&&w.get(x,floor,z)==0)floor--;if(floor<=World.SEA+1||w.get(x,floor,z)!=1&&w.get(x,floor,z)!=12)continue;
-            boolean safe=true;for(int dx=-3;dx<=4;dx++)for(int dz=-3;dz<=5;dz++){
-                if(!w.solid(x+dx,floor-2,z+dz))safe=false;
-                for(int y=floor;y<=floor+5;y++){int b=w.get(x+dx,y,z+dz);if(y>floor+2&&b!=0&&b!=6||b!=0&&b!=1&&b!=2&&b!=3&&b!=6&&b!=12)safe=false;}
+            // Deep chamber with an untouched stone shell and at least three blocks of roof.
+            int floor=3+random.nextInt(3);
+            boolean safe=true;
+            for(int dx=-4;dx<=5;dx++)for(int dz=-4;dz<=6;dz++)for(int y=floor-1;y<=floor+8;y++){
+                int b=w.get(x+dx,y,z+dz);
+                if(b!=3&&b!=13&&b!=11||w.overlapsPlayer(x+dx,y,z+dz))safe=false;
             }
             if(!safe)continue;
             for(int dx=-3;dx<=4;dx++)for(int dz=-3;dz<=5;dz++){w.set(x+dx,floor-1,z+dz,3);w.set(x+dx,floor,z+dz,3);for(int y=floor+1;y<=floor+5;y++)w.set(x+dx,y,z+dz,0);}

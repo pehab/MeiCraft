@@ -66,21 +66,6 @@ public final class World {
             Random ores=new Random(seed^47127);
             for(int a=0;a<W;a++)for(int c=0;c<D;c++)for(int b=2;b<top[a][c]-3;b++)if(get(a,b,c)==3){int roll=ores.nextInt(1000);if(roll<35)blocks[index(a,b,c)]=13;else if(b<9&&roll<40)blocks[index(a,b,c)]=11;}
         }
-        if(story){
-            // Surface springs in stone basins, away from the initial build area.
-            Random lava=new Random(seed^0x1a7a);
-            for(int n=0;n<10;n++){
-                int a=5+lava.nextInt(W-10),c=5+lava.nextInt(D-10);
-                if(Math.abs(a-48)+Math.abs(c-48)<20||top[a][c]<=SEA+1)continue;
-                int h=top[a][c];
-                for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
-                    for(int yy=h+1;yy<=Math.max(h+1,top[a+dx][c+dz]);yy++)blocks[index(a+dx,yy,c+dz)]=0;
-                    blocks[index(a+dx,h-1,c+dz)]=3;
-                    blocks[index(a+dx,h,c+dz)]=(byte)(Math.abs(dx)<2&&Math.abs(dz)<2?15:3);
-                    top[a+dx][c+dz]=h;
-                }
-            }
-        }
         Random r=new Random(seed^91238);
         for(int n=0;n<180;n++){int a=3+r.nextInt(W-6),c=3+r.nextInt(D-6),h=top[a][c];if(h<SEA+2||get(a,h,c)==15||get(a,h,c)==3||Math.abs(a-48)+Math.abs(c-48)<5)continue;
             for(int b=1;b<5;b++)blocks[index(a,h+b,c)]=5;

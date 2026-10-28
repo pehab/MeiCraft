@@ -51,6 +51,28 @@ public final class ForgeTests {
         w=flat();w.progress.iron=28;w.progress.inventory[14]=2;w.set(10,4,10,7);
         for(int format=1;format<=4;format++){byte[] before=w.blocks.clone();saved=World.decode(NatureTests.legacy(w,format));check(Arrays.equals(before,saved.blocks),"legacy format "+format+" loads without generating ruins or replacing builds");check(saved.progress.inventory.length==17&&saved.progress.inventory[16]==0,"legacy inventory expands without inventing raw iron");check(Arrays.equals(saved.blocks,World.decode(saved.encode()).blocks),"legacy world roundtrips into format 5");}
         for(int seed=0;seed<12;seed++){w=new World(seed,true);saved=new World(seed,true);check(Arrays.equals(w.blocks,saved.blocks),"ruins are seed deterministic");check(count(w,16)>=1,"new Story world contains a raw-iron clue seed "+seed);check(w.forge.rituals.isEmpty(),"incomplete ruin does not start a ritual");check(!w.collides(w.x,w.y,w.z)&&!w.touchesLava(w.x,w.y,w.z),"ruins preserve safe spawn");}
+        // Inspect all lava blocks, not only the marked renewable springs: the old surface pools
+        // and the recipe ruin previously escaped the cave-only depth checks.
+        for(int seed=0;seed<64;seed++){
+            w=new World(seed,true);World terrain=new World(seed,true,false);
+            int lava=0,clues=0;boolean buried=true,surfaceSame=true;
+            for(int x=0;x<World.W;x++)for(int z=0;z<World.D;z++)for(int y=1;y<World.H;y++){
+                int block=w.get(x,y,z);
+                if(y>=12&&block!=terrain.get(x,y,z))surfaceSame=false;
+                if(block!=15&&block!=16)continue;
+                if(block==15)lava++;else clues++;
+                int roof=0;
+                for(int above=y+1;above<World.H;above++){
+                    int cover=terrain.get(x,above,z);
+                    if((cover==3||cover==13||cover==11)&&w.solid(x,above,z))roof++;
+                }
+                if(y>8||roof<3)buried=false;
+            }
+            check(lava>0&&clues>0,"new Story worlds retain lava and a recipe clue seed "+seed);
+            check(buried,"every lava block and raw-iron clue is buried under stone seed "+seed);
+            check(surfaceSame,"caves and recipe ruin leave the entire surface intact seed "+seed);
+            World roundtrip=World.decode(w.encode());check(Arrays.equals(w.blocks,roundtrip.blocks),"underground placement survives saving seed "+seed);
+        }
         w=new World(11,false);check(count(w,16)==0&&count(w,14)==0,"creative terrain remains unchanged");
         w=flat();w.set(20,5,20,15);w.set(20,6,20,13);steps(w,2);w.forge.ores.put(World.index(20,6,20),30);rejects(w,"invalid completed smelting state rejected");
         w=flat();cells=build(w,0,false);steps(w,2);w.forge.rituals.firstEntry().getValue().age=16;rejects(w,"invalid completed ritual state rejected");

@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "versionCode": 11,
-  "versionName": "0.6.1",
-  "url": "https://github.com/pehab/MeiCraft/releases/download/v0.6.1/meiCraft-0.6.1.apk",
-  "sha256": "7be216bed830b5b64bca9a86b6f5b2784d44fa52cf26bd002b9da4bb9f8b0306",
+  "versionCode": 12,
+  "versionName": "0.6.2",
+  "url": "https://github.com/pehab/MeiCraft/releases/download/v0.6.2/meiCraft-0.6.2.apk",
+  "sha256": "d5ce755623b7f892e4f26ccd197090004f1ec8760b6582d8ce9e26313b8f89e7",
   "size": 783018
 }

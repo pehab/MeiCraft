@@ -56,6 +56,21 @@ public final class NatureTests {
         check(!w.mine(20,2,20),"water cannot be mined into unlimited inventory");
         w=flat(false);w.set(20,2,20,15);w.set(21,2,20,10);advance(w,1);
         check(w.get(20,2,20)==3&&w.get(21,2,20)==10,"water cools touching lava, water remains");
+        for(int[] d:new int[][]{{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}}){
+            World snow=flat(false);snow.nature.flowEnabled=false;
+            snow.set(30,6,30,15);snow.set(30+d[0],6+d[1],30+d[2],12);
+            advance(snow,.6f);
+            check(snow.get(30+d[0],6+d[1],30+d[2])==10,"snow melts on each face of lava");
+            check(snow.get(30,6,30)==3,"meltwater cools lava to stone in the same step");
+            check(snow.nature.levels[World.index(30+d[0],6+d[1],30+d[2])]==Nature.SOURCE,"meltwater is an ordinary flowing source");
+            World copy=World.decode(snow.encode());check(Arrays.equals(snow.blocks,copy.blocks)&&Arrays.equals(snow.nature.levels,copy.nature.levels),"meltwater and flow metadata survive saving");
+        }
+        World snow=flat(false);snow.set(30,6,30,15);snow.set(31,6,31,12);advance(snow,.6f);
+        check(snow.get(31,6,31)==12&&snow.get(30,6,30)==15,"diagonal proximity does not melt snow");
+        snow=flat(false);snow.set(30,6,30,15);snow.set(31,6,30,12);advance(snow,4);
+        check(snow.get(31,2,30)==10&&snow.get(30,6,30)==3,"meltwater falls and spreads after cooling lava");
+        snow=flat(false);snow.set(30,6,30,15);snow.set(31,6,30,12);snow.nature.tick(snow,Float.NaN);snow.nature.tick(snow,-1);
+        check(snow.get(31,6,30)==12,"paused or invalid time cannot melt snow");
         w.set(30,2,30,15);w.set(31,2,30,4);advance(w,4);check(w.get(31,2,30)==8&&w.get(30,2,30)==15,"lava heat makes glass without consuming lava");
         w.set(40,2,40,4);w.set(42,2,40,15);advance(w,4);check(w.get(40,2,40)==4,"heat needs face contact");
         w=flat(false);w.set(20,2,20,1);w.set(21,2,20,2);w.set(22,2,20,2);w.set(22,3,20,3);w.set(24,2,20,2);

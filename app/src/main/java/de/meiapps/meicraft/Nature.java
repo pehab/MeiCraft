@@ -45,7 +45,19 @@ public final class Nature {
         return false;
     }
     private void react(World w){
-        // Snapshot candidates first: reactions never chain through a newly made block.
+        // Melt all snow touching the original lava before cooling it. The meltwater then
+        // participates in the normal water/lava phase in this same simulation step.
+        BitSet melted=new BitSet(levels.length);
+        for(int i=World.W*World.D;i<w.blocks.length;i++)if(w.blocks[i]==12){
+            int x=i%World.W,y=i/(World.W*World.D),z=i/World.W%World.D;
+            if(adjacent(w,x,y,z,15))melted.set(i);
+        }
+        for(int i=melted.nextSetBit(0);i>=0;i=melted.nextSetBit(i+1)){
+            int x=i%World.W,y=i/(World.W*World.D),z=i/World.W%World.D;
+            w.set(x,y,z,10);
+            if(active.cardinality()<MAX_FLOW)source(x,y,z);
+        }
+        // Cooling and glass candidates share a snapshot; cooled lava cannot also heat sand.
         BitSet stone=new BitSet(levels.length),glass=new BitSet(levels.length);
         for(int i=0;i<w.blocks.length;i++){
             int b=w.blocks[i]&255;if(b!=15&&b!=4)continue;
@@ -117,7 +129,7 @@ public final class Nature {
         for(int attempt=0;attempt<80&&added<6;attempt++){
             int cx=7+random.nextInt(World.W-14),cz=7+random.nextInt(World.D-14),floor=3+random.nextInt(3);
             boolean safe=true;
-            for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++)for(int y=floor-1;y<=floor+4;y++){
+            for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++)for(int y=floor-1;y<=floor+6;y++){
                 int x=cx+dx,z=cz+dz,i=World.index(x,y,z),b=w.get(x,y,z);
                 if(b!=original.get(x,y,z)||b!=3&&b!=13&&b!=11||w.overlapsPlayer(x,y,z))safe=false;
             }
