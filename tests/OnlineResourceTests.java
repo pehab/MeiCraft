@@ -6,10 +6,10 @@ public final class OnlineResourceTests {
     static int checks;
     static void check(boolean value,String message){checks++;if(!value)throw new AssertionError(message);}
     public static void main(String[] args)throws Exception{
-        World tile=OnlineInventory.terrain(123),base=new World(123,false,false);
+        World tile=OnlineTerrain.region(123,0,3);
         check(tile.online&&tile.story&&!tile.flying,"Online starts walking with finite resources");
         check(Arrays.stream(tile.progress.inventory).sum()==0&&tile.progress.tool()==0,"No free blocks or tools");
-        int ores=0,glow=0;for(int i=0;i<tile.blocks.length;i++){if(tile.blocks[i]==13)ores++;if(tile.blocks[i]==11)glow++;if(tile.blocks[i]!=base.blocks[i])check(base.blocks[i]==3&&(tile.blocks[i]==13||tile.blocks[i]==11),"Only untouched underground stone receives resources");}
+        int ores=0,glow=0;for(byte block:tile.blocks){if(block==13)ores++;if(block==11)glow++;}
         check(ores>0&&glow>0,"Online terrain supplies iron and glowstone");
         Story p=new Story();check(!OnlineInventory.place(p,2).isEmpty(),"Empty inventory cannot build");
         Story unchanged=OnlineInventory.copy(p);check(!OnlineInventory.harvest(p,5).isEmpty()&&OnlineInventory.same(p,unchanged),"Hand cannot mine wood or mutate inventory on failure");
@@ -28,7 +28,7 @@ public final class OnlineResourceTests {
         check(OnlineInventory.valid(p),"Valid inventory accepted");p.inventory[1]=-1;check(!OnlineInventory.valid(p),"Negative inventory rejected");
 
         World wide=World.onlineSpace(123,3);check(wide.width==288&&wide.depth==288,"One continuous 288 by 288 world");
-        OnlineInventory.install(wide,tile,0,3);World neighbor=OnlineInventory.terrain(OnlineWorld.sectorSeed(123,1));OnlineInventory.install(wide,neighbor,1,3);
+        OnlineInventory.install(wide,tile,0,3);World neighbor=OnlineTerrain.region(123,1,3);OnlineInventory.install(wide,neighbor,1,3);
         check(wide.get(96,8,30)==neighbor.get(0,8,30),"Neighbor data uses continuous coordinates");
         for(int x=93;x<=99;x++)for(int z=45;z<=51;z++)for(int y=32;y<=36;y++)wide.set(x,y,z,0);
         wide.x=95.8f;wide.y=34;wide.z=48.5f;check(!wide.collides(96.2f,34,48.5f),"No artificial wall at old sector boundary");

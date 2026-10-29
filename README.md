@@ -2,9 +2,9 @@
 
 Eigenständiges Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Offline ohne Anmeldung, Werbung oder Käufe. Optional gemeinsam online bauen: Firebase speichert dafür eine anonyme Geräte-ID, Weltänderungen und Mitspielerpositionen.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.8.0
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.8.1
 
-## Gemeinsam bauen · 0.8.0
+## Gemeinsam bauen · 0.8.1
 
 **Gemeinsam bauen** öffnet Online-Bauwelten mit 192 × 192 oder 288 × 288 Blöcken.
 Die zusammenhängende Welt lädt beim Weiterlaufen die Umgebung nach. Ihr startet zu
@@ -12,9 +12,14 @@ Fuß, sammelt eigene Rohstoffe und schaltet Werkzeuge und Rezepte an der Werkban
 Mitspieler erscheinen mit Haut- und Kleidungsfarben; eine kleine Weltkarte zeigt ihre
 Positionen. Gegner, Tageszeit und Flüssigkeiten bleiben online statisch.
 
-**Beim Update von 0.7.0 die neuen Firestore-Regeln veröffentlichen und zuerst den
-Besitzer mit 0.8.0 verbinden lassen. Danach alle Mitspieler aktualisieren.** Bestehende
-Bauten und Einladungen bleiben erhalten. [Einrichtung und Update](docs/ONLINE.md).
+**0.8.1 erzeugt eine gemeinsame Landschaft** aus einem Welt-Seed: große Bergzüge mit
+Schneekappen, Wälder, Seen und geschwungene Flüsse statt unabhängig erzeugter Gebiete.
+Auch Bäume und Rohstoffe setzen sich über Ladegrenzen hinweg fort. Ersteller können
+ihre Online-Welten nach Bestätigung vollständig löschen.
+
+**Die neuen Firestore-Regeln veröffentlichen, alle Geräte aktualisieren und eine neue
+Online-Welt anlegen.** Bisherige Testwelten werden nicht migriert; lokale Offline-Welten
+bleiben erhalten. [Einrichtung und Update](docs/ONLINE.md).
 
 ## Hauptmenü und Weltenverwaltung · 0.6.0
 
@@ -40,7 +45,7 @@ Der **Storymodus** speichert in einer eigenen Datei. Über **STORY** oben im Spi
 4. Einen Ofen bauen und Erz mit Holz als Brennstoff schmelzen.
 5. Eisenwerkzeug herstellen, Gebäude mit Fenstern bauen und tief im Gestein Leuchtstein finden.
 
-Die Werkbank stellt Bretter, Ziegel und Grasblöcke her. Im Ofen entstehen Glas und Eisenbarren; später lassen sich Eisenblöcke bauen. Die sieben Einführungskapitel gehen anschließend in freies Bauen mit begrenzten Ressourcen über. Hunger, Rüstung und Explosionsgegner sind noch nicht enthalten. Gemeinsame Online-Welten gibt es separat im Kreativmodus. Die Welt ist 96 × 96 × 48 Blöcke groß.
+Die Werkbank stellt Bretter, Ziegel und Grasblöcke her. Im Ofen entstehen Glas und Eisenbarren; später lassen sich Eisenblöcke bauen. Die sieben Einführungskapitel gehen anschließend in freies Bauen mit begrenzten Ressourcen über. Hunger, Rüstung und Explosionsgegner sind noch nicht enthalten. Gemeinsame Online-Welten gibt es separat mit eigenen Rohstoffen. Lokale Welten sind 96 × 96 × 48 Blöcke groß.
 
 ## Nacht, Gegner und Lava · 0.3.0
 

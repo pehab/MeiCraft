@@ -4,7 +4,7 @@ import java.security.SecureRandom;
 
 /** Versioned online protocol; sector coordinates never alter the offline save format. */
 public final class OnlineWorld {
-    public static final int PROTOCOL=2;
+    public static final int PROTOCOL=3;
     private static final String PREFIX="MEICRAFT-ONLINE:1:";
     public final String id, invitation;
     public OnlineWorld(String id,String invitation){

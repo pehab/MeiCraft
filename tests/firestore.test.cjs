@@ -103,3 +103,65 @@ test('only owner can upgrade an existing world, with stored blocks retained',asy
 test('banned players also lose access to their world inventory',async()=>{
  await create(2);await join();await initInventory('child');await updateDoc(doc(db('parent'),`${root}/members/child`),{banned:true});await assertFails(getDoc(doc(db('child'),invPath('child'))));await assertFails(updateDoc(doc(db('child'),invPath('child')),{iron:10,updatedAt:serverTimestamp()}));
 });
+
+// The continuous terrain uses its own protocol so 0.8.0 cannot generate conflicting blocks.
+test('protocol 3 creates a new global-terrain world with private atomic inventory',async()=>{
+  await create(3);await join();await initInventory('child');
+  const user=db('child');const inventory=await readRest('child',invPath('child'));
+  const state=emptyInventory();state.items[2]=1;
+  const result=await rest('child',':commit',{writes:[resourceBlock('child',0,{exists:false}),inventoryWrite('child',state,'0/1_3_2',inventory.updateTime)]});
+  assert.equal(result.status,200,JSON.stringify(result.body));
+  assert.equal((await getDoc(doc(user,invPath('child')))).data().items[2],1);
+  await assertFails(getDoc(doc(db('parent'),invPath('child'))));
+  await assertFails(updateDoc(doc(db('parent'),root),{protocol:2}));
+});
+test('existing protocol 2 worlds cannot silently change to a different landscape',async()=>{
+  await create(2);await assertFails(updateDoc(doc(db('parent'),root),{protocol:3}));
+});
+
+test('only the owner can delete and only after closing the world',async()=>{
+  await create(3);await join();await initInventory('child');
+  await assertFails(deleteDoc(doc(db('parent'),root)));
+  await assertFails(deleteDoc(doc(db('parent'),`${root}/members/child`)));
+  await assertFails(deleteDoc(doc(db('parent'),invPath('child'))));
+  await assertSucceeds(updateDoc(doc(db('parent'),root),{closed:true}));
+  for(const uid of ['child','stranger']){
+    await assertFails(deleteDoc(doc(db(uid),root)));
+    await assertFails(deleteDoc(doc(db(uid),`${root}/members/parent`)));
+    await assertFails(deleteDoc(doc(db(uid),invPath('child'))));
+    await assertFails(getDocs(collection(db(uid),`${root}/sectors/0/blocks`)));
+  }
+  await assertFails(getDoc(doc(db('parent'),invPath('child'))));
+  await assertSucceeds(deleteDoc(doc(db('parent'),invPath('child'))));
+  await assertSucceeds(deleteDoc(doc(db('parent'),`${root}/members/child`)));
+});
+async function listRest(uid,path){
+  const response=await fetch(`http://${process.env.FIRESTORE_EMULATOR_HOST}/v1/${docName(path)}?pageSize=100`,{headers:{Authorization:`Bearer ${createMockUserToken({sub:uid,user_id:uid},'demo-meicraft')}`}});
+  assert.equal(response.status,200,await response.clone().text());return response.json();
+}
+async function eraseCollection(path,members){
+  for(;;){const page=await listRest('parent',path),docs=page.documents||[];if(!docs.length)return;
+    const writes=[];for(const d of docs){if(members)writes.push({delete:d.name+'/inventory/main'});writes.push({delete:d.name});}
+    const result=await rest('parent',':commit',{writes});assert.equal(result.status,200,JSON.stringify(result.body));
+  }
+}
+test('closed world deletion removes every page, member and private inventory and can resume',async()=>{
+  await create(3);await join();await initInventory('parent');await initInventory('child');
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const batch=writeBatch(ctx.firestore());
+    for(let i=0;i<111;i++)batch.set(doc(ctx.firestore(),`${root}/sectors/0/blocks/${i%96}_3_${Math.floor(i/96)}`),{...blockData(),x:i%96,z:Math.floor(i/96),renewable:false});
+    batch.set(doc(ctx.firestore(),`${root}/sectors/3/blocks/1_3_2`),{...blockData(),renewable:false});await batch.commit();
+  });
+  await updateDoc(doc(db('parent'),root),{closed:true});
+  // Partial attempt: remove one inventory first, like a connection interruption mid-delete.
+  await deleteDoc(doc(db('parent'),invPath('child')));
+  await eraseCollection(`${root}/sectors/0/blocks`,false);await eraseCollection(`${root}/sectors/3/blocks`,false);
+  await eraseCollection(`${root}/members`,true);
+  const result=await rest('parent',':commit',{writes:[{delete:docName(root)}]});assert.equal(result.status,200,JSON.stringify(result.body));
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const store=ctx.firestore();assert.equal((await getDoc(doc(store,root))).exists(),false);
+    assert.equal((await getDocs(collection(store,`${root}/members`))).size,0);
+    for(const uid of ['parent','child'])assert.equal((await getDoc(doc(store,invPath(uid)))).exists(),false);
+    for(const sector of [0,3])assert.equal((await getDocs(collection(store,`${root}/sectors/${sector}/blocks`))).size,0);
+  });
+});
