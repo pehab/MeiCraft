@@ -194,6 +194,29 @@ public final class SmokeInstrumentation extends Instrumentation {
   runOnMainSync(activity::showHome);clickText("Welten verwalten");clickText(name);clickText("Welt löschen");clickText(confirm?"Dauerhaft löschen":"Abbrechen");
   for(int n=0;n<100&&activity.busy;n++)Thread.sleep(50);activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);waitForIdleSync();
  }
+ void testOnlineStreaming(MainActivity activity,GameView game)throws Exception{
+  World original=activity.world;android.util.AtomicFile oldFile=activity.file;OnlineController previous=activity.online;
+  World wide=World.onlineSpace(7412,2);for(int i=0;i<4;i++)OnlineInventory.install(wide,OnlineInventory.terrain(OnlineWorld.sectorSeed(7412,i)),i,2);
+  for(int x=89;x<=105;x++)for(int z=40;z<=57;z++){wide.set(x,32,z,3);for(int y=33;y<=40;y++)wide.set(x,y,z,0);}
+  wide.x=94.5f;wide.y=34.6f;wide.z=48.5f;wide.yaw=-(float)Math.PI/2;wide.pitch=0;
+  FirebaseRest rest=new FirebaseRest(activity);rest.uid="test-owner";
+  OnlineController controller=new OnlineController(activity);OnlineSession session=new OnlineSession(activity,rest,new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId()),"Test",new OnlineSession.Listener(){public void loaded(World w,String n){}public void problem(String text,boolean fatal){}});
+  controller.session=session;session.world=wide;session.side=2;session.owner=rest.uid;session.name="Streaming-Test";session.loading=false;session.healthy=true;session.readyRegions=new java.util.HashSet<>(java.util.Arrays.asList(0,1,2,3));session.inventory.chapter=7;session.inventory.inventory[2]=5;OnlineInventory.apply(wide.progress,session.inventory);
+  session.players=java.util.Collections.singletonList(new OnlineSession.Player("test-peer",FirebaseRest.fields("name","Mitspieler","sector",1,"x",3.5,"y",34.6,"z",48.5,"yaw",Math.PI/2,"banned",false)));
+  try{
+   runOnMainSync(()->{activity.handler.removeCallbacks(activity.autosave);activity.file=null;activity.paused=true;activity.online=controller;activity.hideHome();});
+   onGl(game,()->{game.replace(wide);activity.world=wide;});runOnMainSync(()->activity.paused=false);Thread.sleep(500);
+   check(!game.world.flying&&game.world.story,"online resource mode starts walking");check(game.renderer.meshCols==12&&game.renderer.meshRows==12,"renderer covers the full continuous online world");
+   check(!game.renderer.playerLabels.isEmpty(),"player across the former sector seam is rendered with name");
+   android.graphics.Bitmap image=smallScreenshot();if(image!=null){emitScreenshot(image,"onlineScreenshot");image.recycle();}
+   onGl(game,()->game.forward=1);for(int i=0;i<100&&wide.x<97.5f;i++)Thread.sleep(100);onGl(game,()->game.forward=0);
+   check(game.world==wide&&wide.x>96&&wide.x<105,"walking crosses the old boundary without world replacement or teleport");
+   check(session.sector==1&&wide.progress.inventory[2]==5,"streaming preserves player inventory and tracks continuous position");
+   runOnMainSync(controller::workbench);clickText("Weiterbauen");check(!activity.paused,"online workbench returns to the same world");
+  }finally{
+   session.close();runOnMainSync(()->activity.paused=true);onGl(game,()->{game.replace(original);activity.world=original;});runOnMainSync(()->{activity.online=previous;activity.file=oldFile;activity.paused=false;activity.handler.postDelayed(activity.autosave,30000);});
+  }
+ }
  void testHomeAndDeletion(MainActivity activity,GameView game)throws Exception{
   String original=activity.active.id;int initial=activity.library.list().size();runOnMainSync(activity::showHome);check(activity.homeVisible&&activity.paused,"main menu pauses the world");waitForIdleSync();Thread.sleep(250);
   android.graphics.Bitmap homeImage=smallScreenshot();if(homeImage!=null){emitScreenshot(homeImage,"homeScreenshot");homeImage.recycle();}
@@ -443,6 +466,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,960);testSwipeControl(activity,game);
   orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,960);
   testWorldLibrary(activity,game);
+  testOnlineStreaming(activity,game);
   testHomeAndDeletion(activity,game);
   android.graphics.Bitmap portrait=smallScreenshot();if(portrait!=null){emitScreenshot(portrait,"landscapeScreenshot");portrait.recycle();}
   result.putString("summary","PASS: "+checks+" Android assertions");finish(Activity.RESULT_OK,result);

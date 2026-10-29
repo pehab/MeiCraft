@@ -14,9 +14,9 @@ service cloud.firestore {
     function token(value) { return value is string && value.matches('^[a-f0-9]{32}$'); }
     function position(data, side) {
       return data.sector is int && data.sector >= 0 && data.sector < side * side
-        && data.x is number && data.x >= 0.3 && data.x <= 95.7
+        && data.x is number && data.x >= 0 && data.x <= 96
         && data.y is number && data.y >= 1.62 && data.y <= 64
-        && data.z is number && data.z >= 0.3 && data.z <= 95.7
+        && data.z is number && data.z >= 0 && data.z <= 96
         && data.yaw is number && data.yaw >= -1000000 && data.yaw <= 1000000;
     }
     match /onlineWorlds/{world} {
@@ -29,11 +29,12 @@ service cloud.firestore {
         && name(request.resource.data.name,48)
         && request.resource.data.seed is int && request.resource.data.seed >= 0 && request.resource.data.seed < 1000000000
         && request.resource.data.side is int && request.resource.data.side in [2,3]
-        && request.resource.data.protocol is int && request.resource.data.protocol == 1
+        && request.resource.data.protocol is int && request.resource.data.protocol in [1,2]
         && token(request.resource.data.invite) && request.resource.data.closed == false
         && getAfter(memberPath(world,request.auth.uid)).data.banned == false;
       allow update: if owner(world)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','invite','closed'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','invite','closed','protocol'])
+        && (request.resource.data.protocol == resource.data.protocol || resource.data.protocol == 1 && request.resource.data.protocol == 2)
         && name(request.resource.data.name,48) && token(request.resource.data.invite)
         && request.resource.data.closed is bool;
       allow delete: if false;
@@ -64,18 +65,61 @@ service cloud.firestore {
         // A ban is a retained document, never a deletion that would permit joining again.
         allow delete: if false;
       }
+      match /members/{uid}/inventory/{slot} {
+        function count(value) { return value is int && value >= 0 && value <= 1000000; }
+        function inventory(data) {
+          return data.keys().hasAll(['items','chapter','iron','placed','glassPlaced','buckets','sword','lastBlock','updatedAt'])
+            && data.keys().hasOnly(['items','chapter','iron','placed','glassPlaced','buckets','sword','lastBlock','updatedAt'])
+            && data.items is list && data.items.size() == 17 && data.items[0] == 0
+            && count(data.items[1])
+            && count(data.items[2])
+            && count(data.items[3])
+            && count(data.items[4])
+            && count(data.items[5])
+            && count(data.items[6])
+            && count(data.items[7])
+            && count(data.items[8])
+            && count(data.items[9])
+            && count(data.items[10])
+            && count(data.items[11])
+            && count(data.items[12])
+            && count(data.items[13])
+            && count(data.items[14])
+            && count(data.items[15])
+            && count(data.items[16])
+            && data.chapter is int && data.chapter >= 0 && data.chapter <= 7
+            && count(data.iron) && count(data.placed) && count(data.glassPlaced) && count(data.buckets)
+            && data.sword is bool && data.lastBlock is string && data.lastBlock.size() <= 48
+            && data.updatedAt == request.time;
+        }
+        allow get: if slot == 'main' && signedIn() && uid == request.auth.uid && member(world);
+        allow create: if slot == 'main' && signedIn() && uid == request.auth.uid && member(world)
+          && get(worldPath(world)).data.protocol == 2 && inventory(request.resource.data)
+          && request.resource.data.items == [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+          && request.resource.data.chapter == 0 && request.resource.data.iron == 0 && request.resource.data.placed == 0
+          && request.resource.data.glassPlaced == 0 && request.resource.data.buckets == 0
+          && request.resource.data.sword == false && request.resource.data.lastBlock == '';
+        allow update: if slot == 'main' && signedIn() && uid == request.auth.uid && member(world)
+          && get(worldPath(world)).data.protocol == 2 && inventory(request.resource.data);
+        allow delete, list: if false;
+      }
       match /sectors/{sector}/blocks/{block} {
         allow read: if member(world);
         allow create, update: if member(world)
           && sector.matches('^[0-8]$') && int(sector) < get(worldPath(world)).data.side * get(worldPath(world)).data.side
           && request.resource.data.keys().hasAll(['x','y','z','type','by','updatedAt'])
-          && request.resource.data.keys().hasOnly(['x','y','z','type','by','updatedAt'])
+          && request.resource.data.keys().hasOnly(['x','y','z','type','by','updatedAt','renewable'])
           && request.resource.data.x is int && request.resource.data.x >= 0 && request.resource.data.x < 96
           && request.resource.data.y is int && request.resource.data.y > 0 && request.resource.data.y < 48
           && request.resource.data.z is int && request.resource.data.z >= 0 && request.resource.data.z < 96
           && block == string(request.resource.data.x) + '_' + string(request.resource.data.y) + '_' + string(request.resource.data.z)
           && request.resource.data.type is int && request.resource.data.type >= 0 && request.resource.data.type < 17
-          && request.resource.data.by == request.auth.uid && request.resource.data.updatedAt == request.time;
+          && request.resource.data.by == request.auth.uid && request.resource.data.updatedAt == request.time
+          && (get(worldPath(world)).data.protocol == 1 || (
+            request.resource.data.renewable is bool
+            && getAfter(/databases/$(database)/documents/onlineWorlds/$(world)/members/$(request.auth.uid)/inventory/main).data.updatedAt == request.time
+            && getAfter(/databases/$(database)/documents/onlineWorlds/$(world)/members/$(request.auth.uid)/inventory/main).data.lastBlock == sector + '/' + block
+          ));
         allow delete: if false;
       }
     }

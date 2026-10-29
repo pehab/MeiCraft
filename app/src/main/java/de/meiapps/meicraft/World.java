@@ -8,7 +8,8 @@ import java.util.zip.*;
 public final class World {
     public static final int W=96,H=48,D=96,SEA=12;
     public static final String[] NAMES={"Luft","Gras","Erde","Stein","Sand","Holz","Laub","Ziegel","Glas","Bretter","Wasser","Leuchtstein","Schnee","Eisenerz","Eisenblock","Lava","Roheisen"};
-    public final byte[] blocks=new byte[W*H*D];
+    public final int width,depth;
+    public final byte[] blocks;
     public long seed;
     public float x=48.5f,y=27,z=48.5f,yaw=0,pitch=-.15f;
     public int selected=1;
@@ -21,19 +22,23 @@ public final class World {
     public int revision=1;
     public World(long seed){this(seed,false);}
     public World(long seed,boolean story){this(seed,story,true);}
-    World(long seed,boolean story,boolean caves){this.seed=seed;this.story=story;flying=!story;selected=story?2:1;generate();survival.spawnX=x;survival.spawnZ=z;if(caves){nature.addCaves(this);if(story)Forge.ruin(this);}forge.initialize(this);}
-    private World(){}
+    World(long seed,boolean story,boolean caves){this();this.seed=seed;this.story=story;flying=!story;selected=story?2:1;generate();survival.spawnX=x;survival.spawnZ=z;if(caves){nature.addCaves(this);if(story)Forge.ruin(this);}forge.initialize(this);}
+    private World(){this(W,D);}
+    private World(int width,int depth){this.width=width;this.depth=depth;blocks=new byte[width*H*depth];}
+    static World onlineSpace(long seed,int side){if(side!=2&&side!=3)throw new IllegalArgumentException("Invalid online world size");World world=new World(W*side,D*side);world.seed=seed;world.online=true;world.story=true;world.flying=false;world.selected=2;world.nature.flowEnabled=false;world.survival.enemiesEnabled=false;return world;}
+    public int idx(int x,int y,int z){return (y*depth+z)*width+x;}
+    public boolean contains(int x,int y,int z){return x>=0&&z>=0&&y>=0&&x<width&&z<depth&&y<H;}
     public static int index(int x,int y,int z){return (y*D+z)*W+x;}
-    public int get(int x,int y,int z){return inside(x,y,z)?blocks[index(x,y,z)]&255:0;}
+    public int get(int x,int y,int z){return contains(x,y,z)?blocks[idx(x,y,z)]&255:0;}
     public static boolean inside(int x,int y,int z){return x>=0&&z>=0&&y>=0&&x<W&&z<D&&y<H;}
-    public boolean set(int x,int y,int z,int type){if(!inside(x,y,z)||y==0||type<0||type>=NAMES.length)return false;blocks[index(x,y,z)]=(byte)type;nature.changed(x,y,z);forge.changed(this,index(x,y,z));revision++;return true;}
-    public String miningProblem(int a,int b,int c){int block=get(a,b,c);if(!inside(a,b,c)||b==0)return "Das Fundament bleibt stehen.";if(block==0)return "Hier ist kein Block.";if(story&&Nature.liquid(block))return "Mit leerem Eiseneimer eine Quelle aufnehmen: − antippen.";if(story&&!progress.canMine(block))return "Dafür brauchst du: "+Story.TOOLS[Story.needed(block)];return "";}
+    public boolean set(int x,int y,int z,int type){if(!contains(x,y,z)||y==0||type<0||type>=NAMES.length)return false;blocks[idx(x,y,z)]=(byte)type;if(!online){nature.changed(x,y,z);forge.changed(this,idx(x,y,z));}revision++;return true;}
+    public String miningProblem(int a,int b,int c){int block=get(a,b,c);if(!contains(a,b,c)||b==0)return "Das Fundament bleibt stehen.";if(block==0)return "Hier ist kein Block.";if(story&&Nature.liquid(block))return "Mit leerem Eiseneimer eine Quelle aufnehmen: − antippen.";if(story&&!progress.canMine(block))return "Dafür brauchst du: "+Story.TOOLS[Story.needed(block)];return "";}
     public boolean mine(int a,int b,int c){if(!miningProblem(a,b,c).isEmpty())return false;int block=get(a,b,c),drop=block==1?2:block;if(story&&block==16){if(progress.iron>=1000000)return false;progress.iron++;forge.notice="1 Eisenbarren aus Roheisen gewonnen";}else if(story&&!progress.add(drop,1))return false;return set(a,b,c,0);}
-    public boolean place(int a,int b,int c,int block){if(!inside(a,b,c)||b==0||get(a,b,c)!=0||block<=0||block>=NAMES.length||overlapsPlayer(a,b,c))return false;if(story&&(progress.inventory[block]<=0||Nature.liquid(block)&&progress.buckets>=1000000))return false;if(Nature.liquid(block)&&nature.active.cardinality()>=Nature.MAX_FLOW)return false;if(!set(a,b,c,block))return false;if(Nature.liquid(block))nature.source(a,b,c);if(story){progress.inventory[block]--;if(Nature.liquid(block))progress.buckets++;progress.placed=Math.min(1000000,progress.placed+1);if(block==8)progress.glassPlaced=Math.min(1000000,progress.glassPlaced+1);}return true;}
+    public boolean place(int a,int b,int c,int block){if(!contains(a,b,c)||b==0||get(a,b,c)!=0||block<=0||block>=NAMES.length||overlapsPlayer(a,b,c))return false;if(story&&(progress.inventory[block]<=0||Nature.liquid(block)&&progress.buckets>=1000000))return false;if(Nature.liquid(block)&&nature.active.cardinality()>=Nature.MAX_FLOW)return false;if(!set(a,b,c,block))return false;if(Nature.liquid(block))nature.source(a,b,c);if(story){progress.inventory[block]--;if(Nature.liquid(block))progress.buckets++;progress.placed=Math.min(1000000,progress.placed+1);if(block==8)progress.glassPlaced=Math.min(1000000,progress.glassPlaced+1);}return true;}
     public String scoopLava(int a,int b,int c){return scoopLiquid(a,b,c);}
     public String scoopLiquid(int a,int b,int c){
         int block=get(a,b,c);if(!Nature.liquid(block))return "Hier ist keine Flüssigkeit.";
-        if(!inside(a,b,c)||b==0)return "Das Fundament bleibt stehen.";
+        if(!contains(a,b,c)||b==0)return "Das Fundament bleibt stehen.";
         if(!story){set(a,b,c,0);return "Flüssigkeit entfernt";}
         if(nature.stream(a,b,c))return "Fließende Flüssigkeit: Suche den Quellblock.";
         if(progress.buckets<=0)return "Stelle an der Werkbank einen Eiseneimer her (3 Eisenbarren).";
@@ -76,7 +81,7 @@ public final class World {
         if(story){int best=Integer.MAX_VALUE;float spawnX=x,spawnY=y,spawnZ=z;for(int a=2;a<W-2;a++)for(int c=2;c<D-2;c++){int distance=Math.abs(a-48)+Math.abs(c-48);if(distance>=best||top[a][c]<=SEA+1||get(a,top[a][c],c)!=1)continue;float yy=top[a][c]+3.5f;if(!collides(a+.5f,yy,c+.5f)){best=distance;spawnX=a+.5f;spawnY=yy;spawnZ=c+.5f;}}x=spawnX;y=spawnY;z=spawnZ;}
     }
     public boolean collides(float a,float b,float c){
-        if(a<.3f||a>W-.3f||c<.3f||c>D-.3f||b<1.62f||b>H+16)return true;
+        if(a<.3f||a>width-.3f||c<.3f||c>depth-.3f||b<1.62f||b>H+16)return true;
         for(int xx=(int)Math.floor(a-.28f);xx<=Math.floor(a+.28f);xx++)for(int yy=(int)Math.floor(b-1.60f);yy<=Math.floor(b+.15f);yy++)for(int zz=(int)Math.floor(c-.28f);zz<=Math.floor(c+.28f);zz++)if(solid(xx,yy,zz))return true;
         return false;
     }
@@ -91,6 +96,7 @@ public final class World {
         return null;
     }
     public byte[] encode()throws IOException{
+        if(width!=W||depth!=D)throw new IOException("Online-Welten werden in Firebase gespeichert.");
         ByteArrayOutputStream bytes=new ByteArrayOutputStream();
         try(DataOutputStream out=new DataOutputStream(new GZIPOutputStream(bytes))){out.writeInt(0x4d454943);out.writeInt(5);out.writeLong(seed);out.writeFloat(x);out.writeFloat(y);out.writeFloat(z);out.writeFloat(yaw);out.writeFloat(pitch);out.writeInt(selected);out.writeBoolean(flying);out.writeInt(blocks.length);out.write(blocks);out.writeBoolean(story);out.writeInt(progress.chapter);out.writeInt(progress.iron);out.writeInt(progress.placed);out.writeInt(progress.glassPlaced);out.writeInt(progress.inventory.length);for(int count:progress.inventory)out.writeInt(count);out.writeInt(progress.buckets);out.writeBoolean(progress.sword);survival.write(out);nature.write(out);forge.write(out);}return bytes.toByteArray();
     }

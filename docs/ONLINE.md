@@ -1,21 +1,27 @@
-# Gemeinsam bauen · Online-Kreativwelten (0.7.0)
+# Gemeinsam bauen · Online-Bauwelten (0.8.0)
 
-## Firebase einmalig einrichten
+Online-Welten sind zusammenhängende Landschaften mit begrenzten Rohstoffen. Spieler
+starten zu Fuß, sammeln Materialien und schalten an der Werkbank Werkzeuge frei.
+Es gibt keine Gegner, keinen Tag/Nacht-Wechsel, keine Flüssigkeitsströme und keine
+automatischen Materialreaktionen. Nur Spieleraktionen verändern die Landschaft.
+
+## Firebase einrichten oder von 0.7.0 aktualisieren
 
 Projekt: `meicraft-be298`, Android-Paket: `de.meiapps.meicraft`.
-Die öffentliche Android-Konfiguration liegt als `app/src/main/assets/google-services.json`
-vor. Die App verwendet Firebase Auth und Cloud Firestore über HTTPS mit Firebase-
-Benutzertokens. Ein Admin-Schlüssel ist weder nötig noch in der App enthalten.
+Die öffentliche Android-Konfiguration liegt unter
+`app/src/main/assets/google-services.json`. Die App nutzt Firebase Auth und Firestore
+über HTTPS mit Benutzertokens. Es ist kein Admin-Schlüssel in der App enthalten.
 
-1. Firebase Console → Authentication → Anmeldemethode → **Anonym** aktivieren.
-   Eine automatische Löschung anonymer Konten ausgeschaltet lassen.
-2. Firestore → Standard Edition → Datenbank **`(default)`** anlegen.
-3. Firestore → **Regeln** öffnen. Den gesamten Inhalt der Datei
+1. Authentication → Anmeldemethode → **Anonym** aktivieren. Automatische Löschung
+   anonymer Konten ausgeschaltet lassen.
+2. Firestore Standard Edition mit Datenbank-ID **`(default)`** verwenden.
+3. Firestore → **Regeln**: Den vollständigen Inhalt von
    [`firestore.rules`](../firestore.rules) einsetzen und **Veröffentlichen** klicken.
-   Diese Datei gilt für ein eigenes MeiCraft-Projekt; bestehende Regeln anderer
-   Anwendungen nicht damit überschreiben.
+   **Für 0.8.0 sind aktualisierte Regeln erforderlich**, damit private Inventare und
+   atomare Bauaktionen erlaubt sind. Ein Git-Push veröffentlicht diese Regeln nicht.
 
-Alternativ vom Rechner aus, mit einem Firebase-Konto mit Berechtigung für das Projekt:
+Die Datei ist für ein eigenes MeiCraft-Projekt bestimmt. Regeln anderer Anwendungen
+nicht damit überschreiben. Alternativ mit berechtigtem Firebase-Konto vom Rechner:
 
 ```sh
 npm ci --ignore-scripts
@@ -23,84 +29,124 @@ npx firebase login
 npx firebase deploy --only firestore:rules --project meicraft-be298
 ```
 
-Es müssen keine Collections manuell angelegt werden. Produktionsdaten wurden bei der
-Entwicklung nicht verändert; die Tests verwenden ausschließlich `demo-meicraft` im
-lokalen Emulator. Die Regeln werden durch einen Git-Push nicht automatisch in Firebase
-veröffentlicht.
+Die Regeln unterstützen bestehende Protokoll-1-Welten weiter. Beim ersten Öffnen mit
+0.8.0 aktualisiert **der Weltbesitzer** seine Welt auf Protokoll 2. Gespeicherte Bauten
+bleiben dabei erhalten. Danach müssen alle Mitspieler 0.8.0 verwenden. Eine ältere App
+kann in der aktualisierten Welt keine ressourcenlosen Bauänderungen mehr durchführen.
 
-## Auf zwei Geräten spielen
+## Spielen
 
-1. Auf beiden Geräten dieselbe App-Version installieren.
-2. Gerät A: Hauptmenü → **Gemeinsam bauen** → **Neue Online-Welt**.
-   Weltname, Spielername und vier oder neun Gebiete auswählen.
-3. Im Spiel → **ONLINE** oder Menü → **Spieler / Einladung** → **Einladungs-QR**.
-4. Gerät B: **Gemeinsam bauen** → **Beitreten / Öffnen** → **Einladungs-QR scannen**.
-   Alternativ kann der Besitzer den Einladungstext kopieren und der Mitspieler ihn eingeben.
-5. Nach der ersten Verbindung erscheint die Welt in der lokalen Online-Weltenliste.
-   Ein erneuter Beitritt verwendet die bestehende Mitgliedschaft.
+1. Auf allen Geräten dieselbe aktuelle App-Version installieren.
+2. Erstes Gerät: **Gemeinsam bauen → Neue Online-Welt**, Spielername und Größe wählen.
+3. **Menü → Spieler / Einladung → Einladungs-QR** zeigt die Einladung.
+4. Weitere Geräte: **Gemeinsam bauen → Beitreten / Öffnen → Einladungs-QR scannen**.
+   Alternativ kann der Einladungstext kopiert und eingegeben werden.
+5. Bereits besuchte Welten stehen in der Online-Weltenliste. Bei einer alten Welt
+   zunächst den Besitzer mit 0.8.0 verbinden lassen.
 
-Die Geräte erhalten dauerhaft gespeicherte anonyme Firebase-UIDs. Der Anzeigename ist
-frei wählbar und verleiht keine Berechtigungen. Der Besitzer kann in der Spielerliste
-einen anderen Spieler antippen und **Entfernen** wählen. Dessen Mitgliedsdokument
-bleibt als Sperrvermerk erhalten; dieselbe UID kann mit der Einladung nicht erneut
-beitreten. Eine Neuinstallation oder das Löschen der App-Daten entfernt die Geräte-ID
-und damit auch die Identität des Besitzers. Geräteübergreifende Kontowiederherstellung
-ist noch nicht enthalten. Ein Einladungs-QR ist ein Zugangsschlüssel; nur mit den
-gewünschten Mitspielern teilen. Eine Sperre gilt für die UID, nicht für eine Person,
-die mit gelöschten App-Daten eine neue Identität erzeugt.
+Der Anzeigename verleiht keine Rechte. Jedes Gerät bekommt eine dauerhaft gespeicherte
+anonyme Firebase-UID. Der Besitzer kann andere Geräte-IDs in der Spielerliste entfernen.
+Sperrvermerke bleiben erhalten, damit dieselbe UID nicht mit der alten Einladung erneut
+beitreten kann. Die Einladung ist ein Zugangsschlüssel und sollte nur an gewünschte
+Mitspieler weitergegeben werden.
 
-## Umfang und Synchronisierung
+Eine Neuinstallation oder das Löschen der App-Daten entfernt die Geräteidentität,
+einschließlich Besitzerzugang und Zugang zum bisherigen Inventar. Eine Wiederherstellung
+über ein Benutzerkonto ist noch nicht enthalten. Die Sperre gilt für die UID; eine neue
+Identität auf einem zurückgesetzten Gerät kann mit einer gültigen Einladung neu beitreten.
 
-- Online ist zunächst **Kreativmodus**. Kein gemeinsames Story-Inventar, keine
-  Nachtgegner und keine automatischen Materialreaktionen oder Flüssigkeitsströme.
-- Vier Gebiete ergeben 192 × 192, neun Gebiete 288 × 288 Blöcke Grundfläche,
-  jeweils 48 Blöcke hoch. Ein Gebiet umfasst 96 × 96 Blöcke. Beim Überqueren
-  des äußeren Randes wird das benachbarte Gebiet geladen. Zwischen den Gebieten
-  gibt es eine kurze Ladepause; Nachbargebiete werden nicht gleichzeitig gerendert.
-- Im selben Gebiet sind Mitspieler als Blockfiguren mit Namen sichtbar. Eine
-  Verbindung zur gleichen Welt reicht; der Besitzer muss nicht online bleiben.
-- Authentifizierung und alle HTTP-Anfragen laufen auf einem separaten, seriellen
-  Netzwerkthread. Die App fragt Änderungen ungefähr alle 2,5 Sekunden ab. Es handelt
-  sich um gemeinsame Bauwelten mit spürbarer Aktualisierungsverzögerung, nicht um
-  schnellen Echtzeit-Kampf. Bewegungen werden für die Darstellung geglättet.
-- Ein Block wird erst nach erfolgreicher Firestore-Bestätigung verändert. Für
-  konkurrierende Änderungen verwendet die App `currentDocument.updateTime` oder
-  `exists=false`. Ein Konflikt lädt den aktuellen Block, statt ihn still zu überschreiben.
-- Bei unterbrochener Verbindung ist Bauen gesperrt. Fehlgeschlagene Leseversuche
-  werden mit zunehmendem Abstand bis maximal 80 Sekunden wiederholt. Es gibt keine
-  versteckte Offline-Bauwarteschlange. Beim Verlassen wird die lokale Welt wiederhergestellt.
-- Lokale Weltdateien und ihr Speicherformat bleiben unverändert. Online-Welten
-  werden nicht als lokale Welten gespeichert und nicht per Offline-QR exportiert.
-- Anwesenheit wird spätestens alle zehn Sekunden aktualisiert. Nach ungefähr
-  zwanzig Sekunden ohne Aktualisierung wird eine Figur ausgeblendet. Im Hintergrund
-  pausieren neue Abfragen. Eine laufende Anfrage kann noch zu Ende gehen.
-- Firestore-Abfragen und Positionsaktualisierungen verbrauchen Kontingent. Diese
-  erste Version ist für wenige Familiengeräte gedacht. Verbrauch in der Firebase
-  Console beobachten; es wird keine unbegrenzte kostenlose Nutzung zugesichert.
+## Rohstoffe und Werkbank
 
-## Datenmodell und Berechtigungen
+- **Laufen ist Standard.** Mit ↑ springen oder schwimmen; online gibt es keinen
+  Flugmodus-Schalter.
+- **− gedrückt halten** baut einen Block ab. Gras ergibt Erde. Härtere Materialien
+  brauchen die gleichen Werkzeuge wie im lokalen Storymodus.
+- In **WERKBANK** oben im Spiel oder im Menü wird der erste Auftrag mit 8 Erde
+  abgeschlossen. Danach folgen Holzwerkzeug, Holzspitzhacke, Steinspitzhacke,
+  Ofen und Eisenwerkzeug. Die dafür gesammelten Materialien werden verbraucht.
+- Bretter, Ziegel, Glas, Barren, Eisenblöcke, Gras und Eimer werden aus Rohstoffen
+  hergestellt. **+** verbraucht einen Block aus dem eigenen Vorrat.
+- Jeder Spieler hat **pro Online-Welt ein eigenes Inventar**. Vorräte, Werkzeuge,
+  Herstellungsfortschritt und Bauzähler bleiben nach Verlassen und Wiederverbinden
+  mit derselben Geräte-ID erhalten. Verschiedene Geräte haben verschiedene Inventare.
+- Natürliche Wasserquellen lassen sich mit einem leeren Eimer aufnehmen. Ausgegossene
+  Quellen bleiben endlich. Wasser und Lava fließen nicht. Lava kann über das bekannte
+  Ofenrezept hergestellt werden; automatische Materialreaktionen bleiben deaktiviert.
+- Neue unterirdische Erz- und Leuchtsteinvorkommen ersetzen nur unberührten natürlichen
+  Stein. Bereits gespeicherte Blockänderungen werden darübergelegt und bleiben erhalten.
+  Alte Kreativbauten werden weder entfernt noch nachträglich berechnet; Inventare starten leer.
+
+## Zusammenhängende Welt und Nachladen
+
+Die Welt misst **192 × 192** oder **288 × 288 Blöcke**, jeweils 48 Blöcke hoch. Die
+kleine Weltkarte zeigt Gesamtgröße, eigene Position und farbige Mitspieler. Beim
+Laufen werden Koordinaten kontinuierlich fortgeführt: keine Teleports, Abschnittsmenüs
+oder vollständigen Weltwechsel an internen Speichergrenzen. Auch Mitspieler jenseits
+einer solchen Grenze sind in Sichtweite sichtbar.
+
+Die Welt hat ein gemeinsames Koordinatenraster. Landschaft und bestätigte Änderungen
+werden in der Nähe des Spielers vorgeladen. Firestore wird nur für die umliegenden
+Speicherbereiche abgefragt, mit Randbereich vor der sichtbaren Landschaft. Bereits
+besuchte Landschaften bleiben als begrenzter lokaler Cache erhalten. Das Grundraster
+belegt bei 288 × 288 × 48 rund 4 MB für Blocktypen; es wird nicht als vollständige Welt
+von Firebase heruntergeladen. Die GPU-Geometrie wird in 16 × 16 großen Bereichen
+aufgebaut und bei größerem Abstand wieder freigegeben.
+
+Bei langsamer Verbindung kann der Spieler kurz vor einer noch nicht synchronisierten
+Umgebung anhalten, bis sie geladen ist. Die Kamera wird dabei nicht versetzt. Welt-
+und Positionsänderungen werden weiterhin ungefähr alle 2,5 Sekunden abgefragt;
+Mitspielerbewegungen werden geglättet. Dies ist gemeinsames Bauen, kein schneller
+Echtzeit-Kampf. Der Besitzer muss nicht dauerhaft online sein.
+
+## Atomare Änderungen und Speicherung
+
+Eine Bau- oder Abbauaktion schreibt **Block und eigenes Inventar in einem Firestore-
+Commit**. Beide Dokumente haben Versionsvorbedingungen. Wird derselbe Block gleichzeitig
+von zwei Geräten abgebaut, wird nur eine Aktion bestätigt und nur ein Inventar erhält
+das Material. Scheitert eine Aktion, werden weder Material noch Block lokal verändert.
+Herstellen und Werkzeugfortschritt verwenden ebenfalls eine Inventar-Versionsprüfung.
+
+Bei unterbrochener Verbindung pausiert das Bauen. Es gibt keine versteckte Offline-
+Bauwarteschlange. Neue Versuche erfolgen mit wachsendem Abstand bis maximal 80 Sekunden.
+Anwesenheit wird spätestens alle zehn Sekunden aktualisiert; nach etwa zwanzig Sekunden
+ohne Aktualisierung wird eine Figur ausgeblendet. Im Hintergrund pausieren neue Abfragen.
+Eine bereits laufende Anfrage kann noch zu Ende gehen.
+
+Lokale Kreativ- und Storywelten bleiben getrennt erhalten. Das Offline-Speicherformat
+bleibt unverändert; große Online-Welten werden nicht in lokale Weltdateien geschrieben
+oder als Offline-QR exportiert. Beim Verlassen wird die vorherige lokale Welt geöffnet.
+Firestore-Lesezugriffe und Positionsaktualisierungen verbrauchen Kontingent. Die erste
+Fassung ist für wenige Familiengeräte gedacht; Verbrauch in der Firebase Console prüfen.
+
+## Datenmodell
 
 ```text
-onlineWorlds/{zufälligeWeltId}
+onlineWorlds/{weltId}
   owner, name, seed, side, protocol, invite, closed
   members/{firebaseUid}
     name, banned, invite, sector, x, y, z, yaw, updatedAt
+    inventory/main
+      items[17], chapter, iron, placed, glassPlaced, buckets, sword,
+      lastBlock, updatedAt
   sectors/{0..8}/blocks/{x_y_z}
-    x, y, z, type, by, updatedAt
+    x, y, z, type, by, renewable, updatedAt
 ```
 
-Die Welt-ID und Einladung enthalten jeweils 128 Zufallsbits. Eine Welt und ihre
-Besitzermitgliedschaft werden atomar angelegt. Welten können nicht öffentlich
-aufgelistet werden. Nur Mitglieder können Weltdaten lesen und Blöcke verändern.
-Mitglieder dürfen an ihrem eigenen Dokument ausschließlich Anzeigename, Position,
-Blickrichtung und Zeitstempel ändern. Nur der Besitzer kann andere UIDs sperren;
-Sperrvermerke können vom Client nicht gelöscht werden. Fundament, unbekannte
-Materialien, zusätzliche Felder und Änderungen außerhalb der Weltgrenzen sind gesperrt.
+Intern verbleiben die gespeicherten Block- und Anwesenheitsdaten im bisherigen
+96er-Raster. Die App rechnet sie in gemeinsame Weltkoordinaten um. Deshalb bleiben
+0.7.0-Bauten erhalten. Die Einladungshülle bleibt Version 1; die Ressourcen- und
+Geländelogik verwendet Weltprotokoll 2.
 
-Das ursprüngliche Gelände wird deterministisch aus Seed und Gebietsnummer erzeugt;
-Firestore speichert dauerhaft nur die abweichenden Blöcke. Änderungen an der
-Geländegenerierung erfordern eine bewusste Online-Protokollversionierung. Vor einer
-solchen Änderung muss die Kompatibilität bestehender Online-Welten erhalten werden.
+Welt-ID und Einladung enthalten jeweils 128 Zufallsbits. Welten sind nicht öffentlich
+auflistbar. Nur Mitglieder können Weltblöcke lesen und bearbeiten. Ein Inventar kann
+nur die zugehörige UID lesen und schreiben. Die Regeln prüfen Inventargröße, Feldtypen,
+Wertebereiche und bei Blockänderungen die zugehörige Inventaränderung im selben Commit.
+Fremde Inventare, Fundament, ungültige Koordinaten, zusätzliche Felder und das Löschen
+von Sperrvermerken sind gesperrt.
+
+Im Code sind `World.W` und `World.D` weiterhin die Offline-/Speicherbereichsgröße.
+Die tatsächlich dargestellte Welt verwendet `world.width`, `world.depth`, `world.idx`
+und `world.contains`. Online bleiben Nature- und Survival-Simulationen ausgeschaltet.
 
 ## Prüfen
 
@@ -108,13 +154,17 @@ solchen Änderung muss die Kompatibilität bestehender Online-Welten erhalten we
 bash test.sh
 bash scripts/test-update-contract.sh
 npm ci --ignore-scripts
-# Java 21+ für die aktuellen Firebase-Emulatoren, Node 24
+# Java 21+ und Node 24
 npm run test:rules
 ```
 
-Die Regeltests prüfen atomare Welterstellung, Einladung, fremde Zugriffe, Positionen,
-Besitzerrechte, Blockvalidierung, Zeitstempel, Sperrvermerke und das Schließen einer
-Welt. CI führt sie als eigenen Job aus. Android-Gerätetests für den bisherigen
-Offline-Modus bleiben aktiv. Zusätzlich vor einem Release auf zwei echten Geräten
-prüfen: QR-Beitritt, gemeinsames Bauen, erneutes Öffnen, Gebietswechsel, Hintergrund,
-Flugmodus und Wiederverbindung, Entfernen eines Spielers und Erhalt lokaler Spielstände.
+Die Tests prüfen Materialverbrauch, Werkzeugfortschritt, statische Welt, kontinuierliche
+Koordinaten, sichtabhängiges Nachladen, Einladungs-QR, UID-Rechte, Inventarvalidierung,
+atomare REST-Commits und konkurrierendes Abbauen. Die Android-Instrumentierung prüft
+zusätzlich durchgehendes Laufen über eine bisherige Speichergrenze, sichtbare farbige
+Mitspieler, Werkbank und Erhalt des lokalen Spielstands. Dazu verwendet sie eine lokale
+Testszene ohne Produktionsanfragen. CI veröffentlicht `online.png` als Prüfaufnahme.
+
+Auf echten Tablets gemeinsam prüfen: Rohstoffe sammeln, Werkzeug freischalten,
+Bauen/Abbauen desselben Blocks, Werkbank, erneutes Öffnen mit erhaltenem Inventar,
+Weiterlaufen über den alten Rand, Flugmodus und Wiederverbindung sowie Spielersperre.

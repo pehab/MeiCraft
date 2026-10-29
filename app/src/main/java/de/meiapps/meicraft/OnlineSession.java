@@ -17,14 +17,20 @@ final class OnlineSession implements AutoCloseable {
     final ScheduledExecutorService worker=Executors.newSingleThreadScheduledExecutor();
     volatile OnlineWorld invitation;
     final String playerName;
-    volatile boolean closed,foreground=true,healthy,loading=true,pending;
+    volatile boolean closed,foreground=true,healthy,loading=true,pending,streaming;
     volatile List<Player> players=Collections.emptyList();
     volatile int sector,side;
     volatile World world;
     volatile String owner="",name="";
-    long seed,lastHeartbeat,nextAttempt;int failures;String watermark="";
-    final Map<String,String> versions=new HashMap<>();
-    final Map<String,Integer> knownTypes=new HashMap<>();
+    long seed,lastHeartbeat,nextAttempt;int failures;
+    static final class Region {
+        final int id;String watermark="";boolean generated;
+        final Map<String,String> versions=new HashMap<>();final Map<String,Integer> types=new HashMap<>();final Map<String,Boolean> renewable=new HashMap<>();
+        Region(int id){this.id=id;}
+    }
+    final Map<Integer,Region> regions=new HashMap<>();
+    volatile Set<Integer> readyRegions=Collections.emptySet();
+    volatile Story inventory=new Story();String inventoryVersion="";
     volatile float px,py,pz,angle;
     float lastX=Float.NaN,lastY,lastZ,lastAngle;
     OnlineSession(MainActivity activity,FirebaseRest firebase,OnlineWorld invitation,String playerName,Listener listener){this.activity=activity;this.firebase=firebase;this.invitation=invitation;this.playerName=OnlineWorld.playerName(playerName);this.listener=listener;}
@@ -46,12 +52,22 @@ final class OnlineSession implements AutoCloseable {
                 else if(own.getJSONObject("fields").getJSONObject("banned").getBoolean("booleanValue"))throw new IOException("Du wurdest aus dieser Welt entfernt.");
             }
             JSONObject root=firebase.get(base());if(root==null)throw new IOException("Diese Welt existiert nicht.");JSONObject data=root.getJSONObject("fields");
-            if(FirebaseRest.integer(data,"protocol")!=OnlineWorld.PROTOCOL)throw new IOException("Für diese Welt brauchst du eine andere App-Version.");
+            int protocol=FirebaseRest.integer(data,"protocol");
+            if(protocol==1){
+                if(!firebase.uid.equals(FirebaseRest.string(data,"owner")))throw new IOException("Bitte zuerst den Weltbesitzer mit der neuen App-Version verbinden lassen.");
+                firebase.commit(new JSONArray().put(firebase.write(base(),FirebaseRest.fields("protocol",OnlineWorld.PROTOCOL),new String[]{"protocol"},new JSONObject().put("updateTime",root.getString("updateTime")),false)));
+                protocol=OnlineWorld.PROTOCOL;
+            }
+            if(protocol!=OnlineWorld.PROTOCOL)throw new IOException("Bitte alle Geräte auf dieselbe aktuelle App-Version aktualisieren.");
             if(data.getJSONObject("closed").getBoolean("booleanValue"))throw new IOException("Diese Welt wurde geschlossen.");
             invitation=new OnlineWorld(invitation.id,FirebaseRest.string(data,"invite"));
             owner=FirebaseRest.string(data,"owner");name=FirebaseRest.string(data,"name");seed=data.getJSONObject("seed").getLong("integerValue");side=FirebaseRest.integer(data,"side");
             if(side!=2&&side!=3)throw new IOException("Ungültige Weltgröße.");
-            loadSector(0,0,0,0,0,0);remember();
+            try{loadInventory(true);}catch(FirebaseRest.Failure e){if(e.status==403)throw new IOException("Bitte die aktualisierten Firestore-Regeln für Online-Ressourcen veröffentlichen.");throw e;}
+            world=World.onlineSpace(seed,side);World origin=OnlineInventory.terrain(OnlineWorld.sectorSeed(seed,0));world.x=origin.x;world.y=origin.y;world.z=origin.z;world.yaw=0;px=world.x;py=world.y;pz=world.z;OnlineInventory.apply(world.progress,inventory);
+            syncVisible(true);remember();
+            if(!closed)activity.runOnUiThread(()->{if(!closed)listener.loaded(world,name);});
+            healthy=true;loading=false;
             if(!closed)worker.scheduleWithFixedDelay(this::poll,0,2500,TimeUnit.MILLISECONDS);
         }catch(Exception e){problem(e,true);}});
     }
@@ -62,32 +78,28 @@ final class OnlineSession implements AutoCloseable {
         android.content.SharedPreferences prefs=activity.getSharedPreferences("online-worlds",0);
         try{JSONObject saved=new JSONObject(prefs.getString("worlds","{}"));saved.put(invitation.id,name);prefs.edit().putString("worlds",saved.toString()).putString("player",playerName).apply();}catch(JSONException ignored){/* A broken recent list does not affect world access. */}
     }
-    void loadSector(int target,int dx,int dz,float oldY,float oldOther,float heading)throws Exception{
-        loading=true;healthy=false;versions.clear();knownTypes.clear();watermark="";
-        World next=new World(OnlineWorld.sectorSeed(seed,target),false,false);next.online=true;next.nature.flowEnabled=false;
-        world=next;sector=target;loadChanges(true);
-        if(dx!=0){next.x=dx>0?1.5f:World.W-1.5f;next.z=Math.max(1.5f,Math.min(World.D-1.5f,oldOther));next.y=oldY;}
-        if(dz!=0){next.z=dz>0?1.5f:World.D-1.5f;next.x=Math.max(1.5f,Math.min(World.W-1.5f,oldOther));next.y=oldY;}
-        if(next.collides(next.x,next.y,next.z)){
-            boolean found=false;for(int y=World.H+2;y>=3;y--)if(!next.collides(next.x,y,next.z)&&next.solid((int)next.x,y-2,(int)next.z)){next.y=y;found=true;break;}
-            if(!found)next.y=World.H+2;
-        }
-        next.yaw=heading;px=next.x;py=next.y;pz=next.z;lastHeartbeat=0;lastX=Float.NaN;
-        if(closed)return;
-        activity.runOnUiThread(()->{if(!closed)listener.loaded(next,name);});
-        healthy=true;loading=false;
+    void syncVisible(boolean initial)throws Exception{
+        World target=world;
+        try{for(int id:OnlineWorld.visibleSectors(px,pz,side,82)){
+            if(closed)return;Region region=regions.computeIfAbsent(id,Region::new);
+            if(!region.generated)streaming=true;
+            World tile=region.generated?null:OnlineInventory.terrain(OnlineWorld.sectorSeed(seed,id));
+            loadChanges(region,tile);
+            if(tile!=null){
+                region.generated=true;
+                if(initial){OnlineInventory.install(target,tile,id,side);markReady(id);}
+                else activity.game.gl.queueEvent(()->{if(!closed&&world==target){synchronized(target){OnlineInventory.install(target,tile,id,side);}for(int x=id%side*World.W;x<(id%side+1)*World.W;x+=16)for(int z=id/side*World.D;z<(id/side+1)*World.D;z+=16)activity.game.renderer.dirty(x,z);markReady(id);}});
+            }
+        }}finally{streaming=false;}
     }
-    void cross(int dx,int dz){
-        if(closed||loading||pending||!healthy)return;int target=OnlineWorld.neighbor(sector,side,dx,dz);if(target<0)return;
-        loading=true;healthy=false;float oldY=py,other=dx!=0?pz:px,oldYaw=angle;
-        worker.execute(()->{try{loadSector(target,dx,dz,oldY,other,oldYaw);}catch(Exception e){problem(e,true);}});
-    }
-    void position(World w){if(w==world){px=w.x;py=w.y;pz=w.z;angle=w.yaw;}}
+    void markReady(int id){Set<Integer> next=new HashSet<>(readyRegions);next.add(id);readyRegions=Collections.unmodifiableSet(next);}
+    boolean canMove(float x,float z){return readyRegions.contains(OnlineWorld.sectorAt(x,z,side));}
+    void position(World w){if(w==world){px=w.x;py=w.y;pz=w.z;angle=w.yaw;sector=OnlineWorld.sectorAt(w.x,w.z,side);}}
     private void heartbeat()throws Exception{
         long now=System.currentTimeMillis();boolean moved=Float.isNaN(lastX)||Math.abs(px-lastX)>.1f||Math.abs(py-lastY)>.1f||Math.abs(pz-lastZ)>.1f||Math.abs(angle-lastAngle)>.1f;
         if(!moved&&now-lastHeartbeat<10000)return;
         float x=px,y=py,z=pz,a=angle;
-        JSONObject write=firebase.write(member(firebase.uid),FirebaseRest.fields("name",playerName,"sector",sector,"x",x,"y",y,"z",z,"yaw",a),new String[]{"name","sector","x","y","z","yaw"},new JSONObject().put("exists",true),true);
+        JSONObject write=firebase.write(member(firebase.uid),FirebaseRest.fields("name",playerName,"sector",sector,"x",x-(sector%side)*World.W,"y",y,"z",z-(sector/side)*World.D,"yaw",a),new String[]{"name","sector","x","y","z","yaw"},new JSONObject().put("exists",true),true);
         firebase.commit(new JSONArray().put(write));lastX=x;lastY=y;lastZ=z;lastAngle=a;lastHeartbeat=now;
     }
     private void poll(){
@@ -95,7 +107,7 @@ final class OnlineSession implements AutoCloseable {
         try{
             JSONObject own=firebase.get(member(firebase.uid));
             if(own==null||own.getJSONObject("fields").getJSONObject("banned").getBoolean("booleanValue")){problem(new IOException("Du wurdest aus dieser Welt entfernt."),true);return;}
-            loadChanges(false);heartbeat();loadPlayers();healthy=true;failures=0;nextAttempt=0;
+            syncVisible(false);loadInventory(false);heartbeat();loadPlayers();healthy=true;failures=0;nextAttempt=0;
         }catch(Exception e){healthy=false;failures=Math.min(5,failures+1);nextAttempt=System.currentTimeMillis()+(2500L<<failures);problem(e,e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==403);}
     }
     private void loadPlayers()throws Exception{
@@ -108,42 +120,98 @@ final class OnlineSession implements AutoCloseable {
         }while(!page.isEmpty()&&!closed);
         players=Collections.unmodifiableList(next);
     }
-    private void loadChanges(boolean initial)throws Exception{
-        String parent=base()+"/sectors/"+sector;JSONArray cursor=null;String latest=watermark;World target=world;int region=sector;
+    private void loadChanges(Region region,World tile)throws Exception{
+        String parent=base()+"/sectors/"+region.id;JSONArray cursor=null;String latest=region.watermark;World target=world;
         do{
             JSONObject query=new JSONObject().put("from",new JSONArray().put(new JSONObject().put("collectionId","blocks"))).put("orderBy",new JSONArray().put(order("updatedAt")).put(order("__name__"))).put("limit",200);
-            if(!watermark.isEmpty())query.put("where",new JSONObject().put("fieldFilter",new JSONObject().put("field",new JSONObject().put("fieldPath","updatedAt")).put("op","GREATER_THAN_OR_EQUAL").put("value",new JSONObject().put("timestampValue",watermark))));
+            if(!region.watermark.isEmpty())query.put("where",new JSONObject().put("fieldFilter",new JSONObject().put("field",new JSONObject().put("fieldPath","updatedAt")).put("op","GREATER_THAN_OR_EQUAL").put("value",new JSONObject().put("timestampValue",region.watermark))));
             if(cursor!=null)query.put("startAt",new JSONObject().put("values",cursor).put("before",false));
             JSONArray result=firebase.query(parent,query);int count=0;cursor=null;
             for(int i=0;i<result.length();i++){JSONObject row=result.getJSONObject(i);if(!row.has("document"))continue;JSONObject doc=row.getJSONObject("document"),d=doc.getJSONObject("fields");
                 int x=FirebaseRest.integer(d,"x"),y=FirebaseRest.integer(d,"y"),z=FirebaseRest.integer(d,"z"),type=FirebaseRest.integer(d,"type");
                 if(!OnlineWorld.validBlock(x,y,z,type))throw new IOException("Ungültiger Online-Block.");
                 String id=x+"_"+y+"_"+z,version=doc.getString("updateTime"),timestamp=d.getJSONObject("updatedAt").getString("timestampValue");
-                knownTypes.put(id,type);
-                if(!version.equals(versions.put(id,version)))apply(target,region,x,y,z,type,initial);
+                region.types.put(id,type);region.renewable.put(id,d.optJSONObject("renewable")!=null&&d.getJSONObject("renewable").optBoolean("booleanValue",false));
+                String previous=region.versions.put(id,version);
+                // A retried initial page must restore every delta into the fresh terrain,
+                // including versions seen before a previous request failed.
+                if(tile!=null)tile.set(x,y,z,type);else if(!version.equals(previous))apply(target,region.id,x,y,z,type,false);
                 latest=timestamp;count++;cursor=new JSONArray().put(d.getJSONObject("updatedAt")).put(new JSONObject().put("referenceValue",doc.getString("name")));
             }
             if(count<200)cursor=null;
         }while(cursor!=null&&!closed);
-        watermark=latest;
+        region.watermark=latest;
     }
     static JSONObject order(String field)throws JSONException{return new JSONObject().put("field",new JSONObject().put("fieldPath",field)).put("direction","ASCENDING");}
     void apply(World target,int region,int x,int y,int z,int type,boolean initial){
         if(initial){target.set(x,y,z,type);return;}
-        activity.game.gl.queueEvent(()->{if(!closed&&world==target&&sector==region){synchronized(target){target.set(x,y,z,type);}activity.game.renderer.dirty(x,z);}});
+        activity.game.gl.queueEvent(()->{if(!closed&&world==target){int gx=region%side*World.W+x,gz=region/side*World.D+z;synchronized(target){target.set(gx,y,gz,type);}activity.game.renderer.dirty(gx,gz);}});
+    }
+    String inventoryPath(){return member(firebase.uid)+"/inventory/main";}
+    JSONObject inventoryFields(Story state,String lastBlock)throws JSONException{
+        JSONObject fields=FirebaseRest.fields("chapter",state.chapter,"iron",state.iron,"placed",state.placed,"glassPlaced",state.glassPlaced,"buckets",state.buckets,"sword",state.sword,"lastBlock",lastBlock);
+        JSONArray items=new JSONArray();for(int n:state.inventory)items.put(FirebaseRest.value(n));
+        fields.put("items",new JSONObject().put("arrayValue",new JSONObject().put("values",items)));return fields;
+    }
+    Story decodeInventory(JSONObject d)throws JSONException,IOException{
+        Story state=new Story();JSONArray items=d.getJSONObject("items").getJSONObject("arrayValue").getJSONArray("values");
+        if(items.length()!=state.inventory.length)throw new IOException("Ungültiges Online-Inventar.");
+        for(int i=0;i<items.length();i++)state.inventory[i]=items.getJSONObject(i).getInt("integerValue");
+        state.chapter=FirebaseRest.integer(d,"chapter");state.iron=FirebaseRest.integer(d,"iron");state.placed=FirebaseRest.integer(d,"placed");state.glassPlaced=FirebaseRest.integer(d,"glassPlaced");state.buckets=FirebaseRest.integer(d,"buckets");state.sword=d.getJSONObject("sword").getBoolean("booleanValue");
+        if(!OnlineInventory.valid(state))throw new IOException("Ungültiges Online-Inventar.");return state;
+    }
+    void loadInventory(boolean create)throws Exception{
+        JSONObject doc=firebase.get(inventoryPath());
+        if(doc==null&&create){
+            try{firebase.commit(new JSONArray().put(firebase.write(inventoryPath(),inventoryFields(new Story(),""),null,new JSONObject().put("exists",false),true)));}
+            catch(FirebaseRest.Failure e){if(e.status!=409&&e.status!=400&&e.status!=412)throw e;}
+            doc=firebase.get(inventoryPath());
+        }
+        if(doc==null)throw new IOException("Online-Inventar konnte nicht geladen werden.");
+        String version=doc.getString("updateTime");if(!version.equals(inventoryVersion)){inventory=decodeInventory(doc.getJSONObject("fields"));inventoryVersion=version;if(world!=null)applyInventory(inventory);}
+    }
+    void applyInventory(Story state){
+        Story snapshot=OnlineInventory.copy(state);activity.game.gl.queueEvent(()->{World current=world;if(!closed&&current!=null){synchronized(current){OnlineInventory.apply(current.progress,snapshot);}}});
+    }
+    boolean beginAction(){
+        if(closed)return false;if(!healthy||loading||!foreground){activity.game.message("Verbindung wird hergestellt …");return false;}
+        if(pending){activity.game.message("Aktion wird gespeichert …");return false;}pending=true;return true;
     }
     void edit(int x,int y,int z,int type){
-        if(!OnlineWorld.validBlock(x,y,z,type)||closed)return;
-        if(!healthy||loading||!foreground){activity.game.message("Verbindung wird hergestellt …");return;}
-        if(pending){activity.game.message("Bauänderung wird gespeichert …");return;}
-        pending=true;World target=world;int region=sector;final int expected=target.get(x,y,z);
+        World target=world;if(target==null||!target.contains(x,y,z)||y==0||type<0||type>=World.NAMES.length||!beginAction())return;
+        int region=OnlineWorld.sectorAt(x,z,side);final int expected=target.get(x,y,z),lx=x-region%side*World.W,lz=z-region/side*World.D;
         worker.execute(()->{try{
-            String id=x+"_"+y+"_"+z,path=base()+"/sectors/"+region+"/blocks/"+id;
-            if(knownTypes.containsKey(id)&&knownTypes.get(id)!=expected){apply(target,region,x,y,z,knownTypes.get(id),false);activity.game.message("Der Block wurde inzwischen geändert. Bitte erneut versuchen.");return;}
-            JSONObject condition=versions.containsKey(id)?new JSONObject().put("updateTime",versions.get(id)):new JSONObject().put("exists",false);
-            JSONObject fields=FirebaseRest.fields("x",x,"y",y,"z",z,"type",type,"by",firebase.uid);
-            try{JSONObject result=firebase.commit(new JSONArray().put(firebase.write(path,fields,null,condition,true)));String version=result.getJSONArray("writeResults").getJSONObject(0).getString("updateTime");versions.put(id,version);knownTypes.put(id,type);apply(target,region,x,y,z,type,false);}
-            catch(FirebaseRest.Failure e){if(e.status!=409&&e.status!=400&&e.status!=412)throw e;JSONObject current=firebase.get(path);if(current!=null){versions.put(id,current.getString("updateTime"));int actual=FirebaseRest.integer(current.getJSONObject("fields"),"type");knownTypes.put(id,actual);apply(target,region,x,y,z,actual,false);}activity.game.message("Der Block wurde inzwischen geändert. Bitte erneut versuchen.");}
+            Region data=regions.get(region);if(data==null||!data.generated)return;String id=lx+"_"+y+"_"+lz,path=base()+"/sectors/"+region+"/blocks/"+id;
+            if(data.types.containsKey(id)&&data.types.get(id)!=expected){apply(target,region,lx,y,lz,data.types.get(id),false);activity.game.message("Der Block wurde inzwischen geändert. Bitte erneut versuchen.");return;}
+            if(type!=0&&expected!=0){activity.game.message("Hier steht bereits ein Block.");return;}
+            Story next=OnlineInventory.copy(inventory);String problem=type==0?OnlineInventory.harvest(next,expected):OnlineInventory.place(next,type);
+            if(!problem.isEmpty()){activity.game.message(problem);return;}
+            boolean renewable=type==0&&expected==10&&(data.renewable.getOrDefault(id,false)||!data.versions.containsKey(id));int actual=renewable?10:type;
+            JSONObject condition=data.versions.containsKey(id)?new JSONObject().put("updateTime",data.versions.get(id)):new JSONObject().put("exists",false);
+            JSONObject fields=FirebaseRest.fields("x",lx,"y",y,"z",lz,"type",actual,"by",firebase.uid,"renewable",renewable);
+            JSONArray writes=new JSONArray().put(firebase.write(path,fields,null,condition,true)).put(firebase.write(inventoryPath(),inventoryFields(next,region+"/"+id),null,new JSONObject().put("updateTime",inventoryVersion),true));
+            try{
+                JSONObject result=firebase.commit(writes);data.versions.put(id,result.getJSONArray("writeResults").getJSONObject(0).getString("updateTime"));data.types.put(id,actual);data.renewable.put(id,renewable);
+                inventory=next;inventoryVersion=result.getJSONArray("writeResults").getJSONObject(1).getString("updateTime");
+                apply(target,region,lx,y,lz,actual,false);applyInventory(next);
+            }catch(FirebaseRest.Failure e){
+                if(e.status!=409&&e.status!=400&&e.status!=412)throw e;
+                JSONObject current=firebase.get(path);if(current!=null){data.versions.put(id,current.getString("updateTime"));int changed=FirebaseRest.integer(current.getJSONObject("fields"),"type");data.types.put(id,changed);data.renewable.put(id,current.getJSONObject("fields").optJSONObject("renewable")!=null&&current.getJSONObject("fields").getJSONObject("renewable").optBoolean("booleanValue",false));apply(target,region,lx,y,lz,changed,false);}
+                loadInventory(false);activity.game.message("Der Block oder dein Vorrat wurde inzwischen geändert. Bitte erneut versuchen.");
+            }
+        }catch(Exception e){healthy=false;problem(e,false);}finally{pending=false;}});
+    }
+    void progressAction(int recipe){
+        if(!beginAction())return;
+        worker.execute(()->{try{
+            Story next=OnlineInventory.copy(inventory);String message;
+            if(recipe<0){boolean claimed=next.claim();message=claimed?"Werkzeug / Auftrag freigeschaltet":next.goal();}
+            else message=next.craft(recipe);
+            if(!OnlineInventory.same(next,inventory)){
+                try{JSONObject result=firebase.commit(new JSONArray().put(firebase.write(inventoryPath(),inventoryFields(next,""),null,new JSONObject().put("updateTime",inventoryVersion),true)));inventory=next;inventoryVersion=result.getJSONArray("writeResults").getJSONObject(0).getString("updateTime");applyInventory(next);}
+                catch(FirebaseRest.Failure e){if(e.status!=409&&e.status!=400&&e.status!=412)throw e;loadInventory(false);message="Dein Vorrat wurde inzwischen geändert. Bitte erneut versuchen.";}
+            }
+            final String notice=message;activity.runOnUiThread(()->{if(!closed){activity.toast(notice);activity.online.refreshWorkbench();}});
         }catch(Exception e){healthy=false;problem(e,false);}finally{pending=false;}});
     }
     void ban(String uid){

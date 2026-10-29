@@ -42,5 +42,13 @@ for t,col in enumerate(colors):
  if t==22:
   for dx,dy in [(4,5),(19,4),(11,18),(24,23)]:d.rectangle((x+dx,dy,x+dx+5,dy+4),fill=(255,174,61))
  if t==23:d.rectangle((x+1,1,x+30,30),outline=(255,215,105),width=2)
+# Dedicated avatar atlas: skin, trousers and five stable shirt colors. World tiles stay byte-identical.
+skin=(239,188,147)
+for t,color in enumerate([skin,(48,65,90),(57,134,232),(69,184,106),(237,157,50),(164,102,220),(223,92,100)],25):
+ x=t*32;d.rectangle((x,0,x+31,31),fill=color)
+ if t>=27:d.rectangle((x+5,26,x+26,31),fill=tuple(max(0,c-18) for c in color))
+ if t==25:
+  d.rectangle((x+6,10,x+11,14),fill=(43,47,58));d.rectangle((x+20,10,x+25,14),fill=(43,47,58))
+  d.line((x+11,23,x+20,23),fill=(136,76,62),width=2)
 im.save('app/src/main/assets/blocks.png')
 
