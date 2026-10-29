@@ -17,7 +17,7 @@ final class OnlineSession implements AutoCloseable {
     final ScheduledExecutorService worker=Executors.newSingleThreadScheduledExecutor();
     volatile OnlineWorld invitation;
     final String playerName;
-    volatile boolean closed,foreground=true,healthy,loading=true,pending,streaming;
+    volatile boolean closed,foreground=true,healthy,loading=true,pending,streaming,deletionOnly;
     volatile List<Player> players=Collections.emptyList();
     volatile int sector,side;
     volatile World world;
@@ -48,28 +48,31 @@ final class OnlineSession implements AutoCloseable {
                 firebase.commit(new JSONArray().put(firebase.write(base(),root,null,new JSONObject().put("exists",false),false)).put(memberWrite()));
             }else{
                 JSONObject own=firebase.get(member(firebase.uid));
-                if(own==null)firebase.commit(new JSONArray().put(memberWrite()));
+                if(own==null){
+                    // The owner can resume deleting a closed world even after its membership was removed.
+                    JSONObject owned=null;try{owned=firebase.get(base());}catch(FirebaseRest.Failure e){if(e.status!=403)throw e;}
+                    if(owned==null||!firebase.uid.equals(FirebaseRest.string(owned.getJSONObject("fields"),"owner")))firebase.commit(new JSONArray().put(memberWrite()));
+                }
                 else if(own.getJSONObject("fields").getJSONObject("banned").getBoolean("booleanValue"))throw new IOException("Du wurdest aus dieser Welt entfernt.");
             }
             JSONObject root=firebase.get(base());if(root==null)throw new IOException("Diese Welt existiert nicht.");JSONObject data=root.getJSONObject("fields");
+            owner=FirebaseRest.string(data,"owner");name=FirebaseRest.string(data,"name");side=FirebaseRest.integer(data,"side");
+            if(side!=2&&side!=3)throw new IOException("Ungültige Weltgröße.");
             int protocol=FirebaseRest.integer(data,"protocol");
-            if(protocol==1){
-                if(!firebase.uid.equals(FirebaseRest.string(data,"owner")))throw new IOException("Bitte zuerst den Weltbesitzer mit der neuen App-Version verbinden lassen.");
-                firebase.commit(new JSONArray().put(firebase.write(base(),FirebaseRest.fields("protocol",OnlineWorld.PROTOCOL),new String[]{"protocol"},new JSONObject().put("updateTime",root.getString("updateTime")),false)));
-                protocol=OnlineWorld.PROTOCOL;
-            }
+            deletionOnly=protocol<OnlineWorld.PROTOCOL||data.getJSONObject("closed").getBoolean("booleanValue");
+            if(protocol<OnlineWorld.PROTOCOL)throw new IOException("Diese Testwelt nutzt die alte Landschaft. Bitte mit 0.8.1 eine neue Online-Welt anlegen.");
             if(protocol!=OnlineWorld.PROTOCOL)throw new IOException("Bitte alle Geräte auf dieselbe aktuelle App-Version aktualisieren.");
             if(data.getJSONObject("closed").getBoolean("booleanValue"))throw new IOException("Diese Welt wurde geschlossen.");
             invitation=new OnlineWorld(invitation.id,FirebaseRest.string(data,"invite"));
             owner=FirebaseRest.string(data,"owner");name=FirebaseRest.string(data,"name");seed=data.getJSONObject("seed").getLong("integerValue");side=FirebaseRest.integer(data,"side");
             if(side!=2&&side!=3)throw new IOException("Ungültige Weltgröße.");
-            try{loadInventory(true);}catch(FirebaseRest.Failure e){if(e.status==403)throw new IOException("Bitte die aktualisierten Firestore-Regeln für Online-Ressourcen veröffentlichen.");throw e;}
-            world=World.onlineSpace(seed,side);World origin=OnlineInventory.terrain(OnlineWorld.sectorSeed(seed,0));world.x=origin.x;world.y=origin.y;world.z=origin.z;world.yaw=0;px=world.x;py=world.y;pz=world.z;OnlineInventory.apply(world.progress,inventory);
+            try{loadInventory(true);}catch(FirebaseRest.Failure e){if(e.status==403)throw new IOException("Bitte die aktualisierten Firestore-Regeln für 0.8.1 veröffentlichen.");throw e;}
+            world=World.onlineSpace(seed,side);World origin=OnlineTerrain.region(seed,0,side);world.x=origin.x;world.y=origin.y;world.z=origin.z;world.yaw=0;px=world.x;py=world.y;pz=world.z;OnlineInventory.apply(world.progress,inventory);
             syncVisible(true);remember();
             if(!closed)activity.runOnUiThread(()->{if(!closed)listener.loaded(world,name);});
             healthy=true;loading=false;
             if(!closed)worker.scheduleWithFixedDelay(this::poll,0,2500,TimeUnit.MILLISECONDS);
-        }catch(Exception e){problem(e,true);}});
+        }catch(Exception e){if(e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==403&&create)e=new IOException("Bitte die aktualisierten Firestore-Regeln für 0.8.1 veröffentlichen.");problem(e,true);}});
     }
     JSONObject memberWrite()throws JSONException{
         return firebase.write(member(firebase.uid),FirebaseRest.fields("name",playerName,"banned",false,"invite",invitation.invitation,"sector",0,"x",48.5,"y",40.0,"z",48.5,"yaw",0.0),null,new JSONObject().put("exists",false),true);
@@ -83,7 +86,7 @@ final class OnlineSession implements AutoCloseable {
         try{for(int id:OnlineWorld.visibleSectors(px,pz,side,82)){
             if(closed)return;Region region=regions.computeIfAbsent(id,Region::new);
             if(!region.generated)streaming=true;
-            World tile=region.generated?null:OnlineInventory.terrain(OnlineWorld.sectorSeed(seed,id));
+            World tile=region.generated?null:OnlineTerrain.region(seed,id,side);
             loadChanges(region,tile);
             if(tile!=null){
                 region.generated=true;
@@ -213,6 +216,35 @@ final class OnlineSession implements AutoCloseable {
             }
             final String notice=message;activity.runOnUiThread(()->{if(!closed){activity.toast(notice);activity.online.refreshWorkbench();}});
         }catch(Exception e){healthy=false;problem(e,false);}finally{pending=false;}});
+    }
+    void deleteWorld(Runnable success,java.util.function.Consumer<String> failure){
+        if(!owner()||closed)return;
+        loading=true;healthy=false;
+        worker.execute(()->{try{
+            JSONObject root=firebase.get(base());
+            if(root!=null){
+                if(!firebase.uid.equals(FirebaseRest.string(root.getJSONObject("fields"),"owner")))throw new IOException("Nur der Ersteller darf diese Welt löschen.");
+                firebase.commit(new JSONArray().put(firebase.write(base(),FirebaseRest.fields("closed",true),new String[]{"closed"},new JSONObject().put("updateTime",root.getString("updateTime")),false)));
+                // Always consume the first page: removal cannot invalidate a pagination cursor.
+                for(int id=0;id<side*side;id++)deleteCollection(base()+"/sectors/"+id+"/blocks",false);
+                deleteCollection(base()+"/members",true);
+                firebase.commit(new JSONArray().put(new JSONObject().put("delete",firebase.documentName(base()))));
+            }
+            activity.runOnUiThread(()->{if(!closed)success.run();});
+        }catch(Exception e){activity.runOnUiThread(()->{if(!closed)failure.accept("Löschen unterbrochen. Die Welt bleibt nach Beginn der Löschung gesperrt. Bitte erneut versuchen; noch vorhandene Daten werden weiter entfernt.");});}});
+    }
+    void deleteCollection(String path,boolean members)throws Exception{
+        while(!closed){
+            JSONObject page=firebase.list(path,"");JSONArray docs=page.optJSONArray("documents");if(docs==null||docs.length()==0)return;
+            JSONArray writes=new JSONArray();
+            for(int i=0;i<docs.length();i++){
+                String document=docs.getJSONObject(i).getString("name");
+                if(members)writes.put(new JSONObject().put("delete",document+"/inventory/main"));
+                writes.put(new JSONObject().put("delete",document));
+            }
+            firebase.commit(writes);
+        }
+        throw new IOException("Löschen unterbrochen.");
     }
     void ban(String uid){
         if(!owner()||uid.equals(owner))return;

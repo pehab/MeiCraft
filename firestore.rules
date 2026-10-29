@@ -10,6 +10,7 @@ service cloud.firestore {
         && exists(memberPath(world, request.auth.uid))
         && get(memberPath(world, request.auth.uid)).data.banned == false;
     }
+    function deleting(world) { return owner(world) && get(worldPath(world)).data.closed == true; }
     function name(value, limit) { return value is string && value.size() > 0 && value.size() <= limit; }
     function token(value) { return value is string && value.matches('^[a-f0-9]{32}$'); }
     function position(data, side) {
@@ -29,7 +30,7 @@ service cloud.firestore {
         && name(request.resource.data.name,48)
         && request.resource.data.seed is int && request.resource.data.seed >= 0 && request.resource.data.seed < 1000000000
         && request.resource.data.side is int && request.resource.data.side in [2,3]
-        && request.resource.data.protocol is int && request.resource.data.protocol in [1,2]
+        && request.resource.data.protocol is int && request.resource.data.protocol in [1,2,3]
         && token(request.resource.data.invite) && request.resource.data.closed == false
         && getAfter(memberPath(world,request.auth.uid)).data.banned == false;
       allow update: if owner(world)
@@ -37,7 +38,7 @@ service cloud.firestore {
         && (request.resource.data.protocol == resource.data.protocol || resource.data.protocol == 1 && request.resource.data.protocol == 2)
         && name(request.resource.data.name,48) && token(request.resource.data.invite)
         && request.resource.data.closed is bool;
-      allow delete: if false;
+      allow delete: if deleting(world);
 
       match /members/{uid} {
         // Own tombstone stays readable after removal so the app can explain the ban.
@@ -63,7 +64,7 @@ service cloud.firestore {
           && request.resource.data.banned == true
         );
         // A ban is a retained document, never a deletion that would permit joining again.
-        allow delete: if false;
+        allow delete: if deleting(world);
       }
       match /members/{uid}/inventory/{slot} {
         function count(value) { return value is int && value >= 0 && value <= 1000000; }
@@ -94,17 +95,18 @@ service cloud.firestore {
         }
         allow get: if slot == 'main' && signedIn() && uid == request.auth.uid && member(world);
         allow create: if slot == 'main' && signedIn() && uid == request.auth.uid && member(world)
-          && get(worldPath(world)).data.protocol == 2 && inventory(request.resource.data)
+          && get(worldPath(world)).data.protocol in [2,3] && inventory(request.resource.data)
           && request.resource.data.items == [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
           && request.resource.data.chapter == 0 && request.resource.data.iron == 0 && request.resource.data.placed == 0
           && request.resource.data.glassPlaced == 0 && request.resource.data.buckets == 0
           && request.resource.data.sword == false && request.resource.data.lastBlock == '';
         allow update: if slot == 'main' && signedIn() && uid == request.auth.uid && member(world)
-          && get(worldPath(world)).data.protocol == 2 && inventory(request.resource.data);
-        allow delete, list: if false;
+          && get(worldPath(world)).data.protocol in [2,3] && inventory(request.resource.data);
+        allow delete: if deleting(world);
+        allow list: if false;
       }
       match /sectors/{sector}/blocks/{block} {
-        allow read: if member(world);
+        allow read: if member(world) || deleting(world);
         allow create, update: if member(world)
           && sector.matches('^[0-8]$') && int(sector) < get(worldPath(world)).data.side * get(worldPath(world)).data.side
           && request.resource.data.keys().hasAll(['x','y','z','type','by','updatedAt'])
@@ -120,7 +122,7 @@ service cloud.firestore {
             && getAfter(/databases/$(database)/documents/onlineWorlds/$(world)/members/$(request.auth.uid)/inventory/main).data.updatedAt == request.time
             && getAfter(/databases/$(database)/documents/onlineWorlds/$(world)/members/$(request.auth.uid)/inventory/main).data.lastBlock == sector + '/' + block
           ));
-        allow delete: if false;
+        allow delete: if deleting(world);
       }
     }
   }

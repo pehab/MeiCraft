@@ -196,7 +196,7 @@ public final class SmokeInstrumentation extends Instrumentation {
  }
  void testOnlineStreaming(MainActivity activity,GameView game)throws Exception{
   World original=activity.world;android.util.AtomicFile oldFile=activity.file;OnlineController previous=activity.online;
-  World wide=World.onlineSpace(7412,2);for(int i=0;i<4;i++)OnlineInventory.install(wide,OnlineInventory.terrain(OnlineWorld.sectorSeed(7412,i)),i,2);
+  World wide=World.onlineSpace(7412,2);for(int i=0;i<4;i++)OnlineInventory.install(wide,OnlineTerrain.region(7412,i,2),i,2);
   for(int x=89;x<=105;x++)for(int z=40;z<=57;z++){wide.set(x,32,z,3);for(int y=33;y<=40;y++)wide.set(x,y,z,0);}
   wide.x=94.5f;wide.y=34.6f;wide.z=48.5f;wide.yaw=-(float)Math.PI/2;wide.pitch=0;
   FirebaseRest rest=new FirebaseRest(activity);rest.uid="test-owner";
@@ -213,6 +213,9 @@ public final class SmokeInstrumentation extends Instrumentation {
    check(game.world==wide&&wide.x>96&&wide.x<105,"walking crosses the old boundary without world replacement or teleport");
    check(session.sector==1&&wide.progress.inventory[2]==5,"streaming preserves player inventory and tracks continuous position");
    runOnMainSync(controller::workbench);clickText("Weiterbauen");check(!activity.paused,"online workbench returns to the same world");
+   runOnMainSync(controller::menu);clickText("Online-Welt löschen");clickText("Abbrechen");check(activity.online==controller&&game.world==wide&&!activity.busy,"canceling owner deletion leaves online world and inventory intact");
+   session.owner="another-owner";runOnMainSync(controller::menu);
+   android.view.accessibility.AccessibilityNodeInfo menu=getUiAutomation().getRootInActiveWindow();check(menu==null||menu.findAccessibilityNodeInfosByText("Online-Welt löschen").isEmpty(),"non-owner has no online delete action");clickText("Weiterbauen");session.owner=rest.uid;
   }finally{
    session.close();runOnMainSync(()->activity.paused=true);onGl(game,()->{game.replace(original);activity.world=original;});runOnMainSync(()->{activity.online=previous;activity.file=oldFile;activity.paused=false;activity.handler.postDelayed(activity.autosave,30000);});
   }

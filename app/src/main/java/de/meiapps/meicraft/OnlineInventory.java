@@ -1,7 +1,6 @@
 package de.meiapps.meicraft;
 
 import java.util.Arrays;
-import java.util.Random;
 
 /** Per-player resource transactions. Copies are committed before touching the visible game. */
 public final class OnlineInventory {
@@ -35,15 +34,5 @@ public final class OnlineInventory {
         int ox=sector%side*World.W,oz=sector/side*World.D;
         for(int y=0;y<World.H;y++)for(int z=0;z<World.D;z++)System.arraycopy(tile.blocks,World.index(0,y,z),target.blocks,target.idx(ox,y,oz+z),World.W);
         target.revision++;
-    }
-    public static World terrain(long seed){
-        // Preserve the original online landscape and every stored edit; only untouched
-        // underground stone receives deterministic ore. Protocol 2 excludes old clients.
-        World next=new World(seed,false,false);Random ores=new Random(seed^47127);
-        for(int x=0;x<World.W;x++)for(int z=0;z<World.D;z++)for(int y=2;y<World.H-1;y++){
-            int i=World.index(x,y,z);if(next.blocks[i]!=3)continue;int roll=ores.nextInt(1000);
-            if(roll<35)next.blocks[i]=13;else if(y<9&&roll<40)next.blocks[i]=11;
-        }
-        next.online=true;next.story=true;next.flying=false;next.selected=2;next.nature.flowEnabled=false;next.survival.enemiesEnabled=false;next.forge.initialize(next);return next;
     }
 }

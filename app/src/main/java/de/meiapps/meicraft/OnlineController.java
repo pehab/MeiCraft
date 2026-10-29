@@ -62,6 +62,10 @@ final class OnlineController {
                     });});activity.game.gl.requestRender();
                 }
                 public void problem(String message,boolean fatal){
+                    if(fatal&&session!=null&&session.deletionOnly&&session.owner()){
+                        dismissProgress();activity.busy=false;
+                        new AlertDialog.Builder(activity).setTitle(session.name).setMessage(message).setPositiveButton("Welt löschen",(d,n)->activity.handler.post(()->confirmDelete(session))).setNegativeButton("Zurück",(d,n)->leave()).setOnCancelListener(d->leave()).show();return;
+                    }
                     if(fatal){leave();new AlertDialog.Builder(activity).setTitle("Online-Welt").setMessage(message).setPositiveButton("OK",null).show();}
                     else activity.game.message(message);
                 }
@@ -79,7 +83,27 @@ final class OnlineController {
     }
     void menu(){
         OnlineSession current=session;if(current==null||activity.busy)return;activity.paused=true;activity.game.clearInput();
-        new AlertDialog.Builder(activity).setTitle(current.name+" · Online").setItems(new String[]{"Weiterbauen","Baumaterial wählen","Werkbank / Werkzeuge","Spieler / Einladung","Online-Welt verlassen"},(d,n)->{if(n==1)activity.handler.post(activity::palette);else if(n==2)activity.handler.post(this::workbench);else if(n==3)activity.handler.post(this::players);else if(n==4)activity.handler.post(this::leave);}).setOnDismissListener(d->activity.resumePlay()).show();
+        List<String> actions=new ArrayList<>(Arrays.asList("Weiterbauen","Baumaterial wählen","Werkbank / Werkzeuge","Spieler / Einladung","Online-Welt verlassen"));
+        if(current.owner())actions.add("Online-Welt löschen");
+        new AlertDialog.Builder(activity).setTitle(current.name+" · Online").setItems(actions.toArray(new String[0]),(d,n)->{if(n==1)activity.handler.post(activity::palette);else if(n==2)activity.handler.post(this::workbench);else if(n==3)activity.handler.post(this::players);else if(n==4)activity.handler.post(this::leave);else if(n==5)activity.handler.post(()->confirmDelete(current));}).setOnDismissListener(d->activity.resumePlay()).show();
+    }
+    void confirmDelete(OnlineSession current){
+        if(current==null||session!=current||!current.owner()||activity.busy)return;
+        activity.paused=true;activity.game.clearInput();
+        new AlertDialog.Builder(activity).setTitle("Online-Welt löschen?").setMessage("\""+current.name+"\" für alle Spieler dauerhaft löschen? Alle Bauten und Vorräte dieser Welt werden entfernt. Das kann nicht rückgängig gemacht werden.")
+            .setPositiveButton("Dauerhaft löschen",(d,n)->activity.handler.post(()->deleteWorld(current)))
+            .setNegativeButton("Abbrechen",(d,n)->{if(current.deletionOnly)leave();else activity.resumePlay();}).setOnCancelListener(d->{if(current.deletionOnly)leave();else activity.resumePlay();}).show();
+    }
+    void deleteWorld(OnlineSession current){
+        if(session!=current||!current.owner()||activity.busy)return;
+        activity.busy=true;activity.paused=true;
+        progress=new AlertDialog.Builder(activity).setTitle("Online-Welt wird gelöscht").setMessage("Bauten und Vorräte entfernen …").setCancelable(false).show();
+        current.deleteWorld(()->{
+            try{android.content.SharedPreferences prefs=activity.getSharedPreferences("online-worlds",0);JSONObject saved=new JSONObject(prefs.getString("worlds","{}"));saved.remove(current.invitation.id);prefs.edit().putString("worlds",saved.toString()).apply();}catch(JSONException ignored){/* A stale recent entry cannot restore deleted cloud data. */}
+            leave();activity.toast("Online-Welt gelöscht.");
+        },message->{dismissProgress();activity.busy=false;
+            new AlertDialog.Builder(activity).setTitle("Löschen unterbrochen").setMessage(message).setPositiveButton("Erneut versuchen",(d,n)->activity.handler.post(()->deleteWorld(current))).setNegativeButton("Zurück",(d,n)->leave()).setOnCancelListener(d->leave()).show();
+        });
     }
     String[] workbenchRows(){
         Story p=session.inventory;
