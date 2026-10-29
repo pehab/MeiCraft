@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "553032246447",
+    "project_id": "meicraft-be298",
+    "storage_bucket": "meicraft-be298.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:553032246447:android:fabb811214e585090e205a",
+        "android_client_info": {
+          "package_name": "de.meiapps.meicraft"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBTQ_kOKlU7lOU1ApxrQeupfeU3xBqFJ_g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

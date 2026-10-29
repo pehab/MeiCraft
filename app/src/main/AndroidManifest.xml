@@ -13,6 +13,7 @@
        to Android 16/17 orientation restrictions, including on large screens:
        https://developer.android.com/about/versions/17/changes/ff-restrictions-ignored#exceptions -->
   <activity android:name=".MainActivity" android:screenOrientation="sensorLandscape" tools:ignore="DiscouragedApi" android:configChanges="orientation|screenSize|keyboardHidden" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
+  <activity android:name=".OnlineInviteActivity" android:exported="false" android:screenOrientation="sensorLandscape" android:configChanges="orientation|screenSize|keyboardHidden" tools:ignore="DiscouragedApi"/>
   <activity android:name=".QrTransferActivity" android:exported="false" android:screenOrientation="sensorLandscape" android:configChanges="orientation|screenSize|keyboardHidden" tools:ignore="DiscouragedApi"/>
   <provider android:name="de.meiapps.updates.GitHubUpdateProvider" android:authorities="de.meiapps.meicraft.githubUpdates" android:exported="false" android:grantUriPermissions="true"/>
  </application>

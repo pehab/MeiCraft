@@ -135,3 +135,19 @@ jobs:
             gh release create "v$VERSION" "build/release/meiCraft-$VERSION.apk" "build/release/meiCraft-$VERSION.apk.sha256" build/release/meiCraft-update.json --target "$GITHUB_SHA" --title "meiCraft $VERSION" --notes-file "docs/RELEASE-$VERSION.md"
           fi
 
+
+  firestore-rules:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run test:rules

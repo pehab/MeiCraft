@@ -25,15 +25,16 @@ final class GameView {
     void clearInput(){synchronized(inputLock){forward=strafe=vertical=turnX=turnY=miningProgress=0;mineHeld=false;moveId=lookId=verticalId=mineId=-1;knobX=knobY=0;}endMining();}
     void endMining(){mineHeld=false;miningProgress=0;gl.queueEvent(()->{mineTime=0;miningTarget=null;});}
     void message(String text){status=text;statusUntil=System.currentTimeMillis()+1800;}
-    void edit(boolean place){gl.queueEvent(()->{World w=world;synchronized(w){int[] hit=w.ray(6);if(hit==null){message("Näher an einen Block herangehen");return;}if(!place&&Nature.liquid(w.get(hit[0],hit[1],hit[2]))){message(w.scoopLiquid(hit[0],hit[1],hit[2]));renderer.dirty(hit[0],hit[2]);return;}int x=hit[place?3:0],y=hit[place?4:1],z=hit[place?5:2];if(place&&w.overlapsPlayer(x,y,z)){message("Hier stehst du selbst");return;}if(place&&w.story&&w.progress.inventory[w.selected]==0){message("Erst "+World.NAMES[w.selected]+" sammeln oder herstellen");return;}if(place?w.place(x,y,z,w.selected):w.mine(x,y,z)){renderer.dirty(x,z);}else message(place?"Hier kannst du keinen Block setzen":w.miningProblem(x,y,z));}});}
+    void edit(boolean place){gl.queueEvent(()->{World w=world;synchronized(w){int[] hit=w.ray(6);if(hit==null){message("Näher an einen Block herangehen");return;}if(!place&&Nature.liquid(w.get(hit[0],hit[1],hit[2]))){if(w.online){OnlineSession session=activity.online==null?null:activity.online.session;if(session!=null)session.edit(hit[0],hit[1],hit[2],0);return;}message(w.scoopLiquid(hit[0],hit[1],hit[2]));renderer.dirty(hit[0],hit[2]);return;}int x=hit[place?3:0],y=hit[place?4:1],z=hit[place?5:2];if(place&&w.overlapsPlayer(x,y,z)){message("Hier stehst du selbst");return;}if(place&&w.story&&w.progress.inventory[w.selected]==0){message("Erst "+World.NAMES[w.selected]+" sammeln oder herstellen");return;}if(w.online){OnlineSession session=activity.online==null?null:activity.online.session;if(session!=null)session.edit(x,y,z,place?w.selected:0);return;}if(place?w.place(x,y,z,w.selected):w.mine(x,y,z)){renderer.dirty(x,z);}else message(place?"Hier kannst du keinen Block setzen":w.miningProblem(x,y,z));}});}
     void mining(float dt){World w=world;if(!w.story||!mineHeld){mineTime=0;miningTarget=null;miningProgress=0;return;}if(w.survival.attack(w)){mineTime=0;miningTarget=null;miningProgress=0;return;}int[] hit=w.ray(6);if(hit!=null&&Nature.liquid(w.get(hit[0],hit[1],hit[2]))){if(mineTime==0){message(w.scoopLiquid(hit[0],hit[1],hit[2]));renderer.dirty(hit[0],hit[2]);}mineTime+=dt;miningProgress=0;return;}if(hit==null){mineTime=0;miningTarget=null;miningProgress=0;return;}String problem=w.miningProblem(hit[0],hit[1],hit[2]);if(!problem.isEmpty()){mineTime=0;miningProgress=0;miningTarget=null;if(statusUntil<System.currentTimeMillis())message(problem);return;}
         if(miningTarget==null||hit[0]!=miningTarget[0]||hit[1]!=miningTarget[1]||hit[2]!=miningTarget[2]){mineTime=0;miningTarget=hit;}
         mineTime+=dt;float duration=w.progress.seconds(w.get(hit[0],hit[1],hit[2]));miningProgress=Math.min(1,mineTime/duration);
         if(mineTime>=duration){if(w.mine(hit[0],hit[1],hit[2]))renderer.dirty(hit[0],hit[2]);else message("Dein Vorrat ist voll");mineTime=0;miningProgress=0;miningTarget=null;}
     }
-    void tick(float dt){World w=world;float tx,ty;synchronized(inputLock){tx=turnX;ty=turnY;turnX=turnY=0;}w.yaw-=tx*.004f;w.pitch=Math.max(-1.48f,Math.min(1.48f,w.pitch-ty*.004f));
+    void tick(float dt){World w=world;OnlineSession online=activity.online==null?null:activity.online.session;if(w.online&&(online==null||online.loading))return;float tx,ty;synchronized(inputLock){tx=turnX;ty=turnY;turnX=turnY=0;}w.yaw-=tx*.004f;if(w.online)w.yaw=(float)Math.IEEEremainder(w.yaw,Math.PI*2);w.pitch=Math.max(-1.48f,Math.min(1.48f,w.pitch-ty*.004f));
         float fw=forward,st=strafe,len=(float)Math.sqrt(fw*fw+st*st);if(len>1){fw/=len;st/=len;}
         float speed=w.flying?7:4.3f;float dx=(- (float)Math.sin(w.yaw)*fw+(float)Math.cos(w.yaw)*st)*speed;float dz=(- (float)Math.cos(w.yaw)*fw-(float)Math.sin(w.yaw)*st)*speed;
+        if(w.online&&online!=null){online.position(w);if(w.x<.7f&&dx<0)online.cross(-1,0);else if(w.x>World.W-.7f&&dx>0)online.cross(1,0);else if(w.z<.7f&&dz<0)online.cross(0,-1);else if(w.z>World.D-.7f&&dz>0)online.cross(0,1);if(online.loading)return;}
         int steps=Math.max(1,(int)Math.ceil(dt/.012f));float step=dt/steps;
         for(int i=0;i<steps;i++){
             if(!w.collides(w.x+dx*step,w.y,w.z))w.x+=dx*step;
@@ -42,7 +43,8 @@ final class GameView {
             if(w.flying){velocityY=vertical*5.5f;}else if(swimming){velocityY=vertical>0?7:Math.max(-1.8f,velocityY-3*step);}else{if(vertical>0&&grounded){velocityY=7;grounded=false;}velocityY=Math.max(-20,velocityY-20*step);}
             float yy=w.y+velocityY*step;if(!w.collides(w.x,yy,w.z)){w.y=yy;grounded=false;}else{grounded=velocityY<0;velocityY=0;}
         }
-        w.nature.tick(w,dt);
+        if(!w.online)w.nature.tick(w,dt);
+        if(online!=null&&w.online)online.position(w);
         if(w.survival.tick(w,dt)){velocityY=0;clearInput();}
         mining(dt);
         if(!w.forge.notice.isEmpty()){message(w.forge.notice);w.forge.notice="";}
@@ -64,10 +66,11 @@ final class GameView {
             scale=Math.min((getWidth()-left-right)/designW,(getHeight()-top-bottom)/designH);offsetX=left+(getWidth()-left-right-designW*scale)/2;offsetY=top+(getHeight()-top-bottom-designH*scale)/2;
         }
         @Override protected void onDraw(Canvas c){World drawing=world;if(drawing==null)return;synchronized(drawing){super.onDraw(c);layoutHud();c.save();c.translate(offsetX,offsetY);c.scale(scale,scale);
-            box(c,20,16,221,55,0xbb153d42);text(c,"meiCraft",34,41,23,0xffffdb76);text(c,world.story?"STORY · "+Story.TOOLS[world.progress.tool()]:"OFFLINE · KREATIV",35,59,11,0xffd1e8e6);
+            box(c,20,16,221,55,0xbb153d42);text(c,"meiCraft",34,41,23,0xffffdb76);text(c,world.story?"STORY · "+Story.TOOLS[world.progress.tool()]:world.online?"ONLINE · KREATIV":"OFFLINE · KREATIV",35,59,11,0xffd1e8e6);
             box(c,designW-93,18,72,49,0xcc153d42);center(c,"☰",designW-57,51,25,Color.WHITE);
             World w=world;int[] hit=target;
-            {box(c,250,18,80,49,w.story&&w.progress.ready()?0xfff6d16c:0xcc153d42);center(c,"STORY",290,49,14,w.story&&w.progress.ready()?0xff153d42:Color.WHITE);if(w.story){float yy=designW<960?122:80;box(c,20,yy,designW<960?500:410,48,0xbb153d42);text(c,w.progress.goal(),31,yy+20,12,Color.WHITE);text(c,"− halten: abbauen · STORY: Auftrag / Rezepte",31,yy+38,11,0xffd1e8e6);}}
+            OnlineSession online=activity.online==null?null:activity.online.session;if(w.online&&online!=null){box(c,20,80,340,32,0xbb153d42);text(c,online.loading?"Nächstes Gebiet wird geladen …":online.healthy?"Verbunden · Gebiet "+(online.sector+1)+"/"+(online.side*online.side)+" · "+online.players.size()+" Spieler":"Verbindung unterbrochen · Bauen pausiert",30,101,12,Color.WHITE);for(VoxelRenderer.PlayerLabel label:renderer.playerLabels){float xx=(label.x-offsetX)/scale,yy=(label.y-offsetY)/scale;center(c,label.name,xx,yy,12,Color.WHITE);}}
+            {box(c,250,18,80,49,w.story&&w.progress.ready()?0xfff6d16c:0xcc153d42);center(c,w.online?"ONLINE":"STORY",290,49,14,w.story&&w.progress.ready()?0xff153d42:Color.WHITE);if(w.story){float yy=designW<960?122:80;box(c,20,yy,designW<960?500:410,48,0xbb153d42);text(c,w.progress.goal(),31,yy+20,12,Color.WHITE);text(c,"− halten: abbauen · STORY: Auftrag / Rezepte",31,yy+38,11,0xffd1e8e6);}}
             if(hit!=null){box(c,(designW-266)/2,designW<960?82:20,266,31,0x99152c32);center(c,(w.nature.spring(hit[0],hit[1],hit[2])?"Lavaquelle · nachfüllbar":w.nature.stream(hit[0],hit[1],hit[2])?World.NAMES[w.get(hit[0],hit[1],hit[2])]+" · fließend":World.NAMES[w.get(hit[0],hit[1],hit[2])]+(w.forge.heat(hit[0],hit[1],hit[2])>0?" · glüht "+Math.round(w.forge.heat(hit[0],hit[1],hit[2])*100)+" %":"")),designW/2,designW<960?103:41,15,Color.WHITE);}
             float cx=(getWidth()/2f-offsetX)/scale,cy=(getHeight()/2f-offsetY)/scale;p.setColor(0xddffffff);p.setStrokeWidth(2);c.drawLine(cx-10,cy,cx-3,cy,p);c.drawLine(cx+3,cy,cx+10,cy,p);c.drawLine(cx,cy-10,cx,cy-3,p);c.drawLine(cx,cy+3,cx,cy+10,p);
             joystick(c,joyX,joyY,knobX,knobY,"BEWEGEN");

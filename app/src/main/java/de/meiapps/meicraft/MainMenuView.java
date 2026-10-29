@@ -48,13 +48,15 @@ final class MainMenuView extends ScrollView {
         LinearLayout second=row();addTile(second,"Welt per QR teilen","Eine Welt weitergeben",2,activity::pickShareWorld,false);addTile(second,"Welt per QR empfangen","Eine Welt entdecken",3,()->activity.qrTransfer(false),true);
         LinearLayout.LayoutParams secondParams=new LinearLayout.LayoutParams(-1,-2);secondParams.topMargin=dp(8);tools.addView(second,secondParams);
 
+        LinearLayout online=row();addTile(online,"Gemeinsam bauen","Online-Welten · QR-Einladung",2,activity::onlineMenu,false);LinearLayout.LayoutParams onlineParams=new LinearLayout.LayoutParams(-1,-2);onlineParams.topMargin=dp(8);tools.addView(online,onlineParams);
+
         LinearLayout utilities=row();utilities.setPadding(0,dp(9),0,0);
         for(String label:new String[]{"Steuerung","Updates suchen","Über meiCraft"}){
             Runnable action=label.equals("Steuerung")?activity::help:label.equals("Updates suchen")?()->activity.updates.check(true):activity::about;
             Button utility=button(label,action,false);utilities.addView(utility,new LinearLayout.LayoutParams(0,dp(48),1));
         }
         tools.addView(utilities);
-        TextView footer=text("OFFLINE SPIELEN  ·  OHNE WERBUNG  ·  OHNE KONTEN",9,MUTED);footer.setGravity(Gravity.CENTER);footer.setPadding(0,dp(4),0,0);tools.addView(footer);
+        TextView footer=text("OFFLINE ODER GEMEINSAM ONLINE  ·  OHNE WERBUNG",9,MUTED);footer.setGravity(Gravity.CENTER);footer.setPadding(0,dp(4),0,0);tools.addView(footer);
         arrange(false);
     }
 

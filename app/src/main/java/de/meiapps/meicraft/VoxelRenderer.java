@@ -93,6 +93,25 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
         for(int face=0;face<6;face++)for(int corner:ORDER){float[] f=F[face];float u=(tile*32+((corner==0||corner==1)?.5f:31.5f))/1024f,v=(corner==0||corner==3)?31.5f/32:.5f/32;
             creatures.add(x+f[corner*3]*sx,y+f[corner*3+1]*sy,z+f[corner*3+2]*sz,u,v,tile==24?1.2f:SHADE[face]);}
     }
+    static final class PlayerLabel {final String name;final float x,y;PlayerLabel(String name,float x,float y){this.name=name;this.x=x;this.y=y;}}
+    volatile java.util.List<PlayerLabel> playerLabels=java.util.Collections.emptyList();
+    final java.util.Map<String,float[]> avatarPositions=new java.util.HashMap<>();
+    void drawPlayers(){
+        OnlineSession online=view.activity.online==null?null:view.activity.online.session;
+        if(!world.online||online==null){playerLabels=java.util.Collections.emptyList();avatarPositions.clear();return;}
+        java.util.List<PlayerLabel> labels=new java.util.ArrayList<>();java.util.Set<String> seen=new java.util.HashSet<>();
+        for(OnlineSession.Player player:online.players){
+            if(player.uid.equals(online.firebase.uid)||player.sector!=online.sector)continue;seen.add(player.uid);
+            float[] p=avatarPositions.get(player.uid);if(p==null){p=new float[]{player.x,player.y,player.z};avatarPositions.put(player.uid,p);}
+            p[0]+=(player.x-p[0])*.09f;p[1]+=(player.y-p[1])*.09f;p[2]+=(player.z-p[2])*.09f;
+            float x=p[0],feet=p[1]-1.6f,z=p[2];int shirt=player.uid.hashCode()%2==0?6:9;
+            cube(x-.25f,feet+.65f,z-.15f,.5f,.55f,.3f,shirt);cube(x-.22f,feet+1.2f,z-.22f,.44f,.44f,.44f,4);
+            cube(x-.24f,feet,z-.14f,.19f,.65f,.28f,7);cube(x+.05f,feet,z-.14f,.19f,.65f,.28f,7);
+            cube(x-.4f,feet+.6f,z-.13f,.15f,.6f,.26f,4);cube(x+.25f,feet+.6f,z-.13f,.15f,.6f,.26f,4);
+            float[] screen=new float[4];if(GLU.gluProject(x,feet+1.85f,z,look,0,projection,0,new int[]{0,0,width,height},0,screen,0)==1&&screen[2]>0&&screen[2]<1&&world.clearLine(world.x,world.y,world.z,x,feet+1.6f,z))labels.add(new PlayerLabel(player.name,screen[0],height-screen[1]));
+        }
+        avatarPositions.keySet().retainAll(seen);playerLabels=java.util.Collections.unmodifiableList(labels);
+    }
     void drawMobs(){
         creatures.size=0;
         if(world.story)for(Survival.Mob m:world.survival.mobs){float feet=m.y-1.6f,swing=(float)Math.sin(world.survival.time*5+m.x)*.1f;
@@ -109,6 +128,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             float phase=(world.forge.animation*.8f+(i%17)/17f)%1f;
             cube(x+(float)Math.sin(i+phase*5)*.24f,y+phase*.7f,z+(float)Math.cos(i+phase*4)*.24f,.055f,.055f,.055f,24);
         }
+        drawPlayers();
         if(creatures.size==0)return;
         creatureBuffer.clear();creatureBuffer.put(creatures.values,0,creatures.size);creatureBuffer.position(0);GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,creatureBuffer);
         creatureBuffer.position(3);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,24,creatureBuffer);creatureBuffer.position(5);GLES20.glVertexAttribPointer(light,1,GLES20.GL_FLOAT,false,24,creatureBuffer);GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,creatures.size/6);

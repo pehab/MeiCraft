@@ -37,7 +37,7 @@ public final class Survival {
     }
     /** Returns true if the player's position was reset. */
     public boolean tick(World w,float dt){
-        if(!w.story||!Float.isFinite(dt)||dt<=0)return false;
+        if(w.online||!w.story||!Float.isFinite(dt)||dt<=0)return false;
         dt=Math.min(dt,.1f);boolean wasNight=night();time=(time+dt)%CYCLE;
         if(!wasNight&&night())notice="Es wird Nacht · Suche Schutz oder verteidige deine Burg!";
         if(wasNight&&!night())notice="Der Morgen kommt · Nachtschatten verschwinden im Licht.";

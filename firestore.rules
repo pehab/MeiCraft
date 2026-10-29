@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function worldPath(world) { return /databases/$(database)/documents/onlineWorlds/$(world); }
+    function memberPath(world, uid) { return /databases/$(database)/documents/onlineWorlds/$(world)/members/$(uid); }
+    function owner(world) { return signedIn() && get(worldPath(world)).data.owner == request.auth.uid; }
+    function member(world) {
+      return signedIn() && !get(worldPath(world)).data.closed
+        && exists(memberPath(world, request.auth.uid))
+        && get(memberPath(world, request.auth.uid)).data.banned == false;
+    }
+    function name(value, limit) { return value is string && value.size() > 0 && value.size() <= limit; }
+    function token(value) { return value is string && value.matches('^[a-f0-9]{32}$'); }
+    function position(data, side) {
+      return data.sector is int && data.sector >= 0 && data.sector < side * side
+        && data.x is number && data.x >= 0.3 && data.x <= 95.7
+        && data.y is number && data.y >= 1.62 && data.y <= 64
+        && data.z is number && data.z >= 0.3 && data.z <= 95.7
+        && data.yaw is number && data.yaw >= -1000000 && data.yaw <= 1000000;
+    }
+    match /onlineWorlds/{world} {
+      allow get: if owner(world) || member(world);
+      allow list: if false;
+      allow create: if signedIn() && token(world)
+        && request.resource.data.keys().hasAll(['owner','name','seed','side','protocol','invite','closed'])
+        && request.resource.data.keys().hasOnly(['owner','name','seed','side','protocol','invite','closed'])
+        && request.resource.data.owner == request.auth.uid
+        && name(request.resource.data.name,48)
+        && request.resource.data.seed is int && request.resource.data.seed >= 0 && request.resource.data.seed < 1000000000
+        && request.resource.data.side is int && request.resource.data.side in [2,3]
+        && request.resource.data.protocol is int && request.resource.data.protocol == 1
+        && token(request.resource.data.invite) && request.resource.data.closed == false
+        && getAfter(memberPath(world,request.auth.uid)).data.banned == false;
+      allow update: if owner(world)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','invite','closed'])
+        && name(request.resource.data.name,48) && token(request.resource.data.invite)
+        && request.resource.data.closed is bool;
+      allow delete: if false;
+
+      match /members/{uid} {
+        // Own tombstone stays readable after removal so the app can explain the ban.
+        allow get: if signedIn() && (uid == request.auth.uid || owner(world) || member(world));
+        allow list: if member(world) || owner(world);
+        allow create: if signedIn() && uid == request.auth.uid
+          && request.resource.data.keys().hasAll(['name','banned','invite','sector','x','y','z','yaw','updatedAt'])
+          && request.resource.data.keys().hasOnly(['name','banned','invite','sector','x','y','z','yaw','updatedAt'])
+          && name(request.resource.data.name,24) && request.resource.data.banned == false
+          && request.resource.data.invite == getAfter(worldPath(world)).data.invite
+          && getAfter(worldPath(world)).data.closed == false
+          && position(request.resource.data,getAfter(worldPath(world)).data.side)
+          && request.resource.data.updatedAt == request.time;
+        allow update: if (
+          member(world) && uid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','sector','x','y','z','yaw','updatedAt'])
+          && name(request.resource.data.name,24)
+          && position(request.resource.data,get(worldPath(world)).data.side)
+          && request.resource.data.updatedAt == request.time
+        ) || (
+          owner(world) && uid != request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['banned'])
+          && request.resource.data.banned == true
+        );
+        // A ban is a retained document, never a deletion that would permit joining again.
+        allow delete: if false;
+      }
+      match /sectors/{sector}/blocks/{block} {
+        allow read: if member(world);
+        allow create, update: if member(world)
+          && sector.matches('^[0-8]$') && int(sector) < get(worldPath(world)).data.side * get(worldPath(world)).data.side
+          && request.resource.data.keys().hasAll(['x','y','z','type','by','updatedAt'])
+          && request.resource.data.keys().hasOnly(['x','y','z','type','by','updatedAt'])
+          && request.resource.data.x is int && request.resource.data.x >= 0 && request.resource.data.x < 96
+          && request.resource.data.y is int && request.resource.data.y > 0 && request.resource.data.y < 48
+          && request.resource.data.z is int && request.resource.data.z >= 0 && request.resource.data.z < 96
+          && block == string(request.resource.data.x) + '_' + string(request.resource.data.y) + '_' + string(request.resource.data.z)
+          && request.resource.data.type is int && request.resource.data.type >= 0 && request.resource.data.type < 17
+          && request.resource.data.by == request.auth.uid && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
+    }
+  }
+}
