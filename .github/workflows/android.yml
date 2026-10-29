@@ -109,6 +109,7 @@ jobs:
       - name: Verify packaged APK checksum
         working-directory: build/release
         run: sha256sum --check *.apk.sha256
+  # Release commits must include [release]; ordinary PR merge commits do not publish.
   publish:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]')
     needs: [verify-release-package, firestore-rules]
