@@ -26,19 +26,20 @@ final class GameView {
     void endMining(){mineHeld=false;miningProgress=0;gl.queueEvent(()->{mineTime=0;miningTarget=null;});}
     void message(String text){status=text;statusUntil=System.currentTimeMillis()+1800;}
     void edit(boolean place){gl.queueEvent(()->{World w=world;synchronized(w){int[] hit=w.ray(6);if(hit==null){message("Näher an einen Block herangehen");return;}if(!place&&Nature.liquid(w.get(hit[0],hit[1],hit[2]))){if(w.online){OnlineSession session=activity.online==null?null:activity.online.session;if(session!=null)session.edit(hit[0],hit[1],hit[2],0);return;}message(w.scoopLiquid(hit[0],hit[1],hit[2]));renderer.dirty(hit[0],hit[2]);return;}int x=hit[place?3:0],y=hit[place?4:1],z=hit[place?5:2];if(place&&w.overlapsPlayer(x,y,z)){message("Hier stehst du selbst");return;}if(place&&w.story&&w.progress.inventory[w.selected]==0){message("Erst "+World.NAMES[w.selected]+" sammeln oder herstellen");return;}if(w.online){OnlineSession session=activity.online==null?null:activity.online.session;if(session!=null)session.edit(x,y,z,place?w.selected:0);return;}if(place?w.place(x,y,z,w.selected):w.mine(x,y,z)){renderer.dirty(x,z);}else message(place?"Hier kannst du keinen Block setzen":w.miningProblem(x,y,z));}});}
-    void mining(float dt){World w=world;if(!w.story||!mineHeld){mineTime=0;miningTarget=null;miningProgress=0;return;}if(w.survival.attack(w)){mineTime=0;miningTarget=null;miningProgress=0;return;}int[] hit=w.ray(6);if(hit!=null&&Nature.liquid(w.get(hit[0],hit[1],hit[2]))){if(mineTime==0){message(w.scoopLiquid(hit[0],hit[1],hit[2]));renderer.dirty(hit[0],hit[2]);}mineTime+=dt;miningProgress=0;return;}if(hit==null){mineTime=0;miningTarget=null;miningProgress=0;return;}String problem=w.miningProblem(hit[0],hit[1],hit[2]);if(!problem.isEmpty()){mineTime=0;miningProgress=0;miningTarget=null;if(statusUntil<System.currentTimeMillis())message(problem);return;}
+    void mining(float dt){World w=world;if(!w.story||!mineHeld){mineTime=0;miningTarget=null;miningProgress=0;return;}if(!w.online&&w.survival.attack(w)){mineTime=0;miningTarget=null;miningProgress=0;return;}int[] hit=w.ray(6);if(hit!=null&&Nature.liquid(w.get(hit[0],hit[1],hit[2]))){if(mineTime==0){if(w.online){OnlineSession session=activity.online==null?null:activity.online.session;if(session!=null)session.edit(hit[0],hit[1],hit[2],0);}else{message(w.scoopLiquid(hit[0],hit[1],hit[2]));renderer.dirty(hit[0],hit[2]);}}mineTime+=dt;miningProgress=0;return;}if(hit==null){mineTime=0;miningTarget=null;miningProgress=0;return;}String problem=w.miningProblem(hit[0],hit[1],hit[2]);if(!problem.isEmpty()){mineTime=0;miningProgress=0;miningTarget=null;if(statusUntil<System.currentTimeMillis())message(problem);return;}
         if(miningTarget==null||hit[0]!=miningTarget[0]||hit[1]!=miningTarget[1]||hit[2]!=miningTarget[2]){mineTime=0;miningTarget=hit;}
         mineTime+=dt;float duration=w.progress.seconds(w.get(hit[0],hit[1],hit[2]));miningProgress=Math.min(1,mineTime/duration);
-        if(mineTime>=duration){if(w.mine(hit[0],hit[1],hit[2]))renderer.dirty(hit[0],hit[2]);else message("Dein Vorrat ist voll");mineTime=0;miningProgress=0;miningTarget=null;}
+        if(mineTime>=duration){if(w.online){OnlineSession session=activity.online==null?null:activity.online.session;if(session!=null)session.edit(hit[0],hit[1],hit[2],0);}else if(w.mine(hit[0],hit[1],hit[2]))renderer.dirty(hit[0],hit[2]);else message("Dein Vorrat ist voll");mineTime=0;miningProgress=0;miningTarget=null;}
     }
     void tick(float dt){World w=world;OnlineSession online=activity.online==null?null:activity.online.session;if(w.online&&(online==null||online.loading))return;float tx,ty;synchronized(inputLock){tx=turnX;ty=turnY;turnX=turnY=0;}w.yaw-=tx*.004f;if(w.online)w.yaw=(float)Math.IEEEremainder(w.yaw,Math.PI*2);w.pitch=Math.max(-1.48f,Math.min(1.48f,w.pitch-ty*.004f));
         float fw=forward,st=strafe,len=(float)Math.sqrt(fw*fw+st*st);if(len>1){fw/=len;st/=len;}
         float speed=w.flying?7:4.3f;float dx=(- (float)Math.sin(w.yaw)*fw+(float)Math.cos(w.yaw)*st)*speed;float dz=(- (float)Math.cos(w.yaw)*fw-(float)Math.sin(w.yaw)*st)*speed;
-        if(w.online&&online!=null){online.position(w);if(w.x<.7f&&dx<0)online.cross(-1,0);else if(w.x>World.W-.7f&&dx>0)online.cross(1,0);else if(w.z<.7f&&dz<0)online.cross(0,-1);else if(w.z>World.D-.7f&&dz>0)online.cross(0,1);if(online.loading)return;}
+
+        if(w.online&&online!=null&&(!online.canMove(w.x+dx*dt,w.z)||!online.canMove(w.x,w.z+dz*dt))&&statusUntil<System.currentTimeMillis())message("Umgebung wird nachgeladen …");
         int steps=Math.max(1,(int)Math.ceil(dt/.012f));float step=dt/steps;
         for(int i=0;i<steps;i++){
-            if(!w.collides(w.x+dx*step,w.y,w.z))w.x+=dx*step;
-            if(!w.collides(w.x,w.y,w.z+dz*step))w.z+=dz*step;
+            if((!w.online||online!=null&&online.canMove(w.x+dx*step,w.z))&&!w.collides(w.x+dx*step,w.y,w.z))w.x+=dx*step;
+            if((!w.online||online!=null&&online.canMove(w.x,w.z+dz*step))&&!w.collides(w.x,w.y,w.z+dz*step))w.z+=dz*step;
             boolean swimming=w.get((int)Math.floor(w.x),(int)Math.floor(w.y-1.55f),(int)Math.floor(w.z))==10;
             if(w.flying){velocityY=vertical*5.5f;}else if(swimming){velocityY=vertical>0?7:Math.max(-1.8f,velocityY-3*step);}else{if(vertical>0&&grounded){velocityY=7;grounded=false;}velocityY=Math.max(-20,velocityY-20*step);}
             float yy=w.y+velocityY*step;if(!w.collides(w.x,yy,w.z)){w.y=yy;grounded=false;}else{grounded=velocityY<0;velocityY=0;}
@@ -66,11 +67,11 @@ final class GameView {
             scale=Math.min((getWidth()-left-right)/designW,(getHeight()-top-bottom)/designH);offsetX=left+(getWidth()-left-right-designW*scale)/2;offsetY=top+(getHeight()-top-bottom-designH*scale)/2;
         }
         @Override protected void onDraw(Canvas c){World drawing=world;if(drawing==null)return;synchronized(drawing){super.onDraw(c);layoutHud();c.save();c.translate(offsetX,offsetY);c.scale(scale,scale);
-            box(c,20,16,221,55,0xbb153d42);text(c,"meiCraft",34,41,23,0xffffdb76);text(c,world.story?"STORY · "+Story.TOOLS[world.progress.tool()]:world.online?"ONLINE · KREATIV":"OFFLINE · KREATIV",35,59,11,0xffd1e8e6);
+            box(c,20,16,221,55,0xbb153d42);text(c,"meiCraft",34,41,23,0xffffdb76);text(c,world.online?"ONLINE · "+Story.TOOLS[world.progress.tool()]:world.story?"STORY · "+Story.TOOLS[world.progress.tool()]:"OFFLINE · KREATIV",35,59,11,0xffd1e8e6);
             box(c,designW-93,18,72,49,0xcc153d42);center(c,"☰",designW-57,51,25,Color.WHITE);
             World w=world;int[] hit=target;
-            OnlineSession online=activity.online==null?null:activity.online.session;if(w.online&&online!=null){box(c,20,80,340,32,0xbb153d42);text(c,online.loading?"Nächstes Gebiet wird geladen …":online.healthy?"Verbunden · Gebiet "+(online.sector+1)+"/"+(online.side*online.side)+" · "+online.players.size()+" Spieler":"Verbindung unterbrochen · Bauen pausiert",30,101,12,Color.WHITE);for(VoxelRenderer.PlayerLabel label:renderer.playerLabels){float xx=(label.x-offsetX)/scale,yy=(label.y-offsetY)/scale;center(c,label.name,xx,yy,12,Color.WHITE);}}
-            {box(c,250,18,80,49,w.story&&w.progress.ready()?0xfff6d16c:0xcc153d42);center(c,w.online?"ONLINE":"STORY",290,49,14,w.story&&w.progress.ready()?0xff153d42:Color.WHITE);if(w.story){float yy=designW<960?122:80;box(c,20,yy,designW<960?500:410,48,0xbb153d42);text(c,w.progress.goal(),31,yy+20,12,Color.WHITE);text(c,"− halten: abbauen · STORY: Auftrag / Rezepte",31,yy+38,11,0xffd1e8e6);}}
+            OnlineSession online=activity.online==null?null:activity.online.session;if(w.online&&online!=null){box(c,20,80,340,32,0xbb153d42);text(c,online.loading||online.streaming?"Umgebung wird nachgeladen …":online.healthy?(online.side*World.W)+" × "+(online.side*World.D)+" · X "+(int)w.x+" / Z "+(int)w.z:"Verbindung unterbrochen · Bauen pausiert",30,101,12,Color.WHITE);drawWorldMap(c,online);for(VoxelRenderer.PlayerLabel label:renderer.playerLabels){float xx=(label.x-offsetX)/scale,yy=(label.y-offsetY)/scale;center(c,label.name,xx,yy,12,Color.WHITE);}}
+            {box(c,250,18,80,49,w.story&&w.progress.ready()?0xfff6d16c:0xcc153d42);center(c,w.online?"WERKBANK":"STORY",290,49,w.online?11:14,w.story&&w.progress.ready()?0xff153d42:Color.WHITE);if(w.story&&!w.online){float yy=w.online||designW<960?122:80;box(c,20,yy,designW<960?500:410,48,0xbb153d42);text(c,w.progress.goal(),31,yy+20,12,Color.WHITE);text(c,"− halten: abbauen · STORY: Auftrag / Rezepte",31,yy+38,11,0xffd1e8e6);}}
             if(hit!=null){box(c,(designW-266)/2,designW<960?82:20,266,31,0x99152c32);center(c,(w.nature.spring(hit[0],hit[1],hit[2])?"Lavaquelle · nachfüllbar":w.nature.stream(hit[0],hit[1],hit[2])?World.NAMES[w.get(hit[0],hit[1],hit[2])]+" · fließend":World.NAMES[w.get(hit[0],hit[1],hit[2])]+(w.forge.heat(hit[0],hit[1],hit[2])>0?" · glüht "+Math.round(w.forge.heat(hit[0],hit[1],hit[2])*100)+" %":"")),designW/2,designW<960?103:41,15,Color.WHITE);}
             float cx=(getWidth()/2f-offsetX)/scale,cy=(getHeight()/2f-offsetY)/scale;p.setColor(0xddffffff);p.setStrokeWidth(2);c.drawLine(cx-10,cy,cx-3,cy,p);c.drawLine(cx+3,cy,cx+10,cy,p);c.drawLine(cx,cy-10,cx,cy-3,p);c.drawLine(cx,cy+3,cx,cy+10,p);
             joystick(c,joyX,joyY,knobX,knobY,"BEWEGEN");
@@ -80,14 +81,23 @@ final class GameView {
             int first=hotbarFirst();for(int j=0;j<8;j++){int b=first+j;float xx=barX+j*56;box(c,xx,barY,49,52,b==w.selected?0xfff6d16c:0xbb193c43);box(c,xx+9,barY+8,31,27,COLORS[b]);center(c,""+(w.story?w.progress.inventory[b]:b),xx+24.5f,barY+45,10,b==w.selected?0xff193c43:Color.WHITE);}
             box(c,paletteX,barY,49,52,0xbb193c43);center(c,"…",paletteX+24,barY+32,25,Color.WHITE);
             center(c,World.NAMES[w.selected]+(w.story?" ("+w.progress.inventory[w.selected]+")":"")+"  ·  "+(w.flying?"Fliegen":"Laufen"),designW/2,barY-14,14,Color.WHITE);
-            if(w.story){
+            if(w.story&&!w.online){
                 box(c,designW-310,80,290,48,0xcc153d42);
                 center(c,w.survival.phase()+" · "+w.survival.secondsToChange()+" s · Gegner "+(w.survival.enemiesEnabled?w.survival.mobs.size():"aus"),designW-165,99,12,Color.WHITE);
                 center(c,"Leben "+w.survival.health+"/10 · "+(w.progress.sword?"Eisenschwert":"Hand"),designW-165,118,12,w.survival.health<=4?0xffff8b75:0xffffdb76);
             }
-            if(statusUntil>System.currentTimeMillis()){box(c,(designW-420)/2,w.story?(designW<960?186:139):130,420,35,0xcc153d42);center(c,status,designW/2,(w.story?(designW<960?186:139):130)+23,14,Color.WHITE);}
+            if(statusUntil>System.currentTimeMillis()){box(c,(designW-420)/2,w.story?(w.online||designW<960?186:139):130,420,35,0xcc153d42);center(c,status,designW/2,(w.story?(w.online||designW<960?186:139):130)+23,14,Color.WHITE);}
             c.restore();
         }}
+        void drawWorldMap(Canvas c,OnlineSession online){
+            float size=90,left=designW-size-20,top=82,cell=size/online.side;
+            box(c,left-6,top-6,size+12,size+32,0xcc153d42);
+            for(int z=0;z<online.side;z++)for(int x=0;x<online.side;x++){p.setColor(z*online.side+x==online.sector?0xff709c59:0xff365e51);c.drawRect(left+x*cell+1,top+z*cell+1,left+(x+1)*cell-1,top+(z+1)*cell-1,p);}
+            for(OnlineSession.Player player:online.players){if(player.uid.equals(online.firebase.uid))continue;p.setColor(OnlineWorld.color(player.uid));c.drawCircle(left+(player.sector%online.side+player.x/World.W)*cell,top+(player.sector/online.side+player.z/World.D)*cell,3,p);}
+            p.setColor(0xffffd779);c.drawCircle(left+world.x/(World.W*online.side)*size,top+world.z/(World.D*online.side)*size,4,p);
+            center(c,"WELTKARTE",left+size/2,top+size+16,10,Color.WHITE);
+
+        }
         int hotbarFirst(){return world.selected<=8?1:world.selected<=12?5:World.NAMES.length-8;}
         void joystick(Canvas c,float x,float y,float dx,float dy,String label){
             p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(0x88ffffff);c.drawCircle(x,y,68,p);p.setStyle(Paint.Style.FILL);p.setColor(0x55122d34);c.drawCircle(x,y,66,p);p.setColor(0x99ffffff);c.drawCircle(x+dx,y+dy,27,p);center(c,label,x,y+90,10,0xffe1eeee);
@@ -100,7 +110,7 @@ final class GameView {
             if(action==MotionEvent.ACTION_CANCEL){clearInput();return true;}
             if(activity.paused){clearInput();return true;}
             if(action==MotionEvent.ACTION_DOWN||action==MotionEvent.ACTION_POINTER_DOWN){
-                if(x>=250&&x<=330&&y>=18&&y<67){clearInput();if(world.story)activity.storyMenu();else activity.chooseMode();return true;}
+                if(x>=250&&x<=330&&y>=18&&y<67){clearInput();if(world.online&&activity.online!=null)activity.online.workbench();else if(world.story)activity.storyMenu();else activity.chooseMode();return true;}
                 if(x>designW-100&&y<78){clearInput();activity.menu();return true;}
                 if(y>=barY&&y<=barY+58&&x>=barX&&x<barX+448){int b=hotbarFirst()+(int)((x-barX)/56);synchronized(world){world.selected=b;}return true;}
                 if(x>=paletteX&&x<=paletteX+49&&y>=barY){clearInput();activity.palette();return true;}

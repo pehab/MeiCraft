@@ -23,7 +23,7 @@ python3 - <<'PY'
 from pathlib import Path
 import re,base64
 s=Path('build/android-smoke.log').read_text()
-for label,file in [('screenshot','smoke.png'),('landscapeScreenshot','landscape.png'),('failureScreenshot','failure.png'),('nightScreenshot','night.png'),('homeScreenshot','home.png'),('forgeHeatScreenshot','forge-heat.png'),('forgeReadyScreenshot','forge-ready.png'),('qrScreenshot','qr.png'),('qrReceiverScreenshot','qr-receiver.png'),('qrReceiverReverseScreenshot','qr-receiver-reverse.png')]:
+for label,file in [('screenshot','smoke.png'),('landscapeScreenshot','landscape.png'),('failureScreenshot','failure.png'),('nightScreenshot','night.png'),('homeScreenshot','home.png'),('onlineScreenshot','online.png'),('forgeHeatScreenshot','forge-heat.png'),('forgeReadyScreenshot','forge-ready.png'),('qrScreenshot','qr.png'),('qrReceiverScreenshot','qr-receiver.png'),('qrReceiverReverseScreenshot','qr-receiver-reverse.png')]:
  chunks=re.findall(r'INSTRUMENTATION_STATUS: '+label+r'Chunk=([A-Za-z0-9+/=]+)',s)
  if chunks:Path('build/'+file).write_bytes(base64.b64decode(''.join(chunks)))
 if 'PASS: ' not in s or 'INSTRUMENTATION_CODE: -1' not in s or 'INSTRUMENTATION_RESULT: error=' in s:

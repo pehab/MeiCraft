@@ -14,14 +14,14 @@ final class OnlineController {
     final MainActivity activity;
     volatile OnlineSession session;
     World localWorld;SavedWorld localEntry;AtomicFile localFile;int localSlot;
-    AlertDialog progress;
+    AlertDialog progress,workbenchDialog;ArrayAdapter<String> workbenchAdapter;
     OnlineController(MainActivity activity){this.activity=activity;}
     boolean active(){return session!=null;}
     void lobby(){
         if(activity.busy)return;
         if(active()){players();return;}
         activity.paused=true;
-        new AlertDialog.Builder(activity).setTitle("Gemeinsam bauen").setMessage("Online-Kreativwelten für deine Familie. Jedes Gerät erhält beim ersten Verbinden eine anonyme Geräte-ID. Flüssigkeiten bleiben ruhig. Internet ist zum Spielen erforderlich.")
+        new AlertDialog.Builder(activity).setTitle("Gemeinsam bauen").setMessage("Gemeinsame Bauwelten mit begrenzten Rohstoffen, Werkzeugen und Werkbank. Ihr startet zu Fuß. Die Welt wird beim Weiterlaufen ohne Gebietswechsel nachgeladen und bleibt ohne Gegner, Tag/Nacht und Flüssigkeitsfluss.")
             .setPositiveButton("Neue Online-Welt",(d,n)->activity.handler.post(this::createForm))
             .setNeutralButton("Beitreten / Öffnen",(d,n)->activity.handler.post(this::joinMenu))
             .setNegativeButton("Zurück",null).setOnDismissListener(d->activity.resumePlay()).show();
@@ -31,8 +31,8 @@ final class OnlineController {
     String savedName(){return activity.getSharedPreferences("online-worlds",0).getString("player","");}
     void createForm(){
         LinearLayout form=form();EditText worldName=input(form,"Name der Online-Welt","Familienwelt",48),player=input(form,"Dein Spielername",savedName(),24);
-        Spinner size=new Spinner(activity);size.setAdapter(new ArrayAdapter<>(activity,android.R.layout.simple_spinner_dropdown_item,new String[]{"4 Gebiete · 192 × 192 Blöcke","9 Gebiete · 288 × 288 Blöcke"}));form.addView(size);
-        AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("Neue Online-Kreativwelt").setView(form).setPositiveButton("Erstellen",null).setNegativeButton("Abbrechen",null).create();dialog.show();
+        Spinner size=new Spinner(activity);size.setAdapter(new ArrayAdapter<>(activity,android.R.layout.simple_spinner_dropdown_item,new String[]{"192 × 192 Blöcke · zusammenhängend","288 × 288 Blöcke · zusammenhängend"}));form.addView(size);
+        AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("Neue Online-Bauwelt").setView(form).setPositiveButton("Erstellen",null).setNegativeButton("Abbrechen",null).create();dialog.show();
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{try{OnlineWorld.playerName(player.getText().toString());if(worldName.getText().toString().trim().isEmpty())throw new IllegalArgumentException("Bitte einen Weltnamen eingeben.");dialog.dismiss();connect(new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId()),player.getText().toString(),true,worldName.getText().toString(),size.getSelectedItemPosition()+2);}catch(IllegalArgumentException e){player.setError(e.getMessage());}});
     }
     void joinMenu(){
@@ -58,7 +58,7 @@ final class OnlineController {
                     OnlineSession current=session;if(current==null||current.closed)return;
                     activity.game.gl.queueEvent(()->{if(session!=current||current.closed)return;activity.game.replace(world);activity.runOnUiThread(()->{
                         if(session!=current||current.closed)return;
-                        activity.world=world;activity.file=null;activity.active=null;activity.busy=false;activity.hideHome();activity.paused=false;dismissProgress();activity.toast(worldName+" · Gebiet "+(current.sector+1)+"/"+(current.side*current.side));
+                        activity.world=world;activity.file=null;activity.active=null;activity.busy=false;activity.hideHome();activity.paused=false;dismissProgress();activity.toast(worldName+" · "+(current.side*World.W)+" × "+(current.side*World.D)+" Blöcke");
                     });});activity.game.gl.requestRender();
                 }
                 public void problem(String message,boolean fatal){
@@ -72,18 +72,33 @@ final class OnlineController {
     }
     void dismissProgress(){if(progress!=null){progress.dismiss();progress=null;}}
     void leave(){
+        if(workbenchDialog!=null){workbenchDialog.dismiss();workbenchDialog=null;}
         OnlineSession old=session;session=null;if(old!=null)old.close();dismissProgress();activity.busy=false;
         activity.world=localWorld;activity.active=localEntry;activity.file=localFile;activity.slot=localSlot;
         World restored=localWorld;activity.game.gl.queueEvent(()->activity.game.replace(restored));activity.game.gl.requestRender();activity.showHome();
     }
     void menu(){
         OnlineSession current=session;if(current==null||activity.busy)return;activity.paused=true;activity.game.clearInput();
-        new AlertDialog.Builder(activity).setTitle(current.name+" · Online").setItems(new String[]{"Weiterbauen","Baumaterial wählen","Spieler / Einladung","Online-Welt verlassen"},(d,n)->{if(n==1)activity.handler.post(activity::palette);else if(n==2)activity.handler.post(this::players);else if(n==3)activity.handler.post(this::leave);}).setOnDismissListener(d->activity.resumePlay()).show();
+        new AlertDialog.Builder(activity).setTitle(current.name+" · Online").setItems(new String[]{"Weiterbauen","Baumaterial wählen","Werkbank / Werkzeuge","Spieler / Einladung","Online-Welt verlassen"},(d,n)->{if(n==1)activity.handler.post(activity::palette);else if(n==2)activity.handler.post(this::workbench);else if(n==3)activity.handler.post(this::players);else if(n==4)activity.handler.post(this::leave);}).setOnDismissListener(d->activity.resumePlay()).show();
+    }
+    String[] workbenchRows(){
+        Story p=session.inventory;
+        return new String[]{p.title()+" · "+p.goal(),"4 Bretter · 1 Holz ("+p.inventory[9]+")","4 Ziegel · 4 Erde + 1 Stein ("+p.inventory[7]+")","2 Glas · 2 Sand + 1 Holz ("+p.inventory[8]+")","1 Eisenbarren · 1 Erz + 1 Holz ("+p.iron+")","1 Eisenblock · 9 Barren ("+p.inventory[14]+")","4 Grasblöcke · 4 Erde + 1 Laub","Eiseneimer · 3 Barren (leer: "+p.buckets+")","Lavaeimer · Eimer + Leuchtstein + 4 Stein + 2 Holz"};
+    }
+    void refreshWorkbench(){if(session!=null&&workbenchDialog!=null&&workbenchDialog.isShowing()){workbenchAdapter.setNotifyOnChange(false);workbenchAdapter.clear();workbenchAdapter.addAll(workbenchRows());workbenchAdapter.notifyDataSetChanged();}}
+    void workbench(){
+        OnlineSession current=session;if(current==null||activity.busy)return;activity.paused=true;activity.game.clearInput();
+        workbenchAdapter=new ArrayAdapter<>(activity,android.R.layout.simple_list_item_1,new ArrayList<>(Arrays.asList(workbenchRows())));
+        workbenchDialog=new AlertDialog.Builder(activity).setTitle("Werkbank · "+Story.TOOLS[current.inventory.tool()]).setAdapter(workbenchAdapter,null).setNegativeButton("Weiterbauen",null).setOnDismissListener(d->{workbenchDialog=null;activity.resumePlay();}).create();workbenchDialog.show();
+        workbenchDialog.getListView().setOnItemClickListener((parent,view,index,id)->{
+            if(index==0){Story p=current.inventory;new AlertDialog.Builder(activity).setTitle(p.title()).setMessage(p.detail()).setPositiveButton(p.ready()?"Auftrag abschließen":"Weiter sammeln",(d,n)->{if(p.ready())current.progressAction(-1);}).setNegativeButton("Zurück",null).show();}
+            else current.progressAction(index==8?8:index-1);
+        });
     }
     void players(){
         activity.paused=true;activity.game.clearInput();
         OnlineSession current=session;if(current==null)return;
-        List<OnlineSession.Player> list=new ArrayList<>(current.players);String[] names=new String[list.size()];for(int i=0;i<names.length;i++){OnlineSession.Player p=list.get(i);names[i]=p.name+(p.uid.equals(current.owner)?" · Besitzer":"")+" · Gebiet "+(p.sector+1);}
+        List<OnlineSession.Player> list=new ArrayList<>(current.players);String[] names=new String[list.size()];for(int i=0;i<names.length;i++){OnlineSession.Player p=list.get(i);names[i]=p.name+(p.uid.equals(current.owner)?" · Besitzer":"")+" · "+(int)(p.sector%current.side*World.W+p.x)+" / "+(int)(p.sector/current.side*World.D+p.z);}
         AlertDialog.Builder dialog=new AlertDialog.Builder(activity).setTitle("Mitspieler · "+(current.healthy?"verbunden":"Verbindung unterbrochen")).setItems(names,(d,n)->{
             OnlineSession.Player player=list.get(n);if(current.owner()&&!player.uid.equals(current.owner))new AlertDialog.Builder(activity).setTitle(player.name+" entfernen?").setMessage("Diese anonyme Geräte-ID bleibt auch mit der bisherigen Einladung gesperrt.").setPositiveButton("Entfernen",(dd,nn)->current.ban(player.uid)).setNegativeButton("Abbrechen",null).show();
         }).setNegativeButton("Zurück",null).setOnDismissListener(d->activity.resumePlay());

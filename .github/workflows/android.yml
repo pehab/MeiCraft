@@ -79,6 +79,7 @@ jobs:
             build/android-smoke.log
             build/android-update-seed.log
             build/home.png
+            build/online.png
             build/android-empty-seed.log
             build/android-empty-reopen.log
             build/forge-heat.png

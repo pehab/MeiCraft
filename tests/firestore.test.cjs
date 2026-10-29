@@ -10,7 +10,7 @@ const db=uid=>uid?env.authenticatedContext(uid).firestore():env.unauthenticatedC
 const memberData=(token=invite)=>({name:'Miko',banned:false,invite:token,sector:0,x:48.5,y:30,z:48.5,yaw:0,updatedAt:serverTimestamp()});
 const blockData=(uid='child')=>({x:1,y:3,z:2,type:7,by:uid,updatedAt:serverTimestamp()});
 const blockPath=`${root}/sectors/0/blocks/1_3_2`;
-async function create(){const owner=db('parent'),batch=writeBatch(owner);batch.set(doc(owner,root),{owner:'parent',name:'Familienwelt',seed:123,side:2,protocol:1,invite,closed:false});batch.set(doc(owner,`${root}/members/parent`),memberData());return batch.commit();}
+async function create(protocol=1){const owner=db('parent'),batch=writeBatch(owner);batch.set(doc(owner,root),{owner:'parent',name:'Familienwelt',seed:123,side:2,protocol,invite,closed:false});batch.set(doc(owner,`${root}/members/parent`),memberData());return batch.commit();}
 async function join(uid='child',token=invite){const user=db(uid);return setDoc(doc(user,`${root}/members/${uid}`),memberData(token));}
 before(async()=>{env=await initializeTestEnvironment({projectId:'demo-meicraft',firestore:{rules:readFileSync('firestore.rules','utf8')}});});
 beforeEach(async()=>{await env.clearFirestore();});
@@ -53,4 +53,53 @@ test('REST commits preserve concurrent edits through updateTime preconditions',a
   const d=result.body.find(row=>row.document).document;
   const end=await rest('child',`/${root}/sectors/0:runQuery`,{structuredQuery:{from:[{collectionId:'blocks'}],orderBy:[{field:{fieldPath:'updatedAt'},direction:'ASCENDING'},{field:{fieldPath:'__name__'},direction:'ASCENDING'}],startAt:{values:[d.fields.updatedAt,{referenceValue:d.name}],before:false},limit:200}});
   assert.equal(end.status,200);assert.equal(end.body.filter(row=>row.document).length,0);
+});
+
+const invPath=uid=>`${root}/members/${uid}/inventory/main`;
+const emptyInventory=()=>({items:Array(17).fill(0),chapter:0,iron:0,placed:0,glassPlaced:0,buckets:0,sword:false,lastBlock:'',updatedAt:serverTimestamp()});
+async function initInventory(uid){await setDoc(doc(db(uid),invPath(uid)),emptyInventory());}
+async function readRest(uid,path){const response=await fetch(`http://${process.env.FIRESTORE_EMULATOR_HOST}/v1/${docName(path)}`,{headers:{Authorization:`Bearer ${createMockUserToken({sub:uid,user_id:uid},'demo-meicraft')}`}});assert.equal(response.status,200);return response.json();}
+function inventoryWrite(uid,state,lastBlock,version){
+  const fields={items:{arrayValue:{values:state.items.map(n=>({integerValue:String(n)}))}}};
+  for(const k of ['chapter','iron','placed','glassPlaced','buckets'])fields[k]={integerValue:String(state[k])};
+  fields.sword={booleanValue:state.sword};fields.lastBlock={stringValue:lastBlock};
+  return {update:{name:docName(invPath(uid)),fields},currentDocument:{updateTime:version},updateTransforms:[{fieldPath:'updatedAt',setToServerValue:'REQUEST_TIME'}]};
+}
+function resourceBlock(uid,type,condition){const write=restBlock(type,condition);write.update.fields.by={stringValue:uid};write.update.fields.renewable={booleanValue:false};return write;}
+
+test('resource inventory starts empty and is private to its player',async()=>{
+ await create(2);await join();await join('sibling');await assertSucceeds(initInventory('child'));
+ await assertSucceeds(getDoc(doc(db('child'),invPath('child'))));await assertFails(getDoc(doc(db('sibling'),invPath('child'))));await assertFails(updateDoc(doc(db('parent'),invPath('child')),{iron:99,updatedAt:serverTimestamp()}));
+ const free=emptyInventory();free.items[2]=50;await assertFails(setDoc(doc(db('sibling'),invPath('sibling')),free));
+});
+test('invalid inventory sizes, negative counts and unknown fields are rejected',async()=>{
+ await create(2);await join();await initInventory('child');const self=doc(db('child'),invPath('child'));
+ await assertFails(updateDoc(self,{items:Array(16).fill(0),updatedAt:serverTimestamp()}));
+ const negative=Array(17).fill(0);negative[2]=-1;await assertFails(updateDoc(self,{items:negative,updatedAt:serverTimestamp()}));
+ await assertFails(updateDoc(self,{chapter:8,updatedAt:serverTimestamp()}));await assertFails(updateDoc(self,{admin:true,updatedAt:serverTimestamp()}));
+});
+test('resource world refuses a block mutation without its atomic inventory update',async()=>{
+ await create(2);await join();await initInventory('child');
+ const solo=await rest('child',':commit',{writes:[resourceBlock('child',0,{exists:false})]});assert.ok(solo.status>=400);
+ const own=await readRest('child',invPath('child')),state=emptyInventory();state.items[2]=1;
+ const wrong=await rest('child',':commit',{writes:[resourceBlock('child',0,{exists:false}),inventoryWrite('child',state,'0/9_3_2',own.updateTime)]});assert.ok(wrong.status>=400);assert.equal((await getDoc(doc(db('child'),invPath('child')))).data().items[2],0);
+});
+test('two simultaneous harvests yield exactly one block across both inventories',async()=>{
+ await create(2);await join();await join('sibling');await initInventory('child');await initInventory('sibling');
+ const [a,b]=await Promise.all([readRest('child',invPath('child')),readRest('sibling',invPath('sibling'))]);
+ const state=emptyInventory();state.items[2]=1;
+ const results=await Promise.all([rest('child',':commit',{writes:[resourceBlock('child',0,{exists:false}),inventoryWrite('child',state,'0/1_3_2',a.updateTime)]}),rest('sibling',':commit',{writes:[resourceBlock('sibling',0,{exists:false}),inventoryWrite('sibling',state,'0/1_3_2',b.updateTime)]})]);
+ assert.equal(results.filter(r=>r.status===200).length,1,JSON.stringify(results));
+ const invA=(await getDoc(doc(db('child'),invPath('child')))).data(),invB=(await getDoc(doc(db('sibling'),invPath('sibling')))).data();assert.equal(invA.items[2]+invB.items[2],1);
+ const winner=invA.items[2]?'child':'sibling',current=await readRest(winner,invPath(winner)),block=await readRest(winner,blockPath),placed=emptyInventory();placed.placed=1;
+ const writes=[resourceBlock(winner,2,{updateTime:block.updateTime}),inventoryWrite(winner,placed,'0/1_3_2',current.updateTime)];
+ const first=await rest(winner,':commit',{writes});assert.equal(first.status,200,JSON.stringify(first.body));const duplicate=await rest(winner,':commit',{writes});assert.ok(duplicate.status>=400);assert.equal((await getDoc(doc(db(winner),invPath(winner)))).data().items[2],0);
+});
+test('only owner can upgrade an existing world, with stored blocks retained',async()=>{
+ await create();await join();await setDoc(doc(db('child'),blockPath),blockData());await assertFails(updateDoc(doc(db('child'),root),{protocol:2}));
+ await assertSucceeds(updateDoc(doc(db('parent'),root),{protocol:2}));assert.equal((await getDoc(doc(db('child'),blockPath))).data().type,7);
+ await assertFails(updateDoc(doc(db('parent'),root),{protocol:1}));await assertSucceeds(initInventory('child'));
+});
+test('banned players also lose access to their world inventory',async()=>{
+ await create(2);await join();await initInventory('child');await updateDoc(doc(db('parent'),`${root}/members/child`),{banned:true});await assertFails(getDoc(doc(db('child'),invPath('child'))));await assertFails(updateDoc(doc(db('child'),invPath('child')),{iron:10,updatedAt:serverTimestamp()}));
 });
