@@ -17,5 +17,7 @@
     <plurals name="qr_complete"><item quantity="one">%1$d Bild geprüft · Welt vollständig</item><item quantity="other">Alle %1$d Bilder geprüft · Welt vollständig</item></plurals>
     <string name="qr_receive_detail">%1$s · %2$s\n\nEs entsteht eine eigene Weltkopie. Eure vorhandenen Welten werden nicht überschrieben.</string>
     <plurals name="qr_receive_progress"><item quantity="one">Empfangen: %1$d / %2$d Bild</item><item quantity="other">Empfangen: %1$d / %2$d Bilder</item></plurals>
+ <string name="online_scan_title">Einladungs-QR der Online-Welt scannen</string>
+ <string name="online_scan_permission">Zum Scannen die Kamera erlauben. Alternativ kannst du den Einladungstext eingeben.</string>
 </resources>
 

@@ -60,9 +60,10 @@ jobs:
           TEST_API: ${{ matrix.api }}
         run: bash scripts/run-emulator.sh
       - name: Package APK from the validated source
+        if: github.event_name != 'pull_request'
         run: python3 scripts/prepare-release.py
       - uses: actions/upload-artifact@v6
-        if: matrix.api == 30
+        if: matrix.api == 30 && github.event_name != 'pull_request'
         with:
           name: verified-release
           path: build/release/
@@ -93,6 +94,7 @@ jobs:
             build/failure.png
             app/build/reports/
   verify-release-package:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-24.04
     permissions:
@@ -108,7 +110,7 @@ jobs:
         run: sha256sum --check *.apk.sha256
   publish:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]')
-    needs: verify-release-package
+    needs: [verify-release-package, firestore-rules]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
