@@ -199,6 +199,11 @@ public final class SmokeInstrumentation extends Instrumentation {
   android.graphics.Bitmap homeImage=smallScreenshot();if(homeImage!=null){emitScreenshot(homeImage,"homeScreenshot");homeImage.recycle();}
   clickText("Über meiCraft");clickText("Zurück");check(activity.homeVisible&&activity.paused,"closing About returns to the paused home screen");
   clickText("Steuerung");clickText("Verstanden");check(activity.paused,"closing help does not run the world behind the home screen");
+  String firebaseUid=activity.getSharedPreferences("firebase-user",0).getString("uid","");
+  clickText("Gemeinsam bauen");clickText("Neue Online-Welt");clickText("Abbrechen");
+  check(activity.homeVisible&&activity.active.id.equals(original)&&activity.online.session==null,"canceling online creation preserves local world");
+  clickText("Gemeinsam bauen");clickText("Beitreten / Öffnen");clickText("Zurück");
+  check(firebaseUid.equals(activity.getSharedPreferences("firebase-user",0).getString("uid","")),"browsing online lobby does not create an anonymous account");
   SavedWorld temporary=activity.library.importCopy("Löschtest",game.world.encode());
   deleteViaUi(activity,"Löschtest",false);check(worldExists(activity.library,temporary.id),"canceling delete retains the world");
   deleteViaUi(activity,"Löschtest",true);check(!worldExists(activity.library,temporary.id)&&!activity.library.file(temporary).getBaseFile().exists(),"confirmed inactive world deletion removes metadata and snapshot");

@@ -30,7 +30,7 @@ public final class Nature {
     public boolean stream(int x,int y,int z){return World.inside(x,y,z)&&levels[World.index(x,y,z)]>0&&levels[World.index(x,y,z)]<SOURCE;}
 
     public void tick(World w,float dt){
-        if(!Float.isFinite(dt)||dt<=0)return;
+        if(w.online||!Float.isFinite(dt)||dt<=0)return;
         w.forge.animation+=Math.min(dt,.1f);
         clock+=Math.min(dt,.1f);if(clock<.5f)return;clock-=.5f;step++;
         react(w);

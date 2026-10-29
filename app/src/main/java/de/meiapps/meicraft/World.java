@@ -13,6 +13,7 @@ public final class World {
     public float x=48.5f,y=27,z=48.5f,yaw=0,pitch=-.15f;
     public int selected=1;
     public boolean flying=true,story;
+    public boolean online; // Never serialized into local saves.
     public final Story progress=new Story();
     public final Survival survival=new Survival();
     public final Nature nature=new Nature();

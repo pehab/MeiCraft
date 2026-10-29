@@ -1,8 +1,14 @@
 # meiCraft
 
-Eigenständiges Offline-Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Keine Konten, Werbung oder Käufe. Nur die abschaltbare Update-Prüfung verwendet das Internet.
+Eigenständiges Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Offline ohne Anmeldung, Werbung oder Käufe. Optional gemeinsam online bauen: Firebase speichert dafür eine anonyme Geräte-ID, Weltänderungen und Mitspielerpositionen.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.6.0
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Online-Erweiterung in Vorbereitung: 0.7.0
+
+## Gemeinsam bauen · 0.7.0
+
+**Gemeinsam bauen** im Hauptmenü öffnet Online-Kreativwelten mit vier oder neun Gebieten. Beitritt über einen einzelnen Einladungs-QR, sichtbare Mitspieler mit Anzeigenamen und gemeinsame, serverbestätigte Bauänderungen. Der Besitzer kann andere Geräte-IDs dauerhaft für seine Welt sperren. Flüssigkeiten bleiben online ruhig. Lokale Welten bleiben getrennt erhalten.
+
+Vor der ersten Verbindung müssen die mitgelieferten Firestore-Regeln veröffentlicht werden. [Firebase einrichten, Bedienung, Grenzen und Tests](docs/ONLINE.md). Der aktuelle Stand benötigt vor einer Veröffentlichung noch den gemeinsamen Test auf zwei echten Geräten.
 
 ## Hauptmenü und Weltenverwaltung · 0.6.0
 
@@ -28,7 +34,7 @@ Der **Storymodus** speichert in einer eigenen Datei. Über **STORY** oben im Spi
 4. Einen Ofen bauen und Erz mit Holz als Brennstoff schmelzen.
 5. Eisenwerkzeug herstellen, Gebäude mit Fenstern bauen und tief im Gestein Leuchtstein finden.
 
-Die Werkbank stellt Bretter, Ziegel und Grasblöcke her. Im Ofen entstehen Glas und Eisenbarren; später lassen sich Eisenblöcke bauen. Die sieben Einführungskapitel gehen anschließend in freies Bauen mit begrenzten Ressourcen über. Hunger, Rüstung, Explosionsgegner und Multiplayer sind noch nicht enthalten. Die Welt ist 96 × 96 × 48 Blöcke groß.
+Die Werkbank stellt Bretter, Ziegel und Grasblöcke her. Im Ofen entstehen Glas und Eisenbarren; später lassen sich Eisenblöcke bauen. Die sieben Einführungskapitel gehen anschließend in freies Bauen mit begrenzten Ressourcen über. Hunger, Rüstung und Explosionsgegner sind noch nicht enthalten. Gemeinsame Online-Welten gibt es separat im Kreativmodus. Die Welt ist 96 × 96 × 48 Blöcke groß.
 
 ## Nacht, Gegner und Lava · 0.3.0
 
@@ -60,7 +66,7 @@ Komplett offline, auch im Flugmodus: Auf dem sendenden Gerät **☰ → Welt per
 
 Die Welt wird als wechselnde QR-Bilder angezeigt. Die Folge wiederholt sich automatisch, bis der Empfänger alle unterschiedlichen Bilder gesammelt hat. Reihenfolge und doppelt gescannte Bilder sind egal; der Fortschritt bleibt erhalten, wenn ein Bild verpasst wird. Bei Schwierigkeiten am Sender **Langsamer** wählen oder **Pause** und die Pfeile nutzen. Eine typische neue Storywelt ergibt ungefähr 50 Bilder; die genaue Zahl hängt vom Spielstand ab.
 
-Nach vollständiger Prüfung zeigt der Empfänger Weltname und Modus. **Als neue Welt importieren** speichert eine Kopie mit eigener ID und öffnet sie. Vorhandene Welten werden nicht überschrieben; gleiche Namen bekommen einen Zähler. Bauten, Vorräte, Ausrüstung, Quellen, Ströme und Storyfortschritt werden übernommen. Beide Geräte bauen danach unabhängig weiter. Gleichzeitiges gemeinsames Bauen ist noch nicht enthalten.
+Nach vollständiger Prüfung zeigt der Empfänger Weltname und Modus. **Als neue Welt importieren** speichert eine Kopie mit eigener ID und öffnet sie. Vorhandene Welten werden nicht überschrieben; gleiche Namen bekommen einen Zähler. Bauten, Vorräte, Ausrüstung, Quellen, Ströme und Storyfortschritt werden übernommen. Beide Geräte bauen danach unabhängig weiter. Für gleichzeitiges gemeinsames Bauen gibt es den separaten Menüpunkt **Gemeinsam bauen**.
 
 Die QR-Folge enthält den vollständigen lokalen Spielstand, keinen Download-Link. Es werden weder WLAN, Bluetooth noch Internet benötigt. Pro Fragment wird CRC32, für die vollständige Übertragung SHA-256 und anschließend das Weltformat geprüft. Größenlimits gelten vor dem Zusammensetzen und Importieren. Fortschritt kann über **Empfang zurücksetzen** verworfen werden; beim Schließen des Empfangs oder nach einem vollständigen Prozessneustart wird eine unvollständige Übertragung nicht gespeichert.
 

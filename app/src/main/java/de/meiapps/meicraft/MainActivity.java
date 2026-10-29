@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.concurrent.*;
 
 public final class MainActivity extends Activity {
- GameView game; UpdateController updates; volatile World world;
+ GameView game; volatile OnlineController online; UpdateController updates; volatile World world;
  AtomicFile file; WorldLibrary library; SavedWorld active;
  volatile int slot; volatile boolean paused, busy,homeVisible;
  MainMenuView home;
@@ -47,10 +47,10 @@ public final class MainActivity extends Activity {
  void immersive(){if(Build.VERSION.SDK_INT>=30){WindowInsetsController c=getWindow().getInsetsController();if(c!=null){c.hide(WindowInsets.Type.systemBars());c.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);}}else immersiveLegacy();}
  @SuppressWarnings("deprecation") private void immersiveLegacy(){getWindow().getDecorView().setSystemUiVisibility(5894);}
  void resumePlay(){paused=busy||homeVisible;}
- void showHome(){if(busy)return;game.gl.setRenderMode(android.opengl.GLSurfaceView.RENDERMODE_WHEN_DIRTY);paused=true;homeVisible=true;game.clearInput();if(home!=null)game.root.removeView(home);home=new MainMenuView(this);game.root.addView(home,new android.widget.FrameLayout.LayoutParams(-1,-1));}
+ void showHome(){if(online!=null&&online.active()){online.leave();return;}if(busy)return;game.gl.setRenderMode(android.opengl.GLSurfaceView.RENDERMODE_WHEN_DIRTY);paused=true;homeVisible=true;game.clearInput();if(home!=null)game.root.removeView(home);home=new MainMenuView(this);game.root.addView(home,new android.widget.FrameLayout.LayoutParams(-1,-1));}
  void hideHome(){game.gl.setRenderMode(android.opengl.GLSurfaceView.RENDERMODE_CONTINUOUSLY);homeVisible=false;if(home!=null){game.root.removeView(home);home=null;}}
  void resumeFromHome(){if(busy||world==null)return;hideHome();resumePlay();}
- void about(){if(busy)return;paused=true;new AlertDialog.Builder(this).setTitle("Über meiCraft · "+versionName()).setMessage("Ein eigenständiges Klötzchenspiel von meiApps.\n\nWelten werden auf diesem Gerät gespeichert. Spielen und Teilen per QR funktionieren offline. Die Kamera wird nur beim Weltempfang verwendet. Keine Konten, Werbung oder Käufe.\n\nUpdates verwenden je nach Installation den Play Store oder GitHub.").setPositiveButton("Zurück",null).setNeutralButton("Update-Einstellungen",(d,n)->handler.post(updates::settings)).setOnDismissListener(d->resumePlay()).show();}
+ void about(){if(busy)return;paused=true;new AlertDialog.Builder(this).setTitle("Über meiCraft · "+versionName()).setMessage("Ein eigenständiges Klötzchenspiel von meiApps.\n\nWelten werden auf diesem Gerät gespeichert. Spielen und Teilen per QR funktionieren offline. Die Kamera wird nur beim Weltempfang verwendet. Offline ohne Anmeldung, Werbung oder Käufe. Online-Welten verwenden Firebase mit einer anonymen Geräte-ID; Weltänderungen, Anzeigename und Spielfigurposition werden dort gespeichert.\n\nUpdates verwenden je nach Installation den Play Store oder GitHub.").setPositiveButton("Zurück",null).setNeutralButton("Update-Einstellungen",(d,n)->handler.post(updates::settings)).setOnDismissListener(d->resumePlay()).show();}
  String versionName(){try{return getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(android.content.pm.PackageManager.NameNotFoundException e){return "";}}
  void save(){save(false);}
  void save(boolean announce){
@@ -92,7 +92,7 @@ public final class MainActivity extends Activity {
   });
  }
  void switchMode(int target){SavedWorld selected=selectedWorld(target);if(selected!=null)openWorld(selected,null);else{slot=target;newWorld();}}
- void chooseMode(){if(busy)return;paused=true;game.clearInput();new AlertDialog.Builder(this).setTitle("Weltmodus wechseln").setItems(new String[]{"Kreativ · Freies Bauen","Story · Sammeln und Werkzeuge"},(d,n)->switchMode(n)).setOnDismissListener(d->resumePlay()).show();}
+ void chooseMode(){if(online!=null&&online.active()){online.players();return;}if(busy)return;paused=true;game.clearInput();new AlertDialog.Builder(this).setTitle("Weltmodus wechseln").setItems(new String[]{"Kreativ · Freies Bauen","Story · Sammeln und Werkzeuge"},(d,n)->switchMode(n)).setOnDismissListener(d->resumePlay()).show();}
  void showWorlds(){
   if(busy)return;busy=true;paused=true;game.clearInput();
   disk.execute(()->{
@@ -104,7 +104,9 @@ public final class MainActivity extends Activity {
    });}catch(IOException e){runOnUiThread(()->{busy=false;resumePlay();toast("Welten konnten nicht aufgelistet werden.");});}
   });
  }
+ void onlineMenu(){if(online==null)online=new OnlineController(this);online.lobby();}
  void menu(){
+  if(online!=null&&online.active()){online.menu();return;}
   if(homeVisible){moveTaskToBack(true);return;}if(paused||busy)return;if(world==null){showHome();return;}paused=true;game.clearInput();
   new AlertDialog.Builder(this).setTitle(active.label()).setItems(new String[]{"Weiterbauen","Spielstand speichern","Baumaterial wählen",world.story?"Story und Werkbank":world.flying?"Laufen statt fliegen":"Fliegen statt laufen","Hauptmenü"},(d,n)->{
    switch(n){case 1:save(true);break;case 2:handler.post(this::palette);break;case 3:if(world.story)handler.post(this::storyMenu);else{synchronized(world){world.flying=!world.flying;}game.velocityY=0;}break;case 4:handler.post(this::showHome);break;default:break;}
@@ -189,15 +191,16 @@ public final class MainActivity extends Activity {
  @SuppressWarnings("deprecation")
  @Override protected void onActivityResult(int request,int result,android.content.Intent data){
   super.onActivityResult(request,result,data);
+  if(request==OnlineInviteActivity.REQUEST){if(result==RESULT_OK&&data!=null){try{OnlineWorld invite=OnlineWorld.decode(data.getStringExtra("invitation"));handler.post(()->{if(online==null)online=new OnlineController(this);online.joinForm(invite);});}catch(IllegalArgumentException e){toast(e.getMessage());}}return;}
   if(request!=QrTransferActivity.REQUEST)return;
   if(result==RESULT_OK&&data!=null){try{SavedWorld imported=library.entry(data.getStringExtra("worldId"));handler.post(()->openWorld(imported,null));}
    catch(IOException e){resumePlay();toast("Importierte Welt konnte nicht geöffnet werden.");}}
   else resumePlay();
  }
  void toast(String text){Toast.makeText(this,text,Toast.LENGTH_SHORT).show();}
- @Override protected void onResume(){super.onResume();if(updates!=null)updates.onResume();if(game!=null)game.gl.onResume();handler.removeCallbacks(autosave);handler.postDelayed(autosave,30000);immersive();}
- @Override protected void onPause(){if(updates!=null)updates.onPause();if(game!=null){game.clearInput();game.gl.onPause();}save();handler.removeCallbacks(autosave);super.onPause();}
- @Override protected void onDestroy(){if(updates!=null)updates.onDestroy();handler.removeCallbacks(autosave);disk.shutdown();super.onDestroy();}
+ @Override protected void onResume(){super.onResume();if(updates!=null)updates.onResume();if(online!=null&&online.session!=null)online.session.foreground=true;if(game!=null)game.gl.onResume();handler.removeCallbacks(autosave);handler.postDelayed(autosave,30000);immersive();}
+ @Override protected void onPause(){if(updates!=null)updates.onPause();if(online!=null&&online.session!=null){online.session.foreground=false;online.session.healthy=false;}if(game!=null){game.clearInput();game.gl.onPause();}save();handler.removeCallbacks(autosave);super.onPause();}
+ @Override protected void onDestroy(){if(updates!=null)updates.onDestroy();if(online!=null&&online.session!=null)online.session.close();handler.removeCallbacks(autosave);disk.shutdown();super.onDestroy();}
  @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(!focused&&game!=null)game.clearInput();}
  @Override public boolean onKeyUp(int code,KeyEvent event){if(Build.VERSION.SDK_INT<33&&code==KeyEvent.KEYCODE_BACK){menu();return true;}return super.onKeyUp(code,event);}
 }

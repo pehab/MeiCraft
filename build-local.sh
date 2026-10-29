@@ -4,6 +4,7 @@ cd "$(dirname "$0")"
 SDK="${ANDROID_SDK_ROOT:-../android-sdk}"
 SDK="$(cd "$SDK" && pwd)"
 BT="$SDK/build-tools/36.0.0"
+PLATFORM="${MEICRAFT_COMPILE_PLATFORM:-android-37.0}"
 JAVA_BIN="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}/bin"
 rm -rf build/classes build/dex
 mkdir -p build/classes build/dex .signing
@@ -21,14 +22,14 @@ s=Path('app/src/main/AndroidManifest.xml').read_text().replace('<manifest ', '<m
 s=s.replace('<uses-feature ', '<uses-sdk android:minSdkVersion="26" android:targetSdkVersion="37"/><uses-feature ',1)
 Path('build/AndroidManifest.xml').write_text(s)
 PYMANIFEST
-"$BT/aapt2" link -I "$SDK/platforms/android-37.0/android.jar" --manifest build/AndroidManifest.xml --java build/generated -A app/src/main/assets -o build/resources.apk build/resources.zip
-"$JAVA_BIN/java" -m jdk.compiler/com.sun.tools.javac.Main -Xlint:deprecation -Werror -encoding UTF-8 -source 17 -target 17 -classpath "$SDK/platforms/android-37.0/android.jar:$QR_JAR" -d build/classes $(find app/src/main/java build/generated -name '*.java')
+"$BT/aapt2" link -I "$SDK/platforms/$PLATFORM/android.jar" --manifest build/AndroidManifest.xml --java build/generated -A app/src/main/assets -o build/resources.apk build/resources.zip
+"$JAVA_BIN/java" -m jdk.compiler/com.sun.tools.javac.Main -Xlint:deprecation -Werror -encoding UTF-8 -source 17 -target 17 -classpath "$SDK/platforms/$PLATFORM/android.jar:$QR_JAR" -d build/classes $(find app/src/main/java build/generated -name '*.java')
 python3 - <<'PY'
 import zipfile,pathlib
 with zipfile.ZipFile('build/classes.jar','w') as z:
  for p in pathlib.Path('build/classes').rglob('*.class'): z.write(p,p.relative_to('build/classes'))
 PY
-"$BT/d8" --lib "$SDK/platforms/android-37.0/android.jar" --min-api 26 --output build/dex build/classes.jar "$QR_JAR"
+"$BT/d8" --lib "$SDK/platforms/$PLATFORM/android.jar" --min-api 26 --output build/dex build/classes.jar "$QR_JAR"
 cp build/resources.apk build/unsigned.apk
 python3 - <<'PY'
 import zipfile,pathlib
