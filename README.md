@@ -2,9 +2,9 @@
 
 Eigenständiges Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Offline ohne Anmeldung, Werbung oder Käufe. Optional gemeinsam online bauen: Firebase speichert dafür eine anonyme Geräte-ID, Weltänderungen und Mitspielerpositionen.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.8.1
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.8.2
 
-## Gemeinsam bauen · 0.8.1
+## Gemeinsam bauen · 0.8.2
 
 **Gemeinsam bauen** öffnet Online-Bauwelten mit 192 × 192 oder 288 × 288 Blöcken.
 Die zusammenhängende Welt lädt beim Weiterlaufen die Umgebung nach. Ihr startet zu
@@ -17,9 +17,14 @@ Schneekappen, Wälder, Seen und geschwungene Flüsse statt unabhängig erzeugter
 Auch Bäume und Rohstoffe setzen sich über Ladegrenzen hinweg fort. Ersteller können
 ihre Online-Welten nach Bestätigung vollständig löschen.
 
-**Die neuen Firestore-Regeln veröffentlichen, alle Geräte aktualisieren und eine neue
-Online-Welt anlegen.** Bisherige Testwelten werden nicht migriert; lokale Offline-Welten
-bleiben erhalten. [Einrichtung und Update](docs/ONLINE.md).
+**0.8.2 reduziert Firebase-Zugriffe:** Eine gemeinsame Übersicht ersetzt die einzelnen
+Mitgliedschafts-, Inventar-, Spieler- und unveränderten Blockabfragen. Die Online-Diagnose
+zeigt Zugriffe und konkrete Serverfehler als kopierbaren Bericht. Veraltete Welteinträge
+lassen sich auf jedem Gerät mit **Aus Liste entfernen** bereinigen.
+
+**Zuerst die neuen Firestore-Regeln veröffentlichen, dann alle Geräte aktualisieren.**
+Bestehende 0.8.1-Welten öffnet der Besitzer zuerst; Bauten und Inventare bleiben erhalten.
+[Einrichtung und Update](docs/ONLINE.md).
 
 ## Hauptmenü und Weltenverwaltung · 0.6.0
 

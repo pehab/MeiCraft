@@ -194,6 +194,61 @@ public final class SmokeInstrumentation extends Instrumentation {
   runOnMainSync(activity::showHome);clickText("Welten verwalten");clickText(name);clickText("Welt löschen");clickText(confirm?"Dauerhaft löschen":"Abbrechen");
   for(int n=0;n<100&&activity.busy;n++)Thread.sleep(50);activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);waitForIdleSync();
  }
+ void testRecentOnlineRemoval(MainActivity activity)throws Exception{
+  android.content.SharedPreferences prefs=activity.getSharedPreferences("online-worlds",0);
+  String previous=prefs.getString("worlds","{}");String stale=OnlineWorld.randomId(),keep=OnlineWorld.randomId();
+  try{
+   prefs.edit().putString("worlds",new org.json.JSONObject().put(stale,"Gelöschte Testwelt").put(keep,"Familienwelt behalten").toString()).commit();
+   runOnMainSync(activity::onlineMenu);clickText("Beitreten / Öffnen");clickText("Gelöschte Testwelt");clickText("Abbrechen");
+   check(new org.json.JSONObject(prefs.getString("worlds","{}")).has(stale),"cancel preserves recent world entry");
+   runOnMainSync(activity.online::joinMenu);clickText("Gelöschte Testwelt");clickText("Aus Liste entfernen");
+   org.json.JSONObject remaining=new org.json.JSONObject(prefs.getString("worlds","{}"));
+   check(!remaining.has(stale)&&remaining.has(keep),"removing deleted remote world only forgets selected local entry without Firebase access");
+   check(activity.online.session==null&&!activity.busy,"list cleanup does not start a network session");
+  }finally{prefs.edit().putString("worlds",previous).commit();}
+ }
+ static final class SyncBackend implements FirebaseRest.ConnectionFactory {
+  int attempts,stateReads,blockQueries,inventoryReads,writes,unexpected,status=200;long revision;
+  String inventory="";
+  @Override public java.net.HttpURLConnection open(java.net.URL url){
+   attempts++;
+   return new java.net.HttpURLConnection(url){
+    @Override public void connect(){}
+    @Override public void disconnect(){}
+    @Override public boolean usingProxy(){return false;}
+    @Override public int getResponseCode(){return status;}
+    @Override public java.io.OutputStream getOutputStream(){writes++;return new java.io.ByteArrayOutputStream();}
+    @Override public java.io.InputStream getErrorStream(){return new java.io.ByteArrayInputStream("{\"error\":{\"status\":\"RESOURCE_EXHAUSTED\",\"message\":\"Read quota exceeded\"}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+    @Override public java.io.InputStream getInputStream()throws IOException{
+     String path=url.getPath(),response;
+     if(path.endsWith("/sync/state")){stateReads++;response="{\"fields\":{\"regions\":{\"mapValue\":{\"fields\":{\"s0\":{\"mapValue\":{\"fields\":{\"revision\":{\"integerValue\":\""+revision+"\"}}}}}}},\"players\":{\"mapValue\":{\"fields\":{}}}}}";}
+     else if(path.endsWith(":runQuery")){blockQueries++;response="[{\"document\":{\"name\":\"fixture/blocks/10_30_10\",\"updateTime\":\"2026-10-31T12:00:00Z\",\"fields\":{\"x\":{\"integerValue\":\"10\"},\"y\":{\"integerValue\":\"30\"},\"z\":{\"integerValue\":\"10\"},\"type\":{\"integerValue\":\"7\"},\"updatedAt\":{\"timestampValue\":\"2026-10-31T12:00:00Z\"}}}}]";}
+     else if(path.endsWith("/inventory/main")){inventoryReads++;response=inventory;}
+     else{unexpected++;throw new IOException("Unexpected fixture request");}
+     return new java.io.ByteArrayInputStream(response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+   };
+  }
+ }
+ void testSyncRequests(MainActivity activity,GameView game)throws Exception{
+  SyncBackend backend=new SyncBackend();FirebaseRest rest=new FirebaseRest(activity,backend);rest.uid="fixture-parent";rest.token="fixture-token";rest.expires=System.currentTimeMillis()+3600000;
+  OnlineSession session=new OnlineSession(activity,rest,new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId()),"Test",new OnlineSession.Listener(){public void loaded(World w,String n){}public void problem(String text,boolean fatal){}});
+  try{
+   session.world=World.onlineSpace(123,2);session.side=2;session.px=session.world.x;session.py=session.world.y;session.pz=session.world.z;session.lastX=session.px;session.lastY=session.py;session.lastZ=session.pz;session.lastHeartbeat=System.currentTimeMillis();session.loading=false;session.healthy=true;
+   for(int id=0;id<4;id++){OnlineSession.Region region=new OnlineSession.Region(id);region.generated=true;region.revision=0;session.regions.put(id,region);}
+   for(int i=0;i<8;i++)session.poll();
+   check(backend.stateReads==8&&backend.blockQueries==0&&backend.inventoryReads==0&&backend.writes==0&&backend.unexpected==0,"unchanged worlds read exactly one shared document per cycle, no block, member or inventory polls");
+   backend.revision=1;session.poll();onGl(game,()->{});
+   check(backend.blockQueries==1&&session.world.get(10,30,10)==7,"one changed region fetches and applies the peer block update");
+   session.poll();check(backend.blockQueries==1,"cached region revision suppresses duplicate block reads");
+   Story updated=new Story();updated.inventory[2]=4;backend.inventory="{\"updateTime\":\"2026-10-31T12:00:01Z\",\"fields\":"+session.inventoryFields(updated,"").toString()+"}";
+   session.inventoryUncertain=true;session.poll();session.poll();onGl(game,()->{});
+   check(backend.inventoryReads==1&&session.inventory.inventory[2]==4,"an ambiguous write response reconciles inventory once instead of polling it forever");
+   backend.status=429;session.poll();long until=session.nextAttempt;int requests=backend.attempts;for(int i=0;i<10;i++)session.poll();
+   check(!session.healthy&&until-System.currentTimeMillis()>55000&&backend.attempts==requests,"actual HTTP 429 pauses building and prevents immediate repeated network requests");
+   backend.status=200;session.nextAttempt=0;session.poll();check(session.healthy&&session.failures==0,"successful reconnect restores the session");
+  }finally{session.close();}
+ }
  void testOnlineStreaming(MainActivity activity,GameView game)throws Exception{
   World original=activity.world;android.util.AtomicFile oldFile=activity.file;OnlineController previous=activity.online;
   World wide=World.onlineSpace(7412,2);for(int i=0;i<4;i++)OnlineInventory.install(wide,OnlineTerrain.region(7412,i,2),i,2);
@@ -212,6 +267,14 @@ public final class SmokeInstrumentation extends Instrumentation {
    onGl(game,()->game.forward=1);for(int i=0;i<100&&wide.x<97.5f;i++)Thread.sleep(100);onGl(game,()->game.forward=0);
    check(game.world==wide&&wide.x>96&&wide.x<105,"walking crosses the old boundary without world replacement or teleport");
    check(session.sector==1&&wide.progress.inventory[2]==5,"streaming preserves player inventory and tracks continuous position");
+   String oldToken=rest.token;rest.token="eyJtestHeader.testPayload.testSignature";
+   FirebaseRest.Failure quota=rest.failure(429,"Firestore","Blockänderungen lesen","{\"error\":{\"status\":\"RESOURCE_EXHAUSTED\",\"message\":\"Read quota exceeded key="+rest.key+" token="+rest.token+"\",\"details\":[{\"reason\":\"RATE_LIMIT_EXCEEDED\",\"metadata\":{\"quota_metric\":\"document/read_count\"}}]}}");
+   check(quota.status==429&&quota.serverStatus.equals("RESOURCE_EXHAUSTED")&&quota.detail.contains("document/read_count"),"diagnostics preserve service, status and quota metric");
+   check(!quota.detail.contains(rest.key)&&!quota.detail.contains(rest.token),"diagnostics redact API key and authentication token");rest.token=oldToken;
+   runOnMainSync(controller::diagnostics);clickText("Bericht kopieren");
+   android.content.ClipboardManager clipboard=(android.content.ClipboardManager)activity.getSystemService(Context.CLIPBOARD_SERVICE);
+   String report=String.valueOf(clipboard.getPrimaryClip().getItemAt(0).getText());
+   check(report.contains("HTTP 429")&&report.contains("RESOURCE_EXHAUSTED")&&!report.contains(rest.key),"diagnostic report copies useful errors without API keys");
    runOnMainSync(controller::workbench);clickText("Weiterbauen");check(!activity.paused,"online workbench returns to the same world");
    runOnMainSync(controller::menu);clickText("Online-Welt löschen");clickText("Abbrechen");check(activity.online==controller&&game.world==wide&&!activity.busy,"canceling owner deletion leaves online world and inventory intact");
    session.owner="another-owner";runOnMainSync(controller::menu);
@@ -469,6 +532,8 @@ public final class SmokeInstrumentation extends Instrumentation {
   orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,960);testSwipeControl(activity,game);
   orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,960);
   testWorldLibrary(activity,game);
+  testRecentOnlineRemoval(activity);
+  testSyncRequests(activity,game);
   testOnlineStreaming(activity,game);
   testHomeAndDeletion(activity,game);
   android.graphics.Bitmap portrait=smallScreenshot();if(portrait!=null){emitScreenshot(portrait,"landscapeScreenshot");portrait.recycle();}

@@ -3,6 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function worldPath(world) { return /databases/$(database)/documents/onlineWorlds/$(world); }
+    function syncPath(world) { return /databases/$(database)/documents/onlineWorlds/$(world)/sync/state; }
     function memberPath(world, uid) { return /databases/$(database)/documents/onlineWorlds/$(world)/members/$(uid); }
     function owner(world) { return signedIn() && get(worldPath(world)).data.owner == request.auth.uid; }
     function member(world) {
@@ -30,12 +31,15 @@ service cloud.firestore {
         && name(request.resource.data.name,48)
         && request.resource.data.seed is int && request.resource.data.seed >= 0 && request.resource.data.seed < 1000000000
         && request.resource.data.side is int && request.resource.data.side in [2,3]
-        && request.resource.data.protocol is int && request.resource.data.protocol in [1,2,3]
+        && request.resource.data.protocol is int && request.resource.data.protocol in [1,2,3,4]
         && token(request.resource.data.invite) && request.resource.data.closed == false
-        && getAfter(memberPath(world,request.auth.uid)).data.banned == false;
+        && getAfter(memberPath(world,request.auth.uid)).data.banned == false
+        && (request.resource.data.protocol != 4 || getAfter(syncPath(world)).data.regions == {} && getAfter(syncPath(world)).data.players == {});
       allow update: if owner(world)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','invite','closed','protocol'])
-        && (request.resource.data.protocol == resource.data.protocol || resource.data.protocol == 1 && request.resource.data.protocol == 2)
+        && (request.resource.data.protocol == resource.data.protocol || resource.data.protocol == 1 && request.resource.data.protocol == 2
+          || resource.data.protocol == 3 && request.resource.data.protocol == 4
+          && getAfter(syncPath(world)).data.regions == {} && getAfter(syncPath(world)).data.players == {})
         && name(request.resource.data.name,48) && token(request.resource.data.invite)
         && request.resource.data.closed is bool;
       allow delete: if deleting(world);
@@ -95,14 +99,54 @@ service cloud.firestore {
         }
         allow get: if slot == 'main' && signedIn() && uid == request.auth.uid && member(world);
         allow create: if slot == 'main' && signedIn() && uid == request.auth.uid && member(world)
-          && get(worldPath(world)).data.protocol in [2,3] && inventory(request.resource.data)
+          && get(worldPath(world)).data.protocol in [2,3,4] && inventory(request.resource.data)
           && request.resource.data.items == [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
           && request.resource.data.chapter == 0 && request.resource.data.iron == 0 && request.resource.data.placed == 0
           && request.resource.data.glassPlaced == 0 && request.resource.data.buckets == 0
           && request.resource.data.sword == false && request.resource.data.lastBlock == '';
         allow update: if slot == 'main' && signedIn() && uid == request.auth.uid && member(world)
-          && get(worldPath(world)).data.protocol in [2,3] && inventory(request.resource.data);
+          && get(worldPath(world)).data.protocol in [2,3,4] && inventory(request.resource.data);
         allow delete: if deleting(world);
+        allow list: if false;
+      }
+      match /sync/{slot} {
+        function presence() {
+          let data = request.resource.data.players[request.auth.uid];
+          return request.resource.data.regions == resource.data.regions
+            && request.resource.data.players.diff(resource.data.players).affectedKeys().hasOnly([request.auth.uid])
+            && request.resource.data.players.size() <= 256
+            && data.keys().hasAll(['name','sector','x','y','z','yaw','updatedAt'])
+            && data.keys().hasOnly(['name','sector','x','y','z','yaw','updatedAt'])
+            && name(data.name,24) && position(data,get(worldPath(world)).data.side)
+            && data.updatedAt == request.time;
+        }
+        function revision() {
+          let inventory = getAfter(/databases/$(database)/documents/onlineWorlds/$(world)/members/$(request.auth.uid)/inventory/main).data;
+          let parts = inventory.lastBlock.split('/');
+          let key = 's' + parts[0];
+          let data = request.resource.data.regions[key];
+          return request.resource.data.players == resource.data.players && parts.size() == 2
+            && parts[0].matches('^[0-8]$') && int(parts[0]) < get(worldPath(world)).data.side * get(worldPath(world)).data.side
+            && inventory.updatedAt == request.time
+            && getAfter(/databases/$(database)/documents/onlineWorlds/$(world)/sectors/$(parts[0])/blocks/$(parts[1])).data.updatedAt == request.time
+            && request.resource.data.regions.diff(resource.data.regions).affectedKeys().hasOnly([key])
+            && data.keys().hasAll(['revision','updatedAt']) && data.keys().hasOnly(['revision','updatedAt'])
+            && data.revision is int && data.revision == resource.data.regions.get(key,{'revision':0}).revision + 1
+            && data.updatedAt == request.time;
+        }
+        allow get: if slot == 'state' && member(world);
+        allow create: if slot == 'state' && signedIn() && getAfter(worldPath(world)).data.owner == request.auth.uid
+          && getAfter(worldPath(world)).data.protocol == 4
+          && request.resource.data.keys().hasAll(['regions','players']) && request.resource.data.keys().hasOnly(['regions','players'])
+          && request.resource.data.regions == {} && request.resource.data.players == {};
+        allow update: if slot == 'state' && member(world) && get(worldPath(world)).data.protocol == 4
+          && request.resource.data.keys().hasAll(['regions','players']) && request.resource.data.keys().hasOnly(['regions','players'])
+          && request.resource.data.regions is map && request.resource.data.players is map
+          && (presence() || revision() || owner(world)
+            && request.resource.data.regions == resource.data.regions
+            && request.resource.data.players.diff(resource.data.players).addedKeys().size() == 0
+            && request.resource.data.players.diff(resource.data.players).changedKeys().size() == 0);
+        allow delete: if slot == 'state' && deleting(world);
         allow list: if false;
       }
       match /sectors/{sector}/blocks/{block} {
@@ -121,6 +165,9 @@ service cloud.firestore {
             request.resource.data.renewable is bool
             && getAfter(/databases/$(database)/documents/onlineWorlds/$(world)/members/$(request.auth.uid)/inventory/main).data.updatedAt == request.time
             && getAfter(/databases/$(database)/documents/onlineWorlds/$(world)/members/$(request.auth.uid)/inventory/main).data.lastBlock == sector + '/' + block
+            && (get(worldPath(world)).data.protocol != 4 ||
+              getAfter(syncPath(world)).data.regions['s'+sector].updatedAt == request.time &&
+              getAfter(syncPath(world)).data.regions['s'+sector].revision == get(syncPath(world)).data.regions.get('s'+sector,{'revision':0}).revision + 1)
           ));
         allow delete: if deleting(world);
       }
