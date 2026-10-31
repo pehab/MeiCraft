@@ -199,7 +199,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   String previous=prefs.getString("worlds","{}");String stale=OnlineWorld.randomId(),keep=OnlineWorld.randomId();
   try{
    prefs.edit().putString("worlds",new org.json.JSONObject().put(stale,"Gelöschte Testwelt").put(keep,"Familienwelt behalten").toString()).commit();
-   runOnMainSync(activity.online::joinMenu);clickText("Gelöschte Testwelt");clickText("Abbrechen");
+   runOnMainSync(activity::onlineMenu);clickText("Beitreten / Öffnen");clickText("Gelöschte Testwelt");clickText("Abbrechen");
    check(new org.json.JSONObject(prefs.getString("worlds","{}")).has(stale),"cancel preserves recent world entry");
    runOnMainSync(activity.online::joinMenu);clickText("Gelöschte Testwelt");clickText("Aus Liste entfernen");
    org.json.JSONObject remaining=new org.json.JSONObject(prefs.getString("worlds","{}"));
