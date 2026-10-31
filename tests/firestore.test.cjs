@@ -3,14 +3,14 @@ const assert=require('node:assert/strict');
 const {createMockUserToken}=require('@firebase/util');
 const {before,after,beforeEach,test}=require('node:test');
 const {initializeTestEnvironment,assertFails,assertSucceeds}=require('@firebase/rules-unit-testing');
-const {doc,collection,getDoc,getDocs,setDoc,updateDoc,deleteDoc,writeBatch,serverTimestamp,query,where,orderBy,limit}=require('firebase/firestore');
+const {doc,collection,getDoc,getDocs,setDoc,updateDoc,deleteDoc,writeBatch,serverTimestamp,query,where,orderBy,limit,increment}=require('firebase/firestore');
 let env;
 const world='a'.repeat(32),invite='b'.repeat(32),root=`onlineWorlds/${world}`;
 const db=uid=>uid?env.authenticatedContext(uid).firestore():env.unauthenticatedContext().firestore();
 const memberData=(token=invite)=>({name:'Miko',banned:false,invite:token,sector:0,x:48.5,y:30,z:48.5,yaw:0,updatedAt:serverTimestamp()});
 const blockData=(uid='child')=>({x:1,y:3,z:2,type:7,by:uid,updatedAt:serverTimestamp()});
 const blockPath=`${root}/sectors/0/blocks/1_3_2`;
-async function create(protocol=1){const owner=db('parent'),batch=writeBatch(owner);batch.set(doc(owner,root),{owner:'parent',name:'Familienwelt',seed:123,side:2,protocol,invite,closed:false});batch.set(doc(owner,`${root}/members/parent`),memberData());return batch.commit();}
+async function create(protocol=1){const owner=db('parent'),batch=writeBatch(owner);batch.set(doc(owner,root),{owner:'parent',name:'Familienwelt',seed:123,side:2,protocol,invite,closed:false});if(protocol===4)batch.set(doc(owner,`${root}/sync/state`),{regions:{},players:{}});batch.set(doc(owner,`${root}/members/parent`),memberData());return batch.commit();}
 async function join(uid='child',token=invite){const user=db(uid);return setDoc(doc(user,`${root}/members/${uid}`),memberData(token));}
 before(async()=>{env=await initializeTestEnvironment({projectId:'demo-meicraft',firestore:{rules:readFileSync('firestore.rules','utf8')}});});
 beforeEach(async()=>{await env.clearFirestore();});
@@ -164,4 +164,81 @@ test('closed world deletion removes every page, member and private inventory and
     for(const uid of ['parent','child'])assert.equal((await getDoc(doc(store,invPath(uid)))).exists(),false);
     for(const sector of [0,3])assert.equal((await getDocs(collection(store,`${root}/sectors/${sector}/blocks`))).size,0);
   });
+});
+
+const syncPath=`${root}/sync/state`;
+function revisionWrite(sector='0'){
+  return {update:{name:docName(syncPath),fields:{}},updateMask:{fieldPaths:[]},currentDocument:{exists:true},updateTransforms:[
+    {fieldPath:`regions.s${sector}.revision`,increment:{integerValue:'1'}},
+    {fieldPath:`regions.s${sector}.updatedAt`,setToServerValue:'REQUEST_TIME'}]};
+}
+function presenceWrite(uid,x=48.5){
+  const data={name:{stringValue:'Miko'},sector:{integerValue:'0'},x:{doubleValue:x},y:{doubleValue:30},z:{doubleValue:48.5},yaw:{doubleValue:0}};
+  return {update:{name:docName(syncPath),fields:{players:{mapValue:{fields:{[uid]:{mapValue:{fields:data}}}}}}},updateMask:{fieldPaths:[`players.\`${uid}\``]},currentDocument:{exists:true},updateTransforms:[{fieldPath:`players.\`${uid}\`.updatedAt`,setToServerValue:'REQUEST_TIME'}]};
+}
+test('protocol 4 initializes state atomically and only the owner upgrades protocol 3',async()=>{
+  await assertSucceeds(create(4));assert.deepEqual((await getDoc(doc(db('parent'),syncPath))).data(),{regions:{},players:{}});
+  await env.clearFirestore();await create(3);await join();
+  await assertFails(updateDoc(doc(db('child'),root),{protocol:4}));
+  await assertFails(updateDoc(doc(db('parent'),root),{protocol:4}));
+  const owner=db('parent'),batch=writeBatch(owner);batch.update(doc(owner,root),{protocol:4});batch.set(doc(owner,syncPath),{regions:{},players:{}});await assertSucceeds(batch.commit());
+});
+test('presence writes update only the caller and never change region revisions',async()=>{
+  await create(4);await join();await join('sibling');
+  for(const uid of ['child','sibling']){const result=await rest(uid,':commit',{writes:[presenceWrite(uid)]});assert.equal(result.status,200,JSON.stringify(result.body));}
+  let state=(await getDoc(doc(db('child'),syncPath))).data();assert.deepEqual(state.regions,{});assert.equal(Object.keys(state.players).length,2);
+  const attack=await rest('child',':commit',{writes:[presenceWrite('sibling',60)]});assert.ok(attack.status>=400);
+  await assertFails(updateDoc(doc(db('child'),syncPath),{'regions.s0':{revision:1,updatedAt:serverTimestamp()}}));
+  await assertFails(getDoc(doc(db('stranger'),syncPath)));
+  state=(await getDoc(doc(db('child'),syncPath))).data();assert.equal(state.players.sibling.x,48.5);
+});
+test('protocol 4 refuses edits without revision signals and commits block, inventory and signal together',async()=>{
+  await create(4);await join();await initInventory('child');const inventory=await readRest('child',invPath('child')),state=emptyInventory();state.items[2]=1;
+  const writes=[resourceBlock('child',0,{exists:false}),inventoryWrite('child',state,'0/1_3_2',inventory.updateTime)];
+  const missing=await rest('child',':commit',{writes});assert.ok(missing.status>=400);
+  const signalOnly=await rest('child',':commit',{writes:[revisionWrite()]});assert.ok(signalOnly.status>=400);
+  const result=await rest('child',':commit',{writes:[...writes,revisionWrite()]});assert.equal(result.status,200,JSON.stringify(result.body));
+  const snapshot=(await getDoc(doc(db('child'),syncPath))).data();assert.equal(snapshot.regions.s0.revision,1);
+  const before=(await getDoc(doc(db('child'),syncPath))).data().regions.s0.revision;
+  await rest('child',':commit',{writes:[presenceWrite('child',55)]});assert.equal((await getDoc(doc(db('child'),syncPath))).data().regions.s0.revision,before);
+});
+test('concurrent edits preserve both player positions and revision increments',async()=>{
+  await create(4);await join();await join('sibling');for(const uid of ['child','sibling'])await initInventory(uid);
+  const versions=await Promise.all(['child','sibling'].map(uid=>readRest(uid,invPath(uid))));
+  const responses=await Promise.all(['child','sibling'].map((uid,i)=>{
+    const state=emptyInventory();state.items[2]=1;const block=resourceBlock(uid,0,{exists:false});block.update.name=docName(`${root}/sectors/0/blocks/${i+1}_3_2`);block.update.fields.x={integerValue:String(i+1)};
+    return rest(uid,':commit',{writes:[block,inventoryWrite(uid,state,`0/${i+1}_3_2`,versions[i].updateTime),revisionWrite()]});
+  }));for(const result of responses)assert.equal(result.status,200,JSON.stringify(result.body));
+  await Promise.all(['child','sibling'].map(uid=>rest(uid,':commit',{writes:[presenceWrite(uid)]})));
+  const state=(await getDoc(doc(db('child'),syncPath))).data();assert.equal(state.regions.s0.revision,2);assert.equal(Object.keys(state.players).length,2);
+});
+test('banned members lose access to shared sync state and closed worlds can delete it',async()=>{
+  await create(4);await join();await updateDoc(doc(db('parent'),`${root}/members/child`),{banned:true});
+  await assertFails(getDoc(doc(db('child'),syncPath)));const result=await rest('child',':commit',{writes:[presenceWrite('child')]});assert.ok(result.status>=400);
+  await assertFails(deleteDoc(doc(db('parent'),syncPath)));await updateDoc(doc(db('parent'),root),{closed:true});await assertSucceeds(deleteDoc(doc(db('parent'),syncPath)));
+});
+
+test('only the owner can remove stale or banned player positions without changing terrain',async()=>{
+  await create(4);await join();for(const uid of ['parent','child']){const result=await rest(uid,':commit',{writes:[presenceWrite(uid)]});assert.equal(result.status,200,JSON.stringify(result.body));}
+  const remove={update:{name:docName(syncPath),fields:{}},updateMask:{fieldPaths:['players.child']},currentDocument:{exists:true}};
+  const rejected=await rest('child',':commit',{writes:[{...remove,updateMask:{fieldPaths:['players.parent']}}]});assert.ok(rejected.status>=400);
+  const owner=db('parent');await updateDoc(doc(owner,`${root}/members/child`),{banned:true});const result=await rest('parent',':commit',{writes:[remove]});assert.equal(result.status,200,JSON.stringify(result.body));
+  const state=(await getDoc(doc(owner,syncPath))).data();assert.equal(state.players.child,undefined);assert.ok(state.players.parent);assert.deepEqual(state.regions,{});
+});
+
+test('paginated REST block queries use one snapshot while another player edits',async()=>{
+  await create();await join();
+  const store=db('child'),batch=writeBatch(store);
+  for(let i=0;i<205;i++)batch.set(doc(store,`${root}/sectors/0/blocks/${i%90+1}_3_${Math.floor(i/90)+1}`),{...blockData(),x:i%90+1,z:Math.floor(i/90)+1});
+  await batch.commit();
+  const parent=`/${root}/sectors/0:runQuery`,order=fieldPath=>({field:{fieldPath},direction:'ASCENDING'});
+  const structuredQuery={from:[{collectionId:'blocks'}],orderBy:[order('updatedAt'),order('__name__')],limit:200};
+  const first=await rest('child',parent,{structuredQuery});assert.equal(first.status,200,JSON.stringify(first.body));
+  const docs=first.body.filter(row=>row.document);assert.equal(docs.length,200);
+  const snapshot=first.body.find(row=>row.readTime).readTime,last=docs.at(-1).document;
+  const target=docs[0].document.name.split('/documents/')[1];
+  await updateDoc(doc(store,target),{type:8,updatedAt:serverTimestamp()});
+  const next=await rest('child',parent,{structuredQuery:{...structuredQuery,startAt:{values:[last.fields.updatedAt,{referenceValue:last.name}],before:false}},readTime:snapshot});
+  assert.equal(next.status,200,JSON.stringify(next.body));
+  assert.equal(next.body.filter(row=>row.document).length,5,'updated first-page block must not move onto the next snapshot page');
 });

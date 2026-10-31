@@ -1,11 +1,11 @@
-# Gemeinsam bauen · Online-Bauwelten (0.8.1)
+# Gemeinsam bauen · Online-Bauwelten (0.8.2)
 
 Online-Welten sind zusammenhängende Landschaften mit begrenzten Rohstoffen. Spieler
 starten zu Fuß, sammeln Materialien und schalten an der Werkbank Werkzeuge frei.
 Es gibt keine Gegner, keinen Tag/Nacht-Wechsel, keine Flüssigkeitsströme und keine
 automatischen Materialreaktionen. Nur Spieleraktionen verändern die Landschaft.
 
-## Firebase einrichten oder auf 0.8.1 aktualisieren
+## Firebase einrichten oder auf 0.8.2 aktualisieren
 
 Projekt: `meicraft-be298`, Android-Paket: `de.meiapps.meicraft`.
 Die öffentliche Android-Konfiguration liegt unter
@@ -17,8 +17,8 @@ Die öffentliche Android-Konfiguration liegt unter
 2. Firestore Standard Edition mit Datenbank-ID **`(default)`** verwenden.
 3. Firestore → **Regeln**: Den vollständigen Inhalt von
    [`firestore.rules`](../firestore.rules) einsetzen und **Veröffentlichen** klicken.
-   **Für 0.8.1 sind aktualisierte Regeln erforderlich**, damit neue Welten mit
-   Generierungsprotokoll 3 angelegt werden können. Ein Git-Push veröffentlicht diese Regeln nicht.
+   **Für 0.8.2 sind aktualisierte Regeln erforderlich**, damit die gemeinsame
+   Änderungsübersicht und Protokoll 4 genutzt werden können. Ein Git-Push veröffentlicht diese Regeln nicht.
 
 Die Datei ist für ein eigenes MeiCraft-Projekt bestimmt. Regeln anderer Anwendungen
 nicht damit überschreiben. Alternativ mit berechtigtem Firebase-Konto vom Rechner:
@@ -29,12 +29,16 @@ npx firebase login
 npx firebase deploy --only firestore:rules --project meicraft-be298
 ```
 
-Die Regeln unterstützen die bisherigen Protokolle 1 und 2 weiterhin. **Für die neue
-Landschaft bitte mit 0.8.1 eine neue Online-Welt anlegen und alle Geräte aktualisieren.**
-Bestehende Testwelten werden nicht migriert; 0.8.1 öffnet sie nicht und erklärt die
-Neuanlage. Ihre gespeicherten Daten werden nicht automatisch gelöscht. Ältere Apps
-können neue Protokoll-3-Welten nicht öffnen, sodass unterschiedliche Generatoren keine
-widersprüchlichen Landschaften in derselben Welt erzeugen.
+**Zuerst die Regeln veröffentlichen, dann alle Geräte auf 0.8.2 aktualisieren.**
+Bestehende 0.8.1-Welten bleiben einschließlich Gelände, Bauten und Inventaren erhalten:
+Der Besitzer öffnet die Welt zuerst. Dabei werden die Änderungsübersicht und Protokoll 4
+atomar eingerichtet. Danach können Mitspieler mit 0.8.2 wieder beitreten. Frühere
+App-Versionen können diese Welt anschließend nicht mehr öffnen. Die Geländeform
+bleibt exakt die von 0.8.1; eine neue Welt ist dafür nicht erforderlich.
+
+Ältere Testwelten aus 0.8.0 oder früher behalten ihre Daten, können aber wegen des
+anderen Geländegenerators nur vom Besitzer gelöscht werden. Lokale Offline-Welten
+bleiben unverändert.
 
 ## Spielen
 
@@ -43,7 +47,7 @@ widersprüchlichen Landschaften in derselben Welt erzeugen.
 3. **Menü → Spieler / Einladung → Einladungs-QR** zeigt die Einladung.
 4. Weitere Geräte: **Gemeinsam bauen → Beitreten / Öffnen → Einladungs-QR scannen**.
    Alternativ kann der Einladungstext kopiert und eingegeben werden.
-5. Bereits besuchte neue Welten stehen in der Online-Weltenliste. Alte Testwelten
+5. Bereits besuchte neue Welten stehen in der Online-Weltenliste. Testwelten vor 0.8.1
    bitte durch eine neue Online-Welt ersetzen.
 
 Der Anzeigename verleiht keine Rechte. Jedes Gerät bekommt eine dauerhaft gespeicherte
@@ -68,9 +72,12 @@ rückgängig machen; lokale Offline-Welten und andere Online-Welten bleiben erha
 Bei Verbindungsabbruch bleibt die angefangene Löschung gesperrt und kann über
 **Erneut versuchen** fortgesetzt werden. Auch nach einem App-Neustart kann der Besitzer
 die Welt aus seiner Online-Liste öffnen und die Löschung fortsetzen. Das gilt ebenfalls
-für die alte Testwelt: Beim Öffnen bietet 0.8.1 dem Ersteller die Löschung an. Die Liste
-auf anderen Geräten kann noch einen veralteten Eintrag zeigen; er stellt die gelöschte
-Welt nicht wieder her. Mitspieler dürfen weder Welten noch fremde Vorräte löschen.
+für die alte Testwelt: Beim Öffnen bietet 0.8.2 dem Ersteller die Löschung an. Die Liste auf anderen Geräten ist lokal gespeichert. Einen alten Eintrag auswählen
+und **Aus Liste entfernen** antippen; dies funktioniert auch ohne Internet und entfernt
+nur diesen Eintrag auf diesem Gerät. Andere Welten, eigene Vorräte und die anonyme
+Anmeldung bleiben erhalten. Auch nach fehlgeschlagenem Öffnen bietet der Fehlerdialog
+**Eintrag entfernen** an. Bei Zugriffsfehlern wird nichts automatisch aus der Liste gelöscht,
+da fehlende Regeln oder eine vorübergehende Störung dieselbe Fehlermeldung auslösen können. Mitspieler dürfen weder Welten noch fremde Vorräte löschen.
 
 ## Rohstoffe und Werkbank
 
@@ -110,23 +117,28 @@ von Firebase heruntergeladen. Die GPU-Geometrie wird in 16 × 16 großen Bereich
 aufgebaut und bei größerem Abstand wieder freigegeben.
 
 Bei langsamer Verbindung kann der Spieler kurz vor einer noch nicht synchronisierten
-Umgebung anhalten, bis sie geladen ist. Die Kamera wird dabei nicht versetzt. Welt-
-und Positionsänderungen werden weiterhin ungefähr alle 2,5 Sekunden abgefragt;
+Umgebung anhalten, bis sie geladen ist. Die Kamera wird dabei nicht versetzt. Die gemeinsame Änderungsübersicht wird etwa alle fünf Sekunden gelesen. Nur Bereiche
+mit geänderter Revision werden abgefragt; Bewegung allein löst keine Blockabfrage aus.
+Die Anzeige anderer Spieler wird aus derselben Übersicht gelesen;
 Mitspielerbewegungen werden geglättet. Dies ist gemeinsames Bauen, kein schneller
 Echtzeit-Kampf. Der Besitzer muss nicht dauerhaft online sein.
 
 ## Atomare Änderungen und Speicherung
 
 Eine Bau- oder Abbauaktion schreibt **Block und eigenes Inventar in einem Firestore-
-Commit**. Beide Dokumente haben Versionsvorbedingungen. Wird derselbe Block gleichzeitig
+Commit zusammen mit der Bereichsrevision**. Block und Inventar haben Versionsvorbedingungen.
+Die Revision wird atomar erhöht, ohne Änderungen anderer Spieler zu überschreiben. Wird derselbe Block gleichzeitig
 von zwei Geräten abgebaut, wird nur eine Aktion bestätigt und nur ein Inventar erhält
 das Material. Scheitert eine Aktion, werden weder Material noch Block lokal verändert.
 Herstellen und Werkzeugfortschritt verwenden ebenfalls eine Inventar-Versionsprüfung.
 
 Bei unterbrochener Verbindung pausiert das Bauen. Es gibt keine versteckte Offline-
-Bauwarteschlange. Neue Versuche erfolgen mit wachsendem Abstand bis maximal 80 Sekunden.
-Anwesenheit wird spätestens alle zehn Sekunden aktualisiert; nach etwa zwanzig Sekunden
-ohne Aktualisierung wird eine Figur ausgeblendet. Im Hintergrund pausieren neue Abfragen.
+Bauwarteschlange. Netzwerkfehler werden mit wachsendem Abstand bis maximal zwei Minuten erneut versucht.
+Bei HTTP 429 beginnt die Pause bei einer Minute und wächst bis auf 15 Minuten.
+Anwesenheit wird bei Bewegung frühestens alle fünf Sekunden, im Stand alle 30 Sekunden
+aktualisiert; nach etwa 75 Sekunden ohne Aktualisierung wird eine Figur ausgeblendet.
+Das persönliche Inventar wird beim Verbinden und nach unklarem Schreibausgang oder
+Versionskonflikten gelesen, nicht mehr in jedem Abfragezyklus. Im Hintergrund pausieren neue Abfragen.
 Eine bereits laufende Anfrage kann noch zu Ende gehen.
 
 Lokale Kreativ- und Storywelten bleiben getrennt erhalten. Das Offline-Speicherformat
@@ -145,6 +157,9 @@ onlineWorlds/{weltId}
     inventory/main
       items[17], chapter, iron, placed, glassPlaced, buckets, sword,
       lastBlock, updatedAt
+  sync/state
+    regions: {s0..s8: {revision, updatedAt}}
+    players: {firebaseUid: {name, sector, x, y, z, yaw, updatedAt}}
   sectors/{0..8}/blocks/{x_y_z}
     x, y, z, type, by, renewable, updatedAt
 ```
@@ -159,8 +174,8 @@ Schneekappen, bewaldete Hügel, Seen und geschwungene Flussläufe setzen sich da
 Schluchten vorkommen; eine künstliche 96er-Geländekante gibt es nicht mehr.
 
 Die Gesamthöhe bleibt bei 48 Blöcken; die höchsten Geländeoberflächen liegen bei
-42 Blöcken. Eine gemeinsame Startlichtung bietet ebenen, trockenen Boden. Die
-Einladungshülle bleibt Version 1; die Weltgenerierung ist durch Protokoll 3 festgelegt.
+42 Blöcken. Eine gemeinsame Startlichtung bietet ebenen, trockenen Boden. Die Einladungshülle bleibt Version 1. Protokoll 4 ergänzt die Synchronisierung und
+verwendet denselben Geländegenerator wie Protokoll 3.
 Änderungen an diesem Generator benötigen eine neue Protokollversion.
 
 Welt-ID und Einladung enthalten jeweils 128 Zufallsbits. Welten sind nicht öffentlich
@@ -174,6 +189,24 @@ Schließen einer Welt deren Daten für eine vollständige Löschung entfernen.
 Im Code sind `World.W` und `World.D` weiterhin die Offline-/Speicherbereichsgröße.
 Die tatsächlich dargestellte Welt verwendet `world.width`, `world.depth`, `world.idx`
 und `world.contains`. Online bleiben Nature- und Survival-Simulationen ausgeschaltet.
+
+## Diagnose und Verbrauch
+
+**Gemeinsam bauen → Beitreten / Öffnen → Online-Diagnose** ist auch ohne aktive
+Verbindung erreichbar. In einer Welt: **Menü → Online-Diagnose**. Der Bericht enthält
+App-/Android-Version, HTTP-Anfragen nach Vorgang, empfangene Dokumente/Daten,
+bestätigte Schreib-/Löschvorgänge und die letzten zwölf Fehler mit Uhrzeit, Firebase-Dienst,
+Vorgang, HTTP-/Servercode und bereinigter Servermeldung einschließlich verfügbarer
+Kontingentdetails. **Bericht kopieren** kopiert den Text. Der letzte Serverfehler bleibt
+auch nach App-Neustart erhalten. Anfrage-URLs, Nutzdaten und Anmeldetokens werden
+nicht gespeichert; der Bericht wird nicht automatisch hochgeladen.
+
+Die Zähler messen lokale Antworten, keine Firebase-Abrechnung: Regelzugriffe, Indexlesungen
+und Mindestkosten leerer Abfragen sind nicht enthalten. Bei vier sichtbaren Bereichen
+sinken die regelmäßigen HTTP-Anfragen ohne Blockänderungen rechnerisch von etwa
+10.440 auf 840 pro Stunde im Stand und von 11.520 auf 1.440 bei ständiger Bewegung. Aktives Bauen
+verursacht zusätzliche Zugriffe: jeder Block speichert jetzt Block, Inventar und Revision.
+Das kostenlose Kontingent bleibt begrenzt; den tatsächlichen Verbrauch in Firebase prüfen.
 
 ## Prüfen
 

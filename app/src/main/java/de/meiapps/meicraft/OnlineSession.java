@@ -24,19 +24,31 @@ final class OnlineSession implements AutoCloseable {
     volatile String owner="",name="";
     long seed,lastHeartbeat,nextAttempt;int failures;
     static final class Region {
-        final int id;String watermark="";boolean generated;
+        final int id;String watermark="";boolean generated;long revision=-1;
         final Map<String,String> versions=new HashMap<>();final Map<String,Integer> types=new HashMap<>();final Map<String,Boolean> renewable=new HashMap<>();
         Region(int id){this.id=id;}
     }
+    JSONObject announcedRegions=new JSONObject();
     final Map<Integer,Region> regions=new HashMap<>();
     volatile Set<Integer> readyRegions=Collections.emptySet();
-    volatile Story inventory=new Story();String inventoryVersion="";
+    volatile Story inventory=new Story();String inventoryVersion="";boolean inventoryUncertain;
     volatile float px,py,pz,angle;
     float lastX=Float.NaN,lastY,lastZ,lastAngle;
     OnlineSession(MainActivity activity,FirebaseRest firebase,OnlineWorld invitation,String playerName,Listener listener){this.activity=activity;this.firebase=firebase;this.invitation=invitation;this.playerName=OnlineWorld.playerName(playerName);this.listener=listener;}
     String base(){return "onlineWorlds/"+invitation.id;}
     String member(String uid){return base()+"/members/"+uid;}
     boolean owner(){return firebase.uid.equals(owner);}
+    String syncPath(){return base()+"/sync/state";}
+    JSONObject emptySync()throws JSONException{return new JSONObject().put("regions",new JSONObject().put("mapValue",new JSONObject().put("fields",new JSONObject()))).put("players",new JSONObject().put("mapValue",new JSONObject().put("fields",new JSONObject())));}
+    JSONObject createSync()throws JSONException{return firebase.write(syncPath(),emptySync(),null,new JSONObject().put("exists",false),false);}
+    static String quoted(String field){return "`"+field.replace("\\","\\\\").replace("`","\\`")+"`";}
+    JSONObject revisionWrite(int region)throws JSONException{
+        JSONObject write=firebase.write(syncPath(),new JSONObject(),new String[0],new JSONObject().put("exists",true),false);
+        String field="regions.s"+region;
+        write.put("updateTransforms",new JSONArray().put(new JSONObject().put("fieldPath",field+".revision").put("increment",FirebaseRest.value(1)))
+            .put(new JSONObject().put("fieldPath",field+".updatedAt").put("setToServerValue","REQUEST_TIME")));
+        return write;
+    }
     void start(boolean create,String worldName,int size){
         worker.execute(()->{try{
             firebase.authenticate();
@@ -45,7 +57,7 @@ final class OnlineSession implements AutoCloseable {
                 if(worldName.trim().isEmpty()||worldName.trim().length()>48)throw new IOException("Weltname: 1–48 Zeichen.");
                 seed=new java.security.SecureRandom().nextInt(1000000000);side=size;
                 JSONObject root=FirebaseRest.fields("owner",firebase.uid,"name",worldName.trim(),"seed",seed,"side",side,"protocol",OnlineWorld.PROTOCOL,"invite",invitation.invitation,"closed",false);
-                firebase.commit(new JSONArray().put(firebase.write(base(),root,null,new JSONObject().put("exists",false),false)).put(memberWrite()));
+                firebase.commit(new JSONArray().put(firebase.write(base(),root,null,new JSONObject().put("exists",false),false)).put(memberWrite()).put(createSync()));
             }else{
                 JSONObject own=firebase.get(member(firebase.uid));
                 if(own==null){
@@ -59,20 +71,25 @@ final class OnlineSession implements AutoCloseable {
             owner=FirebaseRest.string(data,"owner");name=FirebaseRest.string(data,"name");side=FirebaseRest.integer(data,"side");
             if(side!=2&&side!=3)throw new IOException("Ungültige Weltgröße.");
             int protocol=FirebaseRest.integer(data,"protocol");
+            if(protocol==3&&!data.getJSONObject("closed").getBoolean("booleanValue")){
+                if(!owner())throw new IOException("Bitte zuerst den Weltbesitzer mit 0.8.2 verbinden lassen. Die Bauten bleiben erhalten.");
+                firebase.commit(new JSONArray().put(firebase.write(base(),FirebaseRest.fields("protocol",OnlineWorld.PROTOCOL),new String[]{"protocol"},new JSONObject().put("updateTime",root.getString("updateTime")),false)).put(createSync()));
+                protocol=OnlineWorld.PROTOCOL;
+            }
             deletionOnly=protocol<OnlineWorld.PROTOCOL||data.getJSONObject("closed").getBoolean("booleanValue");
-            if(protocol<OnlineWorld.PROTOCOL)throw new IOException("Diese Testwelt nutzt die alte Landschaft. Bitte mit 0.8.1 eine neue Online-Welt anlegen.");
+            if(protocol<OnlineWorld.PROTOCOL)throw new IOException("Diese Testwelt nutzt die alte Landschaft. Bitte mit 0.8.2 eine neue Online-Welt anlegen.");
             if(protocol!=OnlineWorld.PROTOCOL)throw new IOException("Bitte alle Geräte auf dieselbe aktuelle App-Version aktualisieren.");
             if(data.getJSONObject("closed").getBoolean("booleanValue"))throw new IOException("Diese Welt wurde geschlossen.");
             invitation=new OnlineWorld(invitation.id,FirebaseRest.string(data,"invite"));
             owner=FirebaseRest.string(data,"owner");name=FirebaseRest.string(data,"name");seed=data.getJSONObject("seed").getLong("integerValue");side=FirebaseRest.integer(data,"side");
             if(side!=2&&side!=3)throw new IOException("Ungültige Weltgröße.");
-            try{loadInventory(true);}catch(FirebaseRest.Failure e){if(e.status==403)throw new IOException("Bitte die aktualisierten Firestore-Regeln für 0.8.1 veröffentlichen.");throw e;}
+            try{loadInventory(true);}catch(FirebaseRest.Failure e){if(e.status==403)throw new IOException("Bitte die aktualisierten Firestore-Regeln für 0.8.2 veröffentlichen.");throw e;}
             world=World.onlineSpace(seed,side);World origin=OnlineTerrain.region(seed,0,side);world.x=origin.x;world.y=origin.y;world.z=origin.z;world.yaw=0;px=world.x;py=world.y;pz=world.z;OnlineInventory.apply(world.progress,inventory);
-            syncVisible(true);remember();
+            readSync();syncVisible(true);heartbeat();remember();
             if(!closed)activity.runOnUiThread(()->{if(!closed)listener.loaded(world,name);});
             healthy=true;loading=false;
-            if(!closed)worker.scheduleWithFixedDelay(this::poll,0,2500,TimeUnit.MILLISECONDS);
-        }catch(Exception e){if(e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==403&&create)e=new IOException("Bitte die aktualisierten Firestore-Regeln für 0.8.1 veröffentlichen.");problem(e,true);}});
+            if(!closed)worker.scheduleWithFixedDelay(this::poll,OnlineSyncPolicy.POLL_MS,OnlineSyncPolicy.POLL_MS,TimeUnit.MILLISECONDS);
+        }catch(Exception e){if(e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==403&&create)e=new IOException("Bitte die aktualisierten Firestore-Regeln für 0.8.2 veröffentlichen.");problem(e,true);}});
     }
     JSONObject memberWrite()throws JSONException{
         return firebase.write(member(firebase.uid),FirebaseRest.fields("name",playerName,"banned",false,"invite",invitation.invitation,"sector",0,"x",48.5,"y",40.0,"z",48.5,"yaw",0.0),null,new JSONObject().put("exists",false),true);
@@ -85,9 +102,11 @@ final class OnlineSession implements AutoCloseable {
         World target=world;
         try{for(int id:OnlineWorld.visibleSectors(px,pz,side,82)){
             if(closed)return;Region region=regions.computeIfAbsent(id,Region::new);
+            long revision=announcedRegions.has("s"+id)?FirebaseRest.integer(announcedRegions.getJSONObject("s"+id).getJSONObject("mapValue").getJSONObject("fields"),"revision"):0;
+            if(!OnlineSyncPolicy.reload(region.generated,region.revision,revision))continue;
             if(!region.generated)streaming=true;
             World tile=region.generated?null:OnlineTerrain.region(seed,id,side);
-            loadChanges(region,tile);
+            loadChanges(region,tile);region.revision=revision;
             if(tile!=null){
                 region.generated=true;
                 if(initial){OnlineInventory.install(target,tile,id,side);markReady(id);}
@@ -99,37 +118,47 @@ final class OnlineSession implements AutoCloseable {
     boolean canMove(float x,float z){return readyRegions.contains(OnlineWorld.sectorAt(x,z,side));}
     void position(World w){if(w==world){px=w.x;py=w.y;pz=w.z;angle=w.yaw;sector=OnlineWorld.sectorAt(w.x,w.z,side);}}
     private void heartbeat()throws Exception{
-        long now=System.currentTimeMillis();boolean moved=Float.isNaN(lastX)||Math.abs(px-lastX)>.1f||Math.abs(py-lastY)>.1f||Math.abs(pz-lastZ)>.1f||Math.abs(angle-lastAngle)>.1f;
-        if(!moved&&now-lastHeartbeat<10000)return;
-        float x=px,y=py,z=pz,a=angle;
-        JSONObject write=firebase.write(member(firebase.uid),FirebaseRest.fields("name",playerName,"sector",sector,"x",x-(sector%side)*World.W,"y",y,"z",z-(sector/side)*World.D,"yaw",a),new String[]{"name","sector","x","y","z","yaw"},new JSONObject().put("exists",true),true);
+        long now=System.currentTimeMillis();boolean moved=Float.isNaN(lastX)||Math.abs(px-lastX)>.35f||Math.abs(py-lastY)>.35f||Math.abs(pz-lastZ)>.35f||Math.abs(angle-lastAngle)>.2f;
+        if(!OnlineSyncPolicy.heartbeat(now,lastHeartbeat,moved))return;
+        float x=px,y=py,z=pz,a=angle;int cell=OnlineWorld.sectorAt(x,z,side);
+        JSONObject player=FirebaseRest.fields("name",playerName,"sector",cell,"x",x-(cell%side)*World.W,"y",y,"z",z-(cell/side)*World.D,"yaw",a);
+        JSONObject fields=new JSONObject().put("players",new JSONObject().put("mapValue",new JSONObject().put("fields",new JSONObject().put(firebase.uid,new JSONObject().put("mapValue",new JSONObject().put("fields",player))))));
+        String field="players."+quoted(firebase.uid);
+        JSONObject write=firebase.write(syncPath(),fields,new String[]{field},new JSONObject().put("exists",true),false);
+        write.put("updateTransforms",new JSONArray().put(new JSONObject().put("fieldPath",field+".updatedAt").put("setToServerValue","REQUEST_TIME")));
         firebase.commit(new JSONArray().put(write));lastX=x;lastY=y;lastZ=z;lastAngle=a;lastHeartbeat=now;
     }
-    private void poll(){
+    void poll(){
         if(closed||!foreground||loading||System.currentTimeMillis()<nextAttempt)return;
         try{
-            JSONObject own=firebase.get(member(firebase.uid));
-            if(own==null||own.getJSONObject("fields").getJSONObject("banned").getBoolean("booleanValue")){problem(new IOException("Du wurdest aus dieser Welt entfernt."),true);return;}
-            syncVisible(false);loadInventory(false);heartbeat();loadPlayers();healthy=true;failures=0;nextAttempt=0;
-        }catch(Exception e){healthy=false;failures=Math.min(5,failures+1);nextAttempt=System.currentTimeMillis()+(2500L<<failures);problem(e,e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==403);}
+            readSync();syncVisible(false);if(inventoryUncertain){loadInventory(false);inventoryUncertain=false;}heartbeat();healthy=true;failures=0;nextAttempt=0;
+        }catch(Exception e){healthy=false;failures=Math.min(6,failures+1);boolean quota=e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==429;
+            nextAttempt=System.currentTimeMillis()+OnlineSyncPolicy.retryDelay(failures,quota);
+            problem(e,e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==403);}
     }
-    private void loadPlayers()throws Exception{
-        List<Player> next=new ArrayList<>();String page="";
-        do{JSONObject result=firebase.list(base()+"/members",page);JSONArray docs=result.optJSONArray("documents");
-            if(docs!=null)for(int i=0;i<docs.length();i++){JSONObject doc=docs.getJSONObject(i),d=doc.getJSONObject("fields");String path=doc.getString("name"),id=path.substring(path.lastIndexOf('/')+1);Player p=new Player(id,d);String timestamp=d.getJSONObject("updatedAt").getString("timestampValue");
-                if(p.banned||System.currentTimeMillis()-Instant.parse(timestamp).toEpochMilli()>20000)continue;if(next.size()<32)next.add(p);
-            }
-            page=result.optString("nextPageToken","");
-        }while(!page.isEmpty()&&!closed);
+    private void readSync()throws Exception{
+        JSONObject document=firebase.get(syncPath());if(document==null)throw new IOException("Synchronisierung fehlt. Bitte zuerst den Weltbesitzer mit der aktuellen Version verbinden lassen.");
+        JSONObject fields=document.getJSONObject("fields");announcedRegions=fields.getJSONObject("regions").getJSONObject("mapValue").optJSONObject("fields");if(announcedRegions==null)announcedRegions=new JSONObject();
+        JSONObject presence=fields.getJSONObject("players").getJSONObject("mapValue").optJSONObject("fields");List<Player> next=new ArrayList<>();
+        if(presence!=null){Iterator<String> keys=presence.keys();while(keys.hasNext()){
+            String uid=keys.next();JSONObject data=presence.getJSONObject(uid).getJSONObject("mapValue").getJSONObject("fields");
+            String timestamp=data.getJSONObject("updatedAt").getString("timestampValue");
+            if(System.currentTimeMillis()-Instant.parse(timestamp).toEpochMilli()>OnlineSyncPolicy.PRESENCE_TTL_MS)continue;
+            // Membership permissions are enforced on every server request; presence carries no rights.
+            data.put("banned",FirebaseRest.value(false));if(next.size()<32)next.add(new Player(uid,data));
+        }}
         players=Collections.unmodifiableList(next);
     }
     private void loadChanges(Region region,World tile)throws Exception{
-        String parent=base()+"/sectors/"+region.id;JSONArray cursor=null;String latest=region.watermark;World target=world;
+        String parent=base()+"/sectors/"+region.id;JSONArray cursor=null;String latest=region.watermark,snapshot="";World target=world;
         do{
             JSONObject query=new JSONObject().put("from",new JSONArray().put(new JSONObject().put("collectionId","blocks"))).put("orderBy",new JSONArray().put(order("updatedAt")).put(order("__name__"))).put("limit",200);
             if(!region.watermark.isEmpty())query.put("where",new JSONObject().put("fieldFilter",new JSONObject().put("field",new JSONObject().put("fieldPath","updatedAt")).put("op","GREATER_THAN_OR_EQUAL").put("value",new JSONObject().put("timestampValue",region.watermark))));
             if(cursor!=null)query.put("startAt",new JSONObject().put("values",cursor).put("before",false));
-            JSONArray result=firebase.query(parent,query);int count=0;cursor=null;
+            JSONArray result=firebase.query(parent,query,snapshot);int count=0;cursor=null;
+            // Hold a single server snapshot across pages so concurrent updates cannot move
+            // an unseen document behind the cursor or beyond the saved watermark.
+            if(snapshot.isEmpty())for(int i=0;i<result.length();i++){String time=result.getJSONObject(i).optString("readTime","");if(!time.isEmpty()){snapshot=time;break;}}
             for(int i=0;i<result.length();i++){JSONObject row=result.getJSONObject(i);if(!row.has("document"))continue;JSONObject doc=row.getJSONObject("document"),d=doc.getJSONObject("fields");
                 int x=FirebaseRest.integer(d,"x"),y=FirebaseRest.integer(d,"y"),z=FirebaseRest.integer(d,"z"),type=FirebaseRest.integer(d,"type");
                 if(!OnlineWorld.validBlock(x,y,z,type))throw new IOException("Ungültiger Online-Block.");
@@ -176,6 +205,11 @@ final class OnlineSession implements AutoCloseable {
     void applyInventory(Story state){
         Story snapshot=OnlineInventory.copy(state);activity.game.gl.queueEvent(()->{World current=world;if(!closed&&current!=null){synchronized(current){OnlineInventory.apply(current.progress,snapshot);}}});
     }
+    void mutationFailed(Exception error){
+        healthy=false;inventoryUncertain=true;
+        if(error instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)error).status==429){failures=Math.min(6,failures+1);nextAttempt=System.currentTimeMillis()+OnlineSyncPolicy.retryDelay(failures,true);}
+        problem(error,false);
+    }
     boolean beginAction(){
         if(closed)return false;if(!healthy||loading||!foreground){activity.game.message("Verbindung wird hergestellt …");return false;}
         if(pending){activity.game.message("Aktion wird gespeichert …");return false;}pending=true;return true;
@@ -192,7 +226,7 @@ final class OnlineSession implements AutoCloseable {
             boolean renewable=type==0&&expected==10&&(data.renewable.getOrDefault(id,false)||!data.versions.containsKey(id));int actual=renewable?10:type;
             JSONObject condition=data.versions.containsKey(id)?new JSONObject().put("updateTime",data.versions.get(id)):new JSONObject().put("exists",false);
             JSONObject fields=FirebaseRest.fields("x",lx,"y",y,"z",lz,"type",actual,"by",firebase.uid,"renewable",renewable);
-            JSONArray writes=new JSONArray().put(firebase.write(path,fields,null,condition,true)).put(firebase.write(inventoryPath(),inventoryFields(next,region+"/"+id),null,new JSONObject().put("updateTime",inventoryVersion),true));
+            JSONArray writes=new JSONArray().put(firebase.write(path,fields,null,condition,true)).put(firebase.write(inventoryPath(),inventoryFields(next,region+"/"+id),null,new JSONObject().put("updateTime",inventoryVersion),true)).put(revisionWrite(region));
             try{
                 JSONObject result=firebase.commit(writes);data.versions.put(id,result.getJSONArray("writeResults").getJSONObject(0).getString("updateTime"));data.types.put(id,actual);data.renewable.put(id,renewable);
                 inventory=next;inventoryVersion=result.getJSONArray("writeResults").getJSONObject(1).getString("updateTime");
@@ -202,7 +236,7 @@ final class OnlineSession implements AutoCloseable {
                 JSONObject current=firebase.get(path);if(current!=null){data.versions.put(id,current.getString("updateTime"));int changed=FirebaseRest.integer(current.getJSONObject("fields"),"type");data.types.put(id,changed);data.renewable.put(id,current.getJSONObject("fields").optJSONObject("renewable")!=null&&current.getJSONObject("fields").getJSONObject("renewable").optBoolean("booleanValue",false));apply(target,region,lx,y,lz,changed,false);}
                 loadInventory(false);activity.game.message("Der Block oder dein Vorrat wurde inzwischen geändert. Bitte erneut versuchen.");
             }
-        }catch(Exception e){healthy=false;problem(e,false);}finally{pending=false;}});
+        }catch(Exception e){mutationFailed(e);}finally{pending=false;}});
     }
     void progressAction(int recipe){
         if(!beginAction())return;
@@ -215,7 +249,7 @@ final class OnlineSession implements AutoCloseable {
                 catch(FirebaseRest.Failure e){if(e.status!=409&&e.status!=400&&e.status!=412)throw e;loadInventory(false);message="Dein Vorrat wurde inzwischen geändert. Bitte erneut versuchen.";}
             }
             final String notice=message;activity.runOnUiThread(()->{if(!closed){activity.toast(notice);activity.online.refreshWorkbench();}});
-        }catch(Exception e){healthy=false;problem(e,false);}finally{pending=false;}});
+        }catch(Exception e){mutationFailed(e);}finally{pending=false;}});
     }
     void deleteWorld(Runnable success,java.util.function.Consumer<String> failure){
         if(!owner()||closed)return;
@@ -228,6 +262,7 @@ final class OnlineSession implements AutoCloseable {
                 // Always consume the first page: removal cannot invalidate a pagination cursor.
                 for(int id=0;id<side*side;id++)deleteCollection(base()+"/sectors/"+id+"/blocks",false);
                 deleteCollection(base()+"/members",true);
+                firebase.commit(new JSONArray().put(new JSONObject().put("delete",firebase.documentName(syncPath()))));
                 firebase.commit(new JSONArray().put(new JSONObject().put("delete",firebase.documentName(base()))));
             }
             activity.runOnUiThread(()->{if(!closed)success.run();});
@@ -248,7 +283,11 @@ final class OnlineSession implements AutoCloseable {
     }
     void ban(String uid){
         if(!owner()||uid.equals(owner))return;
-        worker.execute(()->{try{firebase.commit(new JSONArray().put(firebase.write(member(uid),FirebaseRest.fields("banned",true),new String[]{"banned"},new JSONObject().put("exists",true),false)));loadPlayers();activity.runOnUiThread(()->activity.toast("Spieler entfernt und für diese Geräte-ID gesperrt."));}catch(Exception e){problem(e,false);}});
+        worker.execute(()->{try{
+            JSONArray writes=new JSONArray().put(firebase.write(member(uid),FirebaseRest.fields("banned",true),new String[]{"banned"},new JSONObject().put("exists",true),false))
+                .put(firebase.write(syncPath(),new JSONObject(),new String[]{"players."+quoted(uid)},new JSONObject().put("exists",true),false));
+            firebase.commit(writes);readSync();activity.runOnUiThread(()->activity.toast("Spieler entfernt und für diese Geräte-ID gesperrt."));
+        }catch(Exception e){problem(e,false);}});
     }
     void problem(Exception e,boolean fatal){
         String message=e instanceof FirebaseRest.Failure?e.getMessage():e instanceof IOException&&e.getMessage()!=null&&!e.getMessage().startsWith("Unable")?e.getMessage():"Verbindung unterbrochen. Bauen pausiert; erneuter Versuch folgt.";

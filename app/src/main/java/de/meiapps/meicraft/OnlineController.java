@@ -36,16 +36,22 @@ final class OnlineController {
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{try{OnlineWorld.playerName(player.getText().toString());if(worldName.getText().toString().trim().isEmpty())throw new IllegalArgumentException("Bitte einen Weltnamen eingeben.");dialog.dismiss();connect(new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId()),player.getText().toString(),true,worldName.getText().toString(),size.getSelectedItemPosition()+2);}catch(IllegalArgumentException e){player.setError(e.getMessage());}});
     }
     void joinMenu(){
-        List<String> ids=new ArrayList<>(),labels=new ArrayList<>();labels.add("Einladungs-QR scannen");labels.add("Einladung als Text eingeben");
+        List<String> ids=new ArrayList<>(),labels=new ArrayList<>();labels.add("Einladungs-QR scannen");labels.add("Einladung als Text eingeben");labels.add("Online-Diagnose");
         try{JSONObject saved=new JSONObject(activity.getSharedPreferences("online-worlds",0).getString("worlds","{}"));Iterator<String> keys=saved.keys();while(keys.hasNext()){String id=keys.next();ids.add(id);labels.add(saved.getString(id));}}catch(JSONException ignored){/* Empty recent list. */}
-        new AlertDialog.Builder(activity).setTitle("Online-Welten").setItems(labels.toArray(new String[0]),(d,n)->{if(n==0)scan();else if(n==1)joinForm(null);else joinForm(new OnlineWorld(ids.get(n-2),"00000000000000000000000000000000"));}).setNegativeButton("Zurück",null).show();
+        new AlertDialog.Builder(activity).setTitle("Online-Welten").setItems(labels.toArray(new String[0]),(d,n)->{if(n==0)scan();else if(n==1)joinForm(null);else if(n==2)diagnostics();else joinForm(new OnlineWorld(ids.get(n-3),"00000000000000000000000000000000"));}).setNegativeButton("Zurück",null).show();
     }
     @SuppressWarnings("deprecation")
     void scan(){activity.startActivityForResult(new Intent(activity,OnlineInviteActivity.class),OnlineInviteActivity.REQUEST);}
     void joinForm(OnlineWorld supplied){
         LinearLayout form=form();EditText player=input(form,"Dein Spielername",savedName(),24),invite=supplied==null?input(form,"Einladungstext","",128):null;
-        AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("Online-Welt betreten").setView(form).setPositiveButton("Verbinden",null).setNegativeButton("Abbrechen",null).create();dialog.show();
+        AlertDialog.Builder builder=new AlertDialog.Builder(activity).setTitle("Online-Welt betreten").setView(form).setPositiveButton("Verbinden",null).setNegativeButton("Abbrechen",null);
+        if(supplied!=null)builder.setNeutralButton("Aus Liste entfernen",(d,n)->forgetWorld(supplied.id));
+        AlertDialog dialog=builder.create();dialog.show();
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{try{OnlineWorld parsed=supplied!=null?supplied:OnlineWorld.decode(invite.getText().toString().trim());String name=OnlineWorld.playerName(player.getText().toString());dialog.dismiss();connect(parsed,name,false,"",2);}catch(IllegalArgumentException e){if(invite!=null)invite.setError(e.getMessage());else player.setError(e.getMessage());}});
+    }
+    void forgetWorld(String id){
+        try{android.content.SharedPreferences prefs=activity.getSharedPreferences("online-worlds",0);JSONObject saved=new JSONObject(prefs.getString("worlds","{}"));saved.remove(id);prefs.edit().putString("worlds",saved.toString()).apply();activity.toast("Eintrag aus der Liste entfernt.");}
+        catch(JSONException e){activity.toast("Weltenliste konnte nicht gelesen werden.");}
     }
     void connect(OnlineWorld invitation,String player,boolean create,String name,int side){
         if(active()||activity.busy)return;
@@ -66,7 +72,8 @@ final class OnlineController {
                         dismissProgress();activity.busy=false;
                         new AlertDialog.Builder(activity).setTitle(session.name).setMessage(message).setPositiveButton("Welt löschen",(d,n)->activity.handler.post(()->confirmDelete(session))).setNegativeButton("Zurück",(d,n)->leave()).setOnCancelListener(d->leave()).show();return;
                     }
-                    if(fatal){leave();new AlertDialog.Builder(activity).setTitle("Online-Welt").setMessage(message).setPositiveButton("OK",null).show();}
+                    if(fatal){leave();AlertDialog.Builder error=new AlertDialog.Builder(activity).setTitle("Online-Welt").setMessage(message).setPositiveButton("OK",null).setNeutralButton("Diagnose",(d,n)->diagnostics());
+                        if(!create)error.setNegativeButton("Eintrag entfernen",(d,n)->forgetWorld(invitation.id));error.show();}
                     else activity.game.message(message);
                 }
             });session=next;
@@ -84,8 +91,17 @@ final class OnlineController {
     void menu(){
         OnlineSession current=session;if(current==null||activity.busy)return;activity.paused=true;activity.game.clearInput();
         List<String> actions=new ArrayList<>(Arrays.asList("Weiterbauen","Baumaterial wählen","Werkbank / Werkzeuge","Spieler / Einladung","Online-Welt verlassen"));
-        if(current.owner())actions.add("Online-Welt löschen");
-        new AlertDialog.Builder(activity).setTitle(current.name+" · Online").setItems(actions.toArray(new String[0]),(d,n)->{if(n==1)activity.handler.post(activity::palette);else if(n==2)activity.handler.post(this::workbench);else if(n==3)activity.handler.post(this::players);else if(n==4)activity.handler.post(this::leave);else if(n==5)activity.handler.post(()->confirmDelete(current));}).setOnDismissListener(d->activity.resumePlay()).show();
+        actions.add("Online-Diagnose");if(current.owner())actions.add("Online-Welt löschen");
+        new AlertDialog.Builder(activity).setTitle(current.name+" · Online").setItems(actions.toArray(new String[0]),(d,n)->{if(n==1)activity.handler.post(activity::palette);else if(n==2)activity.handler.post(this::workbench);else if(n==3)activity.handler.post(this::players);else if(n==4)activity.handler.post(this::leave);else if(n==5)activity.handler.post(this::diagnostics);else if(n==6)activity.handler.post(()->confirmDelete(current));}).setOnDismissListener(d->activity.resumePlay()).show();
+    }
+    void diagnostics(){
+        activity.paused=true;activity.game.clearInput();
+        String report="App-Version: "+activity.versionName()+" · Android "+android.os.Build.VERSION.RELEASE+"\n"+FirebaseRest.DIAGNOSTICS.report()+"\nZuletzt gespeicherter Fehler (auch nach Neustart):\n"+activity.getSharedPreferences("online-diagnostics",0).getString("lastError","Keiner.");
+        android.widget.TextView text=new android.widget.TextView(activity);text.setText(report);text.setTextIsSelectable(true);int pad=(int)(20*activity.getResources().getDisplayMetrics().density);text.setPadding(pad,pad,pad,pad);
+        android.widget.ScrollView scroll=new android.widget.ScrollView(activity);scroll.addView(text);
+        new AlertDialog.Builder(activity).setTitle("Online-Diagnose").setView(scroll).setPositiveButton("Zurück",null)
+            .setNeutralButton("Bericht kopieren",(d,n)->{android.content.ClipboardManager clipboard=(android.content.ClipboardManager)activity.getSystemService(android.content.Context.CLIPBOARD_SERVICE);clipboard.setPrimaryClip(android.content.ClipData.newPlainText("meiCraft Online-Diagnose",report));activity.toast("Diagnosebericht kopiert.");})
+            .setOnDismissListener(d->activity.resumePlay()).show();
     }
     void confirmDelete(OnlineSession current){
         if(current==null||session!=current||!current.owner()||activity.busy)return;
