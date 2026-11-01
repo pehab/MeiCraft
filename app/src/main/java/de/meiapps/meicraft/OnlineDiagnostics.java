@@ -7,7 +7,7 @@ import java.util.Map;
 /** Local, bounded diagnostics: no request URLs, payloads, user IDs or credentials. */
 public final class OnlineDiagnostics {
     private final long started=System.currentTimeMillis();
-    private long requests,failures,documents,writes,deletes,receivedBytes,mergedPositions,ownRegionSkips;
+    private long requests,failures,documents,writes,deletes,receivedBytes,sentBytes,mergedPositions,ownRegionSkips;
     private final Map<String,Long> operations=new LinkedHashMap<>();
     private final ArrayDeque<String> errors=new ArrayDeque<>();
     public static String clean(String text,String... secrets){
@@ -23,6 +23,7 @@ public final class OnlineDiagnostics {
     public synchronized void positionMerged(){mergedPositions++;}
     public synchronized void ownRegionSkipped(){ownRegionSkips++;}
     public synchronized void request(String operation){requests++;operations.put(operation,operations.getOrDefault(operation,0L)+1);}
+    public synchronized void sent(long bytes){sentBytes+=Math.max(0,bytes);}
     public synchronized void received(long bytes){receivedBytes+=Math.max(0,bytes);}
     public synchronized void read(long count){documents+=Math.max(0,count);}
     public synchronized void committed(long writeCount,long deleteCount){writes+=writeCount;deletes+=deleteCount;}
@@ -35,7 +36,7 @@ public final class OnlineDiagnostics {
         out.append("Laufzeit seit App-Start: ").append((System.currentTimeMillis()-started)/60000).append(" min\n")
            .append("HTTP-Anfragen: ").append(requests).append(" · Fehler: ").append(failures)
            .append("\nEmpfangene Dokumente: ").append(documents).append("\nBestätigte Schreibvorgänge: ").append(writes)
-           .append(" · Löschvorgänge: ").append(deletes).append("\nEmpfangene Daten: ").append(receivedBytes/1024).append(" KiB\n")
+           .append(" · Löschvorgänge: ").append(deletes).append("\nEmpfangene Daten: ").append(receivedBytes/1024).append(" KiB (dekodierter Antwortinhalt)\nGesendete Anfrageinhalte: ").append(sentBytes/1024).append(" KiB (ohne HTTP-Header)\n")
            .append("Eingesparte separate Positionsschreibvorgänge: ").append(mergedPositions).append("\n")
            .append("Übersprungene Bereichsabfragen nach eigenen Änderungen: ").append(ownRegionSkips).append("\n")
            .append("Dies sind lokale Zähler, keine Firebase-Abrechnung. Regel- und Indexlesevorgänge sowie Mindestkosten leerer Abfragen sind nicht enthalten.\n\nAnfragen nach Vorgang:\n");

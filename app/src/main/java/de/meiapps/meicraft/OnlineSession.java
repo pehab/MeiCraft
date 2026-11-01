@@ -28,7 +28,7 @@ final class OnlineSession implements AutoCloseable {
         final Map<String,String> versions=new HashMap<>();final Map<String,Integer> types=new HashMap<>();final Map<String,Boolean> renewable=new HashMap<>();
         Region(int id){this.id=id;}
     }
-    JSONObject announcedRegions=new JSONObject();
+    JSONObject announcedRegions=new JSONObject();String announcedReadTime="";
     final Map<Integer,Region> regions=new HashMap<>();
     volatile Set<Integer> readyRegions=Collections.emptySet();
     volatile Story inventory=new Story();String inventoryVersion="";boolean inventoryUncertain;
@@ -153,7 +153,8 @@ final class OnlineSession implements AutoCloseable {
             problem(e,e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==403);}
     }
     private void readSync()throws Exception{
-        JSONObject document=firebase.get(syncPath());if(document==null)throw new IOException("Synchronisierung fehlt. Bitte zuerst den Weltbesitzer mit der aktuellen Version verbinden lassen.");
+        FirebaseRest.Snapshot snapshot=firebase.snapshot(syncPath());
+        JSONObject document=snapshot.document;announcedReadTime=snapshot.readTime;if(document==null)throw new IOException("Synchronisierung fehlt. Bitte zuerst den Weltbesitzer mit der aktuellen Version verbinden lassen.");
         JSONObject fields=document.getJSONObject("fields");announcedRegions=fields.getJSONObject("regions").getJSONObject("mapValue").optJSONObject("fields");if(announcedRegions==null)announcedRegions=new JSONObject();
         JSONObject presence=fields.getJSONObject("players").getJSONObject("mapValue").optJSONObject("fields");List<Player> next=new ArrayList<>();
         if(presence!=null){Iterator<String> keys=presence.keys();while(keys.hasNext()){
@@ -166,30 +167,35 @@ final class OnlineSession implements AutoCloseable {
         players=Collections.unmodifiableList(next);
     }
     private void loadChanges(Region region,World tile)throws Exception{
-        String parent=base()+"/sectors/"+region.id;JSONArray cursor=null;String latest=region.watermark,snapshot="";World target=world;
+        String parent=base()+"/sectors/"+region.id;JSONArray cursor=null;String snapshot=announcedReadTime;World target=world;
+        if(snapshot.isEmpty())throw new IOException("Synchronisierungs-Snapshot fehlt.");
         do{
-            JSONObject query=new JSONObject().put("from",new JSONArray().put(new JSONObject().put("collectionId","blocks"))).put("orderBy",new JSONArray().put(order("updatedAt")).put(order("__name__"))).put("limit",200);
-            if(!region.watermark.isEmpty())query.put("where",new JSONObject().put("fieldFilter",new JSONObject().put("field",new JSONObject().put("fieldPath","updatedAt")).put("op","GREATER_THAN_OR_EQUAL").put("value",new JSONObject().put("timestampValue",region.watermark))));
+            JSONObject query=new JSONObject().put("from",new JSONArray().put(new JSONObject().put("collectionId","blocks"))).put("orderBy",new JSONArray().put(order("updatedAt")).put(order("__name__"))).put("limit",200)
+                .put("select",new JSONObject().put("fields",new JSONArray().put(field("x")).put(field("y")).put(field("z")).put(field("type")).put(field("renewable")).put(field("updatedAt"))));
+            if(!region.watermark.isEmpty())query.put("where",new JSONObject().put("fieldFilter",new JSONObject().put("field",new JSONObject().put("fieldPath","updatedAt")).put("op","GREATER_THAN").put("value",new JSONObject().put("timestampValue",region.watermark))));
             if(cursor!=null)query.put("startAt",new JSONObject().put("values",cursor).put("before",false));
             JSONArray result=firebase.query(parent,query,snapshot);int count=0;cursor=null;
-            // Hold a single server snapshot across pages so concurrent updates cannot move
-            // an unseen document behind the cursor or beyond the saved watermark.
-            if(snapshot.isEmpty())for(int i=0;i<result.length();i++){String time=result.getJSONObject(i).optString("readTime","");if(!time.isEmpty()){snapshot=time;break;}}
+            // The overview and all pages share one server snapshot. A completed
+            // snapshot is an exclusive lower bound; no document from its boundary
+            // needs downloading again, even when many commits share a timestamp.
             for(int i=0;i<result.length();i++){JSONObject row=result.getJSONObject(i);if(!row.has("document"))continue;JSONObject doc=row.getJSONObject("document"),d=doc.getJSONObject("fields");
                 int x=FirebaseRest.integer(d,"x"),y=FirebaseRest.integer(d,"y"),z=FirebaseRest.integer(d,"z"),type=FirebaseRest.integer(d,"type");
                 if(!OnlineWorld.validBlock(x,y,z,type))throw new IOException("Ungültiger Online-Block.");
-                String id=x+"_"+y+"_"+z,version=doc.getString("updateTime"),timestamp=d.getJSONObject("updatedAt").getString("timestampValue");
+                String id=x+"_"+y+"_"+z,version=doc.getString("updateTime");
                 region.types.put(id,type);region.renewable.put(id,d.optJSONObject("renewable")!=null&&d.getJSONObject("renewable").optBoolean("booleanValue",false));
                 String previous=region.versions.put(id,version);
                 // A retried initial page must restore every delta into the fresh terrain,
                 // including versions seen before a previous request failed.
                 if(tile!=null)tile.set(x,y,z,type);else if(!version.equals(previous))apply(target,region.id,x,y,z,type,false);
-                latest=timestamp;count++;cursor=new JSONArray().put(d.getJSONObject("updatedAt")).put(new JSONObject().put("referenceValue",doc.getString("name")));
+                count++;cursor=new JSONArray().put(d.getJSONObject("updatedAt")).put(new JSONObject().put("referenceValue",doc.getString("name")));
             }
             if(count<200)cursor=null;
         }while(cursor!=null&&!closed);
-        region.watermark=latest;
+        // Failed/cancelled pagination must keep its previous completed watermark.
+        if(closed)return;
+        region.watermark=snapshot;
     }
+    static JSONObject field(String name)throws JSONException{return new JSONObject().put("fieldPath",name);}
     static JSONObject order(String field)throws JSONException{return new JSONObject().put("field",new JSONObject().put("fieldPath",field)).put("direction","ASCENDING");}
     void apply(World target,int region,int x,int y,int z,int type,boolean initial){
         if(initial){target.set(x,y,z,type);return;}

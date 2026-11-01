@@ -14,7 +14,8 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
     final float[] lampData=new float[32];float lampTimer;
     final float[] projection=new float[16],look=new float[16],matrix=new float[16];
     Mesh[] meshes=new Mesh[0];int meshCols,meshRows;
-    long last;
+    long last;boolean measuring;
+    final RenderMetrics metrics=new RenderMetrics();
     int width,height;
     static final int[][] N={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
     static final float[][] F={
@@ -49,24 +50,19 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
     }
     void dirty(int x,int z){for(int zz=Math.max(0,(z-1)/16);zz<=Math.min(meshRows-1,(z+1)/16);zz++)for(int xx=Math.max(0,(x-1)/16);xx<=Math.min(meshCols-1,(x+1)/16);xx++)meshes[zz*meshCols+xx].dirty=true;}
     static final class Floats{float[] values=new float[8192];int size;void add(float a,float b,float c,float u,float v,float l){if(size+6>values.length)values=java.util.Arrays.copyOf(values,values.length*2);values[size++]=a;values[size++]=b;values[size++]=c;values[size++]=u;values[size++]=v;values[size++]=l;}}
-    void mesh(int cx,int cz,Mesh mesh){Floats data=new Floats();
-        for(int y=0;y<World.H;y++)for(int z=cz*16;z<cz*16+16;z++)for(int x=cx*16;x<cx*16+16;x++){
-            int block=world.get(x,y,z);if(block==0)continue;float heat=world.forge.heat(x,y,z);
-            for(int face=0;face<6;face++){
-                int neighbor=world.get(x+N[face][0],y+N[face][1],z+N[face][2]);
-                if(neighbor!=0 && !((neighbor==10||neighbor==15)&&block!=neighbor))continue;
-                if(y==0&&face==3)continue;
-                int tile=block==16?21:block==13?(heat>0?22:16):block==14?(heat>0?23:17):block==15?18:block;if(block==1)tile=face==2?1:face==3?2:13;if(block==5&&face>=2&&face<=3)tile=14;
-                float u0=(tile*32+.5f)/1024f,u1=(tile*32+31.5f)/1024f;
-                float shade=block==11||block==15||block==16||heat>0?1.2f:SHADE[face];
-                for(int corner:ORDER){float[] f=F[face];float u=(corner==0||corner==1)?u0:u1;float v=(corner==0||corner==3)?31.5f/32:.5f/32;data.add(x+f[corner*3],y+f[corner*3+1],z+f[corner*3+2],u,v,shade);}
-            }
-        }
-        FloatBuffer buffer=ByteBuffer.allocateDirect(data.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer();buffer.put(data.values,0,data.size).position(0);
-        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,mesh.buffer);GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,data.size*4,buffer,GLES20.GL_STATIC_DRAW);mesh.count=data.size/6;mesh.dirty=false;
+    final VoxelMesher terrainMesher=new VoxelMesher();
+    FloatBuffer terrainBuffer=ByteBuffer.allocateDirect(8192*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+    void mesh(int cx,int cz,Mesh mesh){
+        long started=System.nanoTime();
+        terrainMesher.build(world,cx,cz);
+        if(terrainBuffer.capacity()<terrainMesher.size)terrainBuffer=ByteBuffer.allocateDirect(terrainMesher.values.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+        terrainBuffer.clear();terrainBuffer.put(terrainMesher.values,0,terrainMesher.size).flip();
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,mesh.buffer);GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,terrainMesher.size*4,terrainBuffer,GLES20.GL_STATIC_DRAW);mesh.count=terrainMesher.size/6;mesh.dirty=false;
+        metrics.mesh(System.nanoTime()-started);
     }
     @Override public void onDrawFrame(GL10 gl){
-        long now=System.nanoTime();float dt=Math.min(.05f,(now-last)*1e-9f);last=now;
+        long now=System.nanoTime(),interval=now-last;float dt=Math.min(.05f,interval*1e-9f);last=now;
+        boolean sample=measuring&&!view.activity.paused;measuring=!view.activity.paused;
         world=view.world;if(world==null)return;
         ensureMeshes(world,false);
         if(world!=view.renderedWorld){for(Mesh m:meshes)m.dirty=true;view.renderedWorld=world;lampTimer=0;}
@@ -87,6 +83,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             }
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,0);
             drawMobs();view.target=world.ray(6);if(world.survival.aimed(world)==null)outline(view.target);view.hud.postInvalidate();
+            if(sample)metrics.frame(System.nanoTime()-now,interval);
         }
     }
     void findLamps(){

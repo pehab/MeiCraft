@@ -138,3 +138,8 @@ Alle Texturen sind prozedurale Originale. Neuerzeugen mit `python3 scripts/gener
 
 Updates folgen der tatsächlichen Installationsquelle: Google Play für Play-Installationen, GitHub für direkt installierte APKs. [Bedienung, Signierung und Veröffentlichung](docs/UPDATES.md).
 
+
+## Entwicklung von 1.0
+
+Der Kandidat `1.0.0-rc.1` erhält Funktion und Optik und optimiert interne Abläufe.
+[Prüfbare Verträge und Freigabekriterien](docs/1.0-CONTRACT.md) · [Kandidatenänderungen](docs/RELEASE-1.0.0-rc.1.md).

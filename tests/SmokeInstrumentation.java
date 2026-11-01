@@ -210,7 +210,8 @@ public final class SmokeInstrumentation extends Instrumentation {
  static final class SyncBackend implements FirebaseRest.ConnectionFactory {
   int attempts,stateReads,blockQueries,inventoryReads,writes,unexpected,status=200;long revision;
   String inventory="";int documentWrites,mergedPositions,nextCommitStatus=200;
-  final java.util.List<org.json.JSONObject> commits=new java.util.ArrayList<>();
+  final java.util.List<org.json.JSONObject> commits=new java.util.ArrayList<>(),queries=new java.util.ArrayList<>();
+  final String snapshotTime="2026-10-31T12:00:02Z";
   @Override public java.net.HttpURLConnection open(java.net.URL url){
    attempts++;
    return new java.net.HttpURLConnection(url){
@@ -219,12 +220,12 @@ public final class SmokeInstrumentation extends Instrumentation {
     @Override public void disconnect(){}
     @Override public boolean usingProxy(){return false;}
     @Override public int getResponseCode(){if(url.getPath().endsWith(":commit")&&nextCommitStatus!=200){int code=nextCommitStatus;nextCommitStatus=200;return code;}return status;}
-    @Override public java.io.OutputStream getOutputStream(){writes++;return body;}
+    @Override public java.io.OutputStream getOutputStream(){if(url.getPath().endsWith(":commit"))writes++;return body;}
     @Override public java.io.InputStream getErrorStream(){return new java.io.ByteArrayInputStream("{\"error\":{\"status\":\"RESOURCE_EXHAUSTED\",\"message\":\"Read quota exceeded\"}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));}
     @Override public java.io.InputStream getInputStream()throws IOException{
      String path=url.getPath(),response;
-     if(path.endsWith("/sync/state")){stateReads++;response="{\"fields\":{\"regions\":{\"mapValue\":{\"fields\":{\"s0\":{\"mapValue\":{\"fields\":{\"revision\":{\"integerValue\":\""+revision+"\"}}}}}}},\"players\":{\"mapValue\":{\"fields\":{}}}}}";}
-     else if(path.endsWith(":runQuery")){blockQueries++;response="[{\"document\":{\"name\":\"fixture/blocks/10_30_10\",\"updateTime\":\"2026-10-31T12:00:00Z\",\"fields\":{\"x\":{\"integerValue\":\"10\"},\"y\":{\"integerValue\":\"30\"},\"z\":{\"integerValue\":\"10\"},\"type\":{\"integerValue\":\"7\"},\"updatedAt\":{\"timestampValue\":\"2026-10-31T12:00:00Z\"}}}}]";}
+     if(path.endsWith(":batchGet")){stateReads++;String document="{\"fields\":{\"regions\":{\"mapValue\":{\"fields\":{\"s0\":{\"mapValue\":{\"fields\":{\"revision\":{\"integerValue\":\""+revision+"\"}}}}}}},\"players\":{\"mapValue\":{\"fields\":{}}}}}";try{response=new org.json.JSONArray().put(new org.json.JSONObject().put("found",new org.json.JSONObject(document)).put("readTime",snapshotTime)).toString();}catch(org.json.JSONException e){throw new IOException(e);}}
+     else if(path.endsWith(":runQuery")){blockQueries++;try{queries.add(new org.json.JSONObject(body.toString("UTF-8")));}catch(org.json.JSONException e){throw new IOException(e);}response="[{\"document\":{\"name\":\"fixture/blocks/10_30_10\",\"updateTime\":\"2026-10-31T12:00:00Z\",\"fields\":{\"x\":{\"integerValue\":\"10\"},\"y\":{\"integerValue\":\"30\"},\"z\":{\"integerValue\":\"10\"},\"type\":{\"integerValue\":\"7\"},\"updatedAt\":{\"timestampValue\":\"2026-10-31T12:00:00Z\"}}}}]";}
      else if(path.endsWith(":commit")){
       try{
        org.json.JSONObject request=new org.json.JSONObject(body.toString("UTF-8"));commits.add(request);
@@ -257,6 +258,12 @@ public final class SmokeInstrumentation extends Instrumentation {
    backend.revision=1;session.poll();onGl(game,()->{});
    check(backend.blockQueries==1&&session.world.get(10,30,10)==7,"one changed region fetches and applies the peer block update");
    session.poll();check(backend.blockQueries==1,"cached region revision suppresses duplicate block reads");
+   org.json.JSONObject firstQuery=backend.queries.get(0);
+   check(firstQuery.getString("readTime").equals(backend.snapshotTime)&&session.regions.get(0).watermark.equals(backend.snapshotTime),"overview and blocks use one completed server snapshot");
+   check(firstQuery.getJSONObject("structuredQuery").getJSONObject("select").getJSONArray("fields").length()==6,"block transfer omits unused author fields");
+   backend.revision++;session.poll();
+   org.json.JSONObject delta=backend.queries.get(1).getJSONObject("structuredQuery").getJSONObject("where").getJSONObject("fieldFilter");
+   check(delta.getString("op").equals("GREATER_THAN")&&delta.getJSONObject("value").getString("timestampValue").equals(backend.snapshotTime),"delta starts strictly after the completed snapshot, never at last block timestamp");
    Story updated=new Story();updated.inventory[2]=4;backend.inventory="{\"updateTime\":\"2026-10-31T12:00:01Z\",\"fields\":"+session.inventoryFields(updated,"").toString()+"}";
    session.inventoryUncertain=true;session.poll();session.poll();onGl(game,()->{});
    check(backend.inventoryReads==1&&session.inventory.inventory[2]==4,"an ambiguous write response reconciles inventory once instead of polling it forever");
