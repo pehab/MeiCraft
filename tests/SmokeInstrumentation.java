@@ -339,7 +339,7 @@ public final class SmokeInstrumentation extends Instrumentation {
     session.poll();
    }
    check(candidateBytes<legacyBytes,"masked inventory updates reduce actual edit request bytes without changing the number or timing of commits");
-   System.out.println("INVENTORY PAYLOAD: "+legacyBytes+" -> "+candidateBytes+" bytes across 360 immediate atomic edit commits");
+   Bundle budget=new Bundle();budget.putLong("inventoryRequestBytesBefore",legacyBytes);budget.putLong("inventoryRequestBytesAfter",candidateBytes);budget.putInt("immediateEditCommits",360);sendStatus(1,budget);
    int oldDocumentWrites=180*(2*3+1),oldBlockQueries=180;
    check(backend.documentWrites==1080&&backend.mergedPositions==180,"actual active-session writes merge all 180 due positions into edit commits");
    check((oldDocumentWrites-backend.documentWrites)*100/oldDocumentWrites>=14,"two edits per moving cycle save at least fourteen percent of document writes compared with 0.8.2");
@@ -629,17 +629,17 @@ public final class SmokeInstrumentation extends Instrumentation {
   runOnMainSync(activity::save);activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);World saved=World.decode(activity.file.readFully());check(saved.get(48,34,45)==9,"edited block written to disk");check(saved.selected==9,"selected material written to disk");
   check(java.util.Arrays.asList(context.getPackageManager().getPackageInfo(context.getPackageName(),android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions).contains("android.permission.INTERNET"),"update permission present");
   runOnMainSync(()->{synchronized(game.world){World w=game.world;w.yaw=.55f;w.pitch=-.38f;w.y=26;w.x=48.5f;w.z=48.5f;}activity.paused=false;});
-  testStory(activity,game);
-  testSurvival(activity,game);
-   testNature(activity,game);
-   testForge(activity,game);
-   testQrTransfer(activity,game);
+  testStory(activity,game);onGl(game,()->checkGl("after testStory"));
+  testSurvival(activity,game);onGl(game,()->checkGl("after testSurvival"));
+   testNature(activity,game);onGl(game,()->checkGl("after testNature"));
+   testForge(activity,game);onGl(game,()->checkGl("after testForge"));
+   testQrTransfer(activity,game);onGl(game,()->checkGl("after testQrTransfer"));
   Thread.sleep(1500);
   android.graphics.Bitmap screenshot=smallScreenshot();
   if(screenshot!=null){try(FileOutputStream out=context.openFileOutput("smoke.png",0)){screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}emitScreenshot(screenshot,"screenshot");screenshot.recycle();}
   orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,960);testSwipeControl(activity,game);
   orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,960);
-  testWorldLibrary(activity,game);
+  testWorldLibrary(activity,game);onGl(game,()->checkGl("after testWorldLibrary"));
   testRecentOnlineRemoval(activity);
   testLightingEquivalence(game);
   testSyncRequests(activity,game);
