@@ -1,0 +1,13 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    { "collectionGroup": "sync", "fieldPath": "players", "indexes": [] },
+    { "collectionGroup": "sync", "fieldPath": "regions", "indexes": [] },
+    { "collectionGroup": "inventory", "fieldPath": "*", "indexes": [] },
+    { "collectionGroup": "members", "fieldPath": "*", "indexes": [] },
+    { "collectionGroup": "blocks", "fieldPath": "*", "indexes": [] },
+    { "collectionGroup": "blocks", "fieldPath": "updatedAt", "indexes": [
+      { "order": "ASCENDING", "queryScope": "COLLECTION" }
+    ] }
+  ]
+}

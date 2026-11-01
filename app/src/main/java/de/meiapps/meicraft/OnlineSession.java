@@ -107,6 +107,11 @@ final class OnlineSession implements AutoCloseable {
             long revision=announcedRegions.has("s"+id)?FirebaseRest.integer(announcedRegions.getJSONObject("s"+id).getJSONObject("mapValue").getJSONObject("fields"),"revision"):0;
             if(!OnlineSyncPolicy.reload(region.generated,region.revision,region.ownChanges,revision)){
                 if(region.ownChanges>0){FirebaseRest.DIAGNOSTICS.ownRegionSkipped();region.revision=revision;region.ownChanges=0;}
+                // The shared snapshot proves that every revision through this
+                // point is already present locally (unchanged or confirmed own).
+                // Keep the exclusive watermark current even without a download,
+                // so a later peer edit cannot replay hours of our own history.
+                region.watermark=announcedReadTime;
                 continue;
             }
             if(!region.generated)streaming=true;
@@ -207,6 +212,19 @@ final class OnlineSession implements AutoCloseable {
         JSONArray items=new JSONArray();for(int n:state.inventory)items.put(FirebaseRest.value(n));
         fields.put("items",new JSONObject().put("arrayValue",new JSONObject().put("values",items)));return fields;
     }
+    /** Preserve unmodified fields on the server; the inventory CAS stays unchanged. */
+    JSONObject inventoryUpdate(Story next,String lastBlock)throws JSONException{
+        JSONObject fields=inventoryFields(next,lastBlock);
+        if(Arrays.equals(next.inventory,inventory.inventory))fields.remove("items");
+        if(next.chapter==inventory.chapter)fields.remove("chapter");
+        if(next.iron==inventory.iron)fields.remove("iron");
+        if(next.placed==inventory.placed)fields.remove("placed");
+        if(next.glassPlaced==inventory.glassPlaced)fields.remove("glassPlaced");
+        if(next.buckets==inventory.buckets)fields.remove("buckets");
+        if(next.sword==inventory.sword)fields.remove("sword");
+        List<String> mask=new ArrayList<>();Iterator<String> keys=fields.keys();while(keys.hasNext())mask.add(keys.next());
+        return firebase.write(inventoryPath(),fields,mask.toArray(new String[0]),new JSONObject().put("updateTime",inventoryVersion),true);
+    }
     Story decodeInventory(JSONObject d)throws JSONException,IOException{
         Story state=new Story();JSONArray items=d.getJSONObject("items").getJSONObject("arrayValue").getJSONArray("values");
         if(items.length()!=state.inventory.length)throw new IOException("Ungültiges Online-Inventar.");
@@ -249,7 +267,7 @@ final class OnlineSession implements AutoCloseable {
             JSONObject condition=data.versions.containsKey(id)?new JSONObject().put("updateTime",data.versions.get(id)):new JSONObject().put("exists",false);
             JSONObject fields=FirebaseRest.fields("x",lx,"y",y,"z",lz,"type",actual,"by",firebase.uid,"renewable",renewable);
             Presence presence=duePresence();
-            JSONArray writes=new JSONArray().put(firebase.write(path,fields,null,condition,true)).put(firebase.write(inventoryPath(),inventoryFields(next,region+"/"+id),null,new JSONObject().put("updateTime",inventoryVersion),true)).put(revisionWrite(region,presence));
+            JSONArray writes=new JSONArray().put(firebase.write(path,fields,null,condition,true)).put(inventoryUpdate(next,region+"/"+id)).put(revisionWrite(region,presence));
             try{
                 JSONObject result=firebase.commit(writes);data.versions.put(id,result.getJSONArray("writeResults").getJSONObject(0).getString("updateTime"));data.types.put(id,actual);data.renewable.put(id,renewable);
                 inventory=next;inventoryVersion=result.getJSONArray("writeResults").getJSONObject(1).getString("updateTime");
@@ -270,7 +288,7 @@ final class OnlineSession implements AutoCloseable {
             if(recipe<0){boolean claimed=next.claim();message=claimed?"Werkzeug / Auftrag freigeschaltet":next.goal();}
             else message=next.craft(recipe);
             if(!OnlineInventory.same(next,inventory)){
-                try{JSONObject result=firebase.commit(new JSONArray().put(firebase.write(inventoryPath(),inventoryFields(next,""),null,new JSONObject().put("updateTime",inventoryVersion),true)));inventory=next;inventoryVersion=result.getJSONArray("writeResults").getJSONObject(0).getString("updateTime");applyInventory(next);}
+                try{JSONObject result=firebase.commit(new JSONArray().put(inventoryUpdate(next,"")));inventory=next;inventoryVersion=result.getJSONArray("writeResults").getJSONObject(0).getString("updateTime");applyInventory(next);}
                 catch(FirebaseRest.Failure e){if(e.status!=409&&e.status!=400&&e.status!=412)throw e;loadInventory(false);message="Dein Vorrat wurde inzwischen geändert. Bitte erneut versuchen.";}
             }
             final String notice=message;activity.runOnUiThread(()->{if(!closed){activity.toast(notice);activity.online.refreshWorkbench();}});

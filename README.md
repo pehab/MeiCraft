@@ -141,5 +141,5 @@ Updates folgen der tatsächlichen Installationsquelle: Google Play für Play-Ins
 
 ## Entwicklung von 1.0
 
-Der Kandidat `1.0.0-rc.1` erhält Funktion und Optik und optimiert interne Abläufe.
-[Prüfbare Verträge und Freigabekriterien](docs/1.0-CONTRACT.md) · [Kandidatenänderungen](docs/RELEASE-1.0.0-rc.1.md).
+Der Kandidat `1.0.0-rc.2` erhält Funktion und Optik und optimiert interne Abläufe.
+[Prüfbare Verträge und Freigabekriterien](docs/1.0-CONTRACT.md) · [Kandidatenänderungen](docs/RELEASE-1.0.0-rc.2.md).

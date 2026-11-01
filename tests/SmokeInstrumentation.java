@@ -211,7 +211,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   int attempts,stateReads,blockQueries,inventoryReads,writes,unexpected,status=200;long revision;
   String inventory="";int documentWrites,mergedPositions,nextCommitStatus=200;
   final java.util.List<org.json.JSONObject> commits=new java.util.ArrayList<>(),queries=new java.util.ArrayList<>();
-  final String snapshotTime="2026-10-31T12:00:02Z";
+  String snapshotTime="2026-10-31T12:00:02Z";
   @Override public java.net.HttpURLConnection open(java.net.URL url){
    attempts++;
    return new java.net.HttpURLConnection(url){
@@ -247,6 +247,44 @@ public final class SmokeInstrumentation extends Instrumentation {
    };
   }
  }
+ static final String REFERENCE_FRAGMENT_SHADER="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;uniform float uAmbient;uniform vec4 uLamps[8];varying vec3 vWorld;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){float brightness=uAmbient;for(int i=0;i<8;i++){brightness=max(brightness,uLamps[i].w*max(0.0,1.0-distance(vWorld,uLamps[i].xyz)/6.0));}vec3 c=texture2D(uTex,vUv).rgb*min(vLight,1.0)*(vLight>1.1?1.0:brightness);float f=smoothstep(27.0,55.0,vDistance);gl_FragColor=vec4(mix(c,uFog,f),1.0);}";
+ void testLightingEquivalence(GameView game)throws Exception{
+  onGl(game,()->{
+   String vertex="attribute vec2 aPos;uniform float uLight;varying vec2 vUv;varying float vLight;varying float vDistance;varying vec3 vWorld;void main(){gl_Position=vec4(aPos,0.0,1.0);vWorld=vec3(144.0+aPos.x*3.0,30.0,144.0+aPos.y*3.0);vUv=vec2(0.5);vLight=uLight;vDistance=30.0+(aPos.x+1.0)*20.0;}";
+   int[] programs=new int[2],textures=new int[2],framebuffer=new int[1];
+   GLES20.glGenTextures(2,textures,0);GLES20.glGenFramebuffers(1,framebuffer,0);
+   try{
+    GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+    for(int i=0;i<2;i++){
+     GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,textures[i]);
+     GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_NEAREST);GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MAG_FILTER,GLES20.GL_NEAREST);
+     java.nio.ByteBuffer texel=java.nio.ByteBuffer.allocateDirect(4);texel.put(new byte[]{(byte)200,100,50,(byte)255}).flip();
+     GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES20.GL_RGBA,i==0?1:64,i==0?1:64,0,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,i==0?texel:null);
+     int vs=VoxelRenderer.shader(GLES20.GL_VERTEX_SHADER,vertex),fs=VoxelRenderer.shader(GLES20.GL_FRAGMENT_SHADER,i==0?REFERENCE_FRAGMENT_SHADER:VoxelRenderer.FRAGMENT_SHADER);
+     int program=GLES20.glCreateProgram();programs[i]=program;GLES20.glAttachShader(program,vs);GLES20.glAttachShader(program,fs);GLES20.glLinkProgram(program);
+     int[] linked=new int[1];GLES20.glGetProgramiv(program,GLES20.GL_LINK_STATUS,linked,0);check(linked[0]!=0,"lighting comparison program links");GLES20.glDeleteShader(vs);GLES20.glDeleteShader(fs);
+    }
+    GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,framebuffer[0]);GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER,GLES20.GL_COLOR_ATTACHMENT0,GLES20.GL_TEXTURE_2D,textures[1],0);
+    check(GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER)==GLES20.GL_FRAMEBUFFER_COMPLETE,"lighting comparison target complete");
+    GLES20.glViewport(0,0,64,64);GLES20.glDisable(GLES20.GL_DEPTH_TEST);GLES20.glDisable(GLES20.GL_CULL_FACE);GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,0);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,textures[0]);
+    java.nio.FloatBuffer vertices=java.nio.ByteBuffer.allocateDirect(8*4).order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer();vertices.put(new float[]{-1,-1,1,-1,-1,1,1,1}).flip();
+    java.nio.ByteBuffer pixels=java.nio.ByteBuffer.allocateDirect(64*64*4);byte[][] captured={new byte[64*64*4],new byte[64*64*4]};
+    float[] lamps=new float[32];for(int i=0;i<8;i++){lamps[i*4]=144+i%3;lamps[i*4+1]=30;lamps[i*4+2]=144-i%3;lamps[i*4+3]=i==0?1:.4f;}
+    for(float ambient:new float[]{.12f,.5f,.99f,1})for(float light:new float[]{.49f,1,1.2f}){
+     for(int i=0;i<2;i++){
+      int program=programs[i];GLES20.glUseProgram(program);int position=GLES20.glGetAttribLocation(program,"aPos");GLES20.glEnableVertexAttribArray(position);vertices.position(0);GLES20.glVertexAttribPointer(position,2,GLES20.GL_FLOAT,false,0,vertices);
+      GLES20.glUniform1f(GLES20.glGetUniformLocation(program,"uAmbient"),ambient);GLES20.glUniform1f(GLES20.glGetUniformLocation(program,"uLight"),light);GLES20.glUniform1i(GLES20.glGetUniformLocation(program,"uTex"),0);GLES20.glUniform3f(GLES20.glGetUniformLocation(program,"uFog"),.5f,.7f,.9f);GLES20.glUniform4fv(GLES20.glGetUniformLocation(program,"uLamps[0]"),8,lamps,0);
+      GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);pixels.clear();GLES20.glReadPixels(0,0,64,64,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,pixels);pixels.position(0);pixels.get(captured[i]);GLES20.glDisableVertexAttribArray(position);
+     }
+     check(java.util.Arrays.equals(captured[0],captured[1]),"lighting pixels match 0.8.3 at ambient "+ambient+" and face/emission "+light);
+    }
+    check(GLES20.glGetError()==GLES20.GL_NO_ERROR,"lighting equivalence has no OpenGL errors");
+   }finally{
+    GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,0);GLES20.glDeleteFramebuffers(1,framebuffer,0);GLES20.glDeleteTextures(2,textures,0);for(int program:programs)if(program!=0)GLES20.glDeleteProgram(program);
+    GLES20.glEnable(GLES20.GL_DEPTH_TEST);GLES20.glEnable(GLES20.GL_CULL_FACE);GLES20.glViewport(0,0,game.renderer.width,game.renderer.height);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,game.renderer.texture);
+   }
+  });
+ }
  void testSyncRequests(MainActivity activity,GameView game)throws Exception{
   SyncBackend backend=new SyncBackend();FirebaseRest rest=new FirebaseRest(activity,backend);rest.uid="fixture-parent";rest.token="fixture-token";rest.expires=System.currentTimeMillis()+3600000;
   OnlineSession session=new OnlineSession(activity,rest,new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId()),"Test",new OnlineSession.Listener(){public void loaded(World w,String n){}public void problem(String text,boolean fatal){}});
@@ -280,22 +318,35 @@ public final class SmokeInstrumentation extends Instrumentation {
    for(int id=0;id<4;id++){OnlineSession.Region region=new OnlineSession.Region(id);region.generated=true;region.revision=0;session.regions.put(id,region);}
    // 180 moving cycles, two edits per cycle. Force only the first heartbeat due;
    // block actions themselves still execute immediately, with no batching timer.
+   long legacyBytes=0,candidateBytes=0;
    for(int cycle=0;cycle<180;cycle++){
+    backend.snapshotTime=java.time.Instant.parse("2026-10-31T12:00:02Z").plusSeconds(cycle*5L).toString();
     session.lastHeartbeat=0;
     for(int edit=0;edit<2;edit++){
      final int x=10+cycle%60,z=10+(cycle/60)*2+edit;
      onGl(game,()->session.world.set(x,30,z,7));session.edit(x,30,z,0);
      session.worker.submit(()->{}).get(10,TimeUnit.SECONDS);onGl(game,()->{});
+     org.json.JSONObject actual=backend.commits.get(backend.commits.size()-1),legacy=new org.json.JSONObject(actual.toString());
+     org.json.JSONObject inventoryWrite=legacy.getJSONArray("writes").getJSONObject(1);
+     String lastBlock=inventoryWrite.getJSONObject("update").getJSONObject("fields").getJSONObject("lastBlock").getString("stringValue");
+     inventoryWrite.remove("updateMask");inventoryWrite.getJSONObject("update").put("fields",session.inventoryFields(session.inventory,lastBlock));
+     candidateBytes+=actual.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+     legacyBytes+=legacy.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
     }
     session.poll();
    }
+   check(candidateBytes<legacyBytes,"masked inventory updates reduce actual edit request bytes without changing the number or timing of commits");
+   System.out.println("INVENTORY PAYLOAD: "+legacyBytes+" -> "+candidateBytes+" bytes across 360 immediate atomic edit commits");
    int oldDocumentWrites=180*(2*3+1),oldBlockQueries=180;
    check(backend.documentWrites==1080&&backend.mergedPositions==180,"actual active-session writes merge all 180 due positions into edit commits");
    check((oldDocumentWrites-backend.documentWrites)*100/oldDocumentWrites>=14,"two edits per moving cycle save at least fourteen percent of document writes compared with 0.8.2");
    check(backend.blockQueries==0&&oldBlockQueries==180&&backend.inventoryReads==0,"confirmed own edits do not trigger block queries or inventory reloads");
+   String completedOwnSnapshot=backend.snapshotTime;
+   check(session.regions.get(0).watermark.equals(completedOwnSnapshot),"own-only snapshot advances the complete watermark without a block download");
    check(session.inventory.inventory[7]==360,"every individual successful edit receives its material without a batching delay");
    backend.revision++;session.poll();onGl(game,()->{});
    check(backend.blockQueries==1&&session.world.get(10,30,10)==7,"peer edit after an own-only interval is downloaded in the next unchanged five-second poll");
+   check(backend.queries.get(0).getJSONObject("structuredQuery").getJSONObject("where").getJSONObject("fieldFilter").getJSONObject("value").getString("timestampValue").equals(completedOwnSnapshot),"peer edit query starts after the latest proven own-only snapshot, not before the player's entire construction history");
    // An unknown commit must not count as a confirmed local revision or heartbeat.
    long own=session.regions.get(0).ownChanges;session.lastHeartbeat=0;long last=session.lastHeartbeat;
    backend.status=503;session.edit(10,30,10,0);session.worker.submit(()->{}).get(10,TimeUnit.SECONDS);
@@ -587,6 +638,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,960);
   testWorldLibrary(activity,game);
   testRecentOnlineRemoval(activity);
+  testLightingEquivalence(game);
   testSyncRequests(activity,game);
   testActiveSyncBudget(activity,game);
   testOnlineStreaming(activity,game);

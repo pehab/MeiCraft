@@ -317,3 +317,33 @@ test('completed overview snapshot eliminates timestamp-boundary rereads without 
   const changed=delta.body.filter(row=>row.document);assert.equal(changed.length,1,'only the later edit crosses the completed snapshot');
   assert.equal(changed[0].document.name,docName(target));assert.equal(changed[0].document.fields.type.integerValue,'8');
 });
+
+test('masked inventory commits preserve tools and counters, retain CAS and atomic block revisions',async()=>{
+  await create(4);await join();await initInventory('child');
+  const store=db('child');
+  await updateDoc(doc(store,invPath('child')),{chapter:7,iron:19,buckets:3,sword:true,placed:42,glassPlaced:8,updatedAt:serverTimestamp()});
+  const before=await readRest('child',invPath('child')),state=emptyInventory();state.items[2]=1;
+  const partial={update:{name:docName(invPath('child')),fields:{items:{arrayValue:{values:state.items.map(n=>({integerValue:String(n)}))}},lastBlock:{stringValue:'0/1_3_2'}}},updateMask:{fieldPaths:['items','lastBlock']},currentDocument:{updateTime:before.updateTime},updateTransforms:[{fieldPath:'updatedAt',setToServerValue:'REQUEST_TIME'}]};
+  const result=await rest('child',':commit',{writes:[resourceBlock('child',0,{exists:false}),partial,revisionWrite()]});assert.equal(result.status,200,JSON.stringify(result.body));
+  const inventory=(await getDoc(doc(store,invPath('child')))).data();
+  for(const [key,value] of Object.entries({chapter:7,iron:19,buckets:3,sword:true,placed:42,glassPlaced:8}))assert.equal(inventory[key],value,`unmodified ${key} survives masked write`);
+  assert.equal(inventory.items[2],1);assert.equal((await getDoc(doc(store,syncPath))).data().regions.s0.revision,1);
+  const stale=await rest('child',':commit',{writes:[partial]});assert.ok(stale.status>=400);assert.equal((await getDoc(doc(store,invPath('child')))).data().items[2],1);
+  const current=await readRest('child',invPath('child'));
+  const invalid={...partial,update:{name:docName(invPath('child')),fields:{iron:{integerValue:'-1'}}},updateMask:{fieldPaths:['iron']},currentDocument:{updateTime:current.updateTime}};
+  const rejected=await rest('child',':commit',{writes:[invalid]});assert.ok(rejected.status>=400);assert.equal((await getDoc(doc(store,invPath('child')))).data().iron,19);
+});
+
+test('own-only snapshot cuts construction history from the next peer delta without losing that peer edit',async()=>{
+  await create();await join();await join('sibling');const store=db('child');
+  const initial=await rest('child',':batchGet',{documents:[docName(root)]});assert.equal(initial.status,200);
+  const initialTime=initial.body.find(row=>row.found).readTime;
+  const batch=writeBatch(store);for(let i=0;i<180;i++)batch.set(doc(store,`${root}/sectors/0/blocks/${i%90+1}_3_${Math.floor(i/90)+1}`),{...blockData(),x:i%90+1,z:Math.floor(i/90)+1});await batch.commit();
+  // The client has the exact revisions and contents of all 180 confirmed own edits.
+  const ownOnly=await rest('child',':batchGet',{documents:[docName(root)]});assert.equal(ownOnly.status,200);const completed=ownOnly.body.find(row=>row.found).readTime;
+  await setDoc(doc(db('sibling'),`${root}/sectors/0/blocks/91_3_3`),{...blockData('sibling'),x:91,z:3});
+  const delta=async timestamp=>rest('child',`/${root}/sectors/0:runQuery`,{structuredQuery:{from:[{collectionId:'blocks'}],where:{fieldFilter:{field:{fieldPath:'updatedAt'},op:'GREATER_THAN',value:{timestampValue:timestamp}}},orderBy:[{field:{fieldPath:'updatedAt'},direction:'ASCENDING'},{field:{fieldPath:'__name__'},direction:'ASCENDING'}],limit:200}});
+  const [old,next]=await Promise.all([delta(initialTime),delta(completed)]);assert.equal(old.status,200);assert.equal(next.status,200);
+  assert.equal(old.body.filter(row=>row.document).length,181);assert.equal(next.body.filter(row=>row.document).length,1);
+  assert.equal(next.body.find(row=>row.document).document.fields.by.stringValue,'sibling');
+});

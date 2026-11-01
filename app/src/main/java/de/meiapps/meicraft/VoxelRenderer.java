@@ -8,15 +8,20 @@ import javax.microedition.khronos.opengles.GL10;
 import javax.microedition.khronos.egl.EGLConfig;
 
 final class VoxelRenderer implements GLSurfaceView.Renderer {
+    static final String FRAGMENT_SHADER="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;uniform float uAmbient;uniform vec4 uLamps[8];varying vec3 vWorld;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){float brightness=uAmbient;if(uAmbient<1.0){for(int i=0;i<8;i++){brightness=max(brightness,uLamps[i].w*max(0.0,1.0-distance(vWorld,uLamps[i].xyz)/6.0));}}vec3 c=texture2D(uTex,vUv).rgb*min(vLight,1.0)*(vLight>1.1?1.0:brightness);float f=smoothstep(27.0,55.0,vDistance);gl_FragColor=vec4(mix(c,uFog,f),1.0);}";
     final GameView view;
     World world;
-    int program,texture,pos,uv,light,mvp,camera,fog,ambient,lamps;
-    final float[] lampData=new float[32];float lampTimer;
+    int program,texture,pos,uv,light,mvp,camera,fog,ambient,lamps,sampler;
+    final float[] lampData=new float[32],lampDistances=new float[8];float lampTimer;
     final float[] projection=new float[16],look=new float[16],matrix=new float[16];
     Mesh[] meshes=new Mesh[0];int meshCols,meshRows;
     long last;boolean measuring;
     final RenderMetrics metrics=new RenderMetrics();
     int width,height;
+    final ViewFrustum frustum=new ViewFrustum();
+    final int[] viewport=new int[4];
+    final float[] playerScreen=new float[4];
+    static final int[][] EDGES={{0,1},{1,3},{3,2},{2,0},{4,5},{5,7},{7,6},{6,4},{0,4},{1,5},{2,6},{3,7}};
     static final int[][] N={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
     static final float[][] F={
         {1,0,0,1,1,0,1,1,1,1,0,1}, {0,0,1,0,1,1,0,1,0,0,0,0},
@@ -30,9 +35,9 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
     static int shader(int type,String source){int s=GLES20.glCreateShader(type);GLES20.glShaderSource(s,source);GLES20.glCompileShader(s);int[] ok=new int[1];GLES20.glGetShaderiv(s,GLES20.GL_COMPILE_STATUS,ok,0);if(ok[0]==0)throw new IllegalStateException(GLES20.glGetShaderInfoLog(s));return s;}
     @Override public void onSurfaceCreated(GL10 unused,EGLConfig config){
         String vs="uniform mat4 uM;uniform vec3 uCamera;attribute vec3 aPos;attribute vec2 aUv;attribute float aLight;varying vec2 vUv;varying float vLight;varying float vDistance;varying vec3 vWorld;void main(){vWorld=aPos;gl_Position=uM*vec4(aPos,1.0);vUv=aUv;vLight=aLight;vDistance=distance(aPos,uCamera);}";
-        String fs="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;uniform float uAmbient;uniform vec4 uLamps[8];varying vec3 vWorld;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){float brightness=uAmbient;for(int i=0;i<8;i++){brightness=max(brightness,uLamps[i].w*max(0.0,1.0-distance(vWorld,uLamps[i].xyz)/6.0));}vec3 c=texture2D(uTex,vUv).rgb*min(vLight,1.0)*(vLight>1.1?1.0:brightness);float f=smoothstep(27.0,55.0,vDistance);gl_FragColor=vec4(mix(c,uFog,f),1.0);}";
+        String fs=FRAGMENT_SHADER;
         program=GLES20.glCreateProgram();GLES20.glAttachShader(program,shader(GLES20.GL_VERTEX_SHADER,vs));GLES20.glAttachShader(program,shader(GLES20.GL_FRAGMENT_SHADER,fs));GLES20.glLinkProgram(program);int[] linked=new int[1];GLES20.glGetProgramiv(program,GLES20.GL_LINK_STATUS,linked,0);if(linked[0]==0)throw new IllegalStateException(GLES20.glGetProgramInfoLog(program));
-        pos=GLES20.glGetAttribLocation(program,"aPos");uv=GLES20.glGetAttribLocation(program,"aUv");light=GLES20.glGetAttribLocation(program,"aLight");mvp=GLES20.glGetUniformLocation(program,"uM");camera=GLES20.glGetUniformLocation(program,"uCamera");fog=GLES20.glGetUniformLocation(program,"uFog");ambient=GLES20.glGetUniformLocation(program,"uAmbient");lamps=GLES20.glGetUniformLocation(program,"uLamps[0]");
+        pos=GLES20.glGetAttribLocation(program,"aPos");uv=GLES20.glGetAttribLocation(program,"aUv");light=GLES20.glGetAttribLocation(program,"aLight");mvp=GLES20.glGetUniformLocation(program,"uM");camera=GLES20.glGetUniformLocation(program,"uCamera");fog=GLES20.glGetUniformLocation(program,"uFog");ambient=GLES20.glGetUniformLocation(program,"uAmbient");lamps=GLES20.glGetUniformLocation(program,"uLamps[0]");sampler=GLES20.glGetUniformLocation(program,"uTex");
         ensureMeshes(view.world,true);int[] ids=new int[1];
         GLES20.glGenTextures(1,ids,0);texture=ids[0];GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,texture);
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_NEAREST);GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MAG_FILTER,GLES20.GL_NEAREST);
@@ -41,7 +46,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
         GLES20.glEnable(GLES20.GL_DEPTH_TEST);GLES20.glEnable(GLES20.GL_CULL_FACE);GLES20.glCullFace(GLES20.GL_BACK);GLES20.glFrontFace(GLES20.GL_CCW);
         last=System.nanoTime();
     }
-    @Override public void onSurfaceChanged(GL10 gl,int w,int h){width=w;height=h;GLES20.glViewport(0,0,w,h);Matrix.perspectiveM(projection,0,72,(float)w/h,.08f,70);}
+    @Override public void onSurfaceChanged(GL10 gl,int w,int h){width=w;height=h;viewport[2]=w;viewport[3]=h;GLES20.glViewport(0,0,w,h);Matrix.perspectiveM(projection,0,72,(float)w/h,.08f,70);}
     void ensureMeshes(World target,boolean newContext){
         int cols=(target==null?World.W:target.width)/16,rows=(target==null?World.D:target.depth)/16;
         if(!newContext&&cols==meshCols&&rows==meshRows)return;
@@ -71,23 +76,28 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             long changed=world.online?0:world.nature.takeDirtyChunks();for(int i=0;i<meshes.length&&i<64;i++)if((changed&(1L<<i))!=0)meshes[i].dirty=true;
             float daylight=world.story&&!world.online?world.survival.daylight():1;float skyR=.025f+.505f*daylight*daylight,skyG=.035f+.725f*daylight*daylight,skyB=.09f+.77f*daylight*daylight;GLES20.glClearColor(skyR,skyG,skyB,1);GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT|GLES20.GL_DEPTH_BUFFER_BIT);
             float dx=-(float)Math.sin(world.yaw)*(float)Math.cos(world.pitch),dy=(float)Math.sin(world.pitch),dz=-(float)Math.cos(world.yaw)*(float)Math.cos(world.pitch);
-            Matrix.setLookAtM(look,0,world.x,world.y,world.z,world.x+dx,world.y+dy,world.z+dz,0,1,0);Matrix.multiplyMM(matrix,0,projection,0,look,0);
+            Matrix.setLookAtM(look,0,world.x,world.y,world.z,world.x+dx,world.y+dy,world.z+dz,0,1,0);Matrix.multiplyMM(matrix,0,projection,0,look,0);frustum.update(matrix);
             GLES20.glUseProgram(program);GLES20.glUniformMatrix4fv(mvp,1,false,matrix,0);GLES20.glUniform3f(camera,world.x,world.y,world.z);GLES20.glUniform3f(fog,skyR,skyG,skyB);GLES20.glUniform1f(ambient,daylight);lampTimer-=dt;if(lampTimer<=0){findLamps();lampTimer=.5f;}GLES20.glUniform4fv(lamps,8,lampData,0);
-            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,texture);GLES20.glUniform1i(GLES20.glGetUniformLocation(program,"uTex"),0);
+            GLES20.glActiveTexture(GLES20.GL_TEXTURE0);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,texture);GLES20.glUniform1i(sampler,0);
             GLES20.glEnableVertexAttribArray(pos);GLES20.glEnableVertexAttribArray(uv);GLES20.glEnableVertexAttribArray(light);
+            int drawn=0,culled=0;
             for(int i=0;i<meshes.length;i++){Mesh m=meshes[i];int cx=i%meshCols,cz=i/meshCols;float dxChunk=cx*16+8-world.x,dzChunk=cz*16+8-world.z;
                 OnlineSession online=view.activity.online==null?null:view.activity.online.session;
                 if(dxChunk*dxChunk+dzChunk*dzChunk>72*72||world.online&&(online==null||!online.canMove(cx*16+8,cz*16+8))){if(world.online&&m.count>0){GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,m.buffer);GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,0,null,GLES20.GL_STATIC_DRAW);m.count=0;m.dirty=true;}continue;}
                 if(m.dirty)mesh(cx,cz,m);
+                // Retain the existing prewarming order, including off-camera
+                // meshes, so turning never creates a new rebuild backlog.
+                if(!frustum.intersects(cx*16,0,cz*16,cx*16+16,World.H,cz*16+16)){culled++;continue;}
+                drawn++;
                 GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,m.buffer);GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,0);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,24,12);GLES20.glVertexAttribPointer(light,1,GLES20.GL_FLOAT,false,24,20);GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,m.count);
             }
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,0);
             drawMobs();view.target=world.ray(6);if(world.survival.aimed(world)==null)outline(view.target);view.hud.postInvalidate();
-            if(sample)metrics.frame(System.nanoTime()-now,interval);
+            if(sample)metrics.frame(System.nanoTime()-now,interval,drawn,culled);
         }
     }
     void findLamps(){
-        java.util.Arrays.fill(lampData,0);float[] distances=new float[8];java.util.Arrays.fill(distances,Float.MAX_VALUE);
+        java.util.Arrays.fill(lampData,0);float[] distances=lampDistances;java.util.Arrays.fill(distances,Float.MAX_VALUE);
         int cx=(int)world.x,cy=(int)world.y,cz=(int)world.z;
         for(int x=cx-8;x<=cx+8;x++)for(int z=cz-8;z<=cz+8;z++)for(int y=cy-6;y<=cy+5;y++){
             int b=world.get(x,y,z);float heat=world.forge.heat(x,y,z);if(b!=11&&b!=15&&b!=16&&heat<=0)continue;float d=(x+.5f-world.x)*(x+.5f-world.x)+(y+.5f-world.y)*(y+.5f-world.y)+(z+.5f-world.z)*(z+.5f-world.z);
@@ -110,11 +120,14 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             creatures.add(cx+xx*cos+zz*sin,feet+oy+f[corner*3+1]*sy,cz-xx*sin+zz*cos,u,v,SHADE[face]);
         }
     }
+    final java.util.Set<String> seenAvatars=new java.util.HashSet<>();
     void drawPlayers(){
         OnlineSession online=view.activity.online==null?null:view.activity.online.session;
         if(!world.online||online==null){playerLabels=java.util.Collections.emptyList();avatarPositions.clear();return;}
-        java.util.List<PlayerLabel> labels=new java.util.ArrayList<>();java.util.Set<String> seen=new java.util.HashSet<>();
-        for(OnlineSession.Player player:online.players){
+        java.util.List<OnlineSession.Player> players=online.players;
+        if(players.isEmpty()||players.size()==1&&players.get(0).uid.equals(online.firebase.uid)){playerLabels=java.util.Collections.emptyList();avatarPositions.clear();return;}
+        java.util.List<PlayerLabel> labels=new java.util.ArrayList<>();java.util.Set<String> seen=seenAvatars;seen.clear();
+        for(OnlineSession.Player player:players){
             if(player.uid.equals(online.firebase.uid)||!online.readyRegions.contains(player.sector))continue;
             float targetX=player.sector%online.side*World.W+player.x,targetZ=player.sector/online.side*World.D+player.z;
             if((targetX-world.x)*(targetX-world.x)+(targetZ-world.z)*(targetZ-world.z)>65*65)continue;seen.add(player.uid);
@@ -125,7 +138,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             actorPart(x,feet,z,yaw,-.25f,.65f,-.15f,.5f,.55f,.3f,shirt);actorPart(x,feet,z,yaw,-.22f,1.2f,-.22f,.44f,.44f,.44f,25);
             actorPart(x,feet,z,yaw,-.24f,0,-.14f+swing,.19f,.65f,.28f,26);actorPart(x,feet,z,yaw,.05f,0,-.14f-swing,.19f,.65f,.28f,26);
             actorPart(x,feet,z,yaw,-.4f,.6f,-.13f-swing,.15f,.6f,.26f,-25);actorPart(x,feet,z,yaw,.25f,.6f,-.13f+swing,.15f,.6f,.26f,-25);
-            float[] screen=new float[4];if(GLU.gluProject(x,feet+1.85f,z,look,0,projection,0,new int[]{0,0,width,height},0,screen,0)==1&&screen[2]>0&&screen[2]<1&&world.clearLine(world.x,world.y,world.z,x,feet+1.6f,z))labels.add(new PlayerLabel(player.name,screen[0],height-screen[1]));
+            float[] screen=playerScreen;if(GLU.gluProject(x,feet+1.85f,z,look,0,projection,0,viewport,0,screen,0)==1&&screen[2]>0&&screen[2]<1&&world.clearLine(world.x,world.y,world.z,x,feet+1.6f,z))labels.add(new PlayerLabel(player.name,screen[0],height-screen[1]));
         }
         avatarPositions.keySet().retainAll(seen);playerLabels=java.util.Collections.unmodifiableList(labels);
     }
@@ -154,8 +167,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
     void outline(int[] hit){
         if(hit==null)return;
         outlineBuffer.clear();
-        int[][] edges={{0,1},{1,3},{3,2},{2,0},{4,5},{5,7},{7,6},{6,4},{0,4},{1,5},{2,6},{3,7}};
-        for(int[] edge:edges)for(int vertex:edge){
+        for(int[] edge:EDGES)for(int vertex:edge){
             outlineBuffer.put(hit[0]+((vertex&1)==0?-.004f:1.004f));
             outlineBuffer.put(hit[1]+((vertex&2)==0?-.004f:1.004f));
             outlineBuffer.put(hit[2]+((vertex&4)==0?-.004f:1.004f));
