@@ -209,20 +209,36 @@ public final class SmokeInstrumentation extends Instrumentation {
  }
  static final class SyncBackend implements FirebaseRest.ConnectionFactory {
   int attempts,stateReads,blockQueries,inventoryReads,writes,unexpected,status=200;long revision;
-  String inventory="";
+  String inventory="";int documentWrites,mergedPositions,nextCommitStatus=200;
+  final java.util.List<org.json.JSONObject> commits=new java.util.ArrayList<>();
   @Override public java.net.HttpURLConnection open(java.net.URL url){
    attempts++;
    return new java.net.HttpURLConnection(url){
+    final java.io.ByteArrayOutputStream body=new java.io.ByteArrayOutputStream();
     @Override public void connect(){}
     @Override public void disconnect(){}
     @Override public boolean usingProxy(){return false;}
-    @Override public int getResponseCode(){return status;}
-    @Override public java.io.OutputStream getOutputStream(){writes++;return new java.io.ByteArrayOutputStream();}
+    @Override public int getResponseCode(){if(url.getPath().endsWith(":commit")&&nextCommitStatus!=200){int code=nextCommitStatus;nextCommitStatus=200;return code;}return status;}
+    @Override public java.io.OutputStream getOutputStream(){writes++;return body;}
     @Override public java.io.InputStream getErrorStream(){return new java.io.ByteArrayInputStream("{\"error\":{\"status\":\"RESOURCE_EXHAUSTED\",\"message\":\"Read quota exceeded\"}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));}
     @Override public java.io.InputStream getInputStream()throws IOException{
      String path=url.getPath(),response;
      if(path.endsWith("/sync/state")){stateReads++;response="{\"fields\":{\"regions\":{\"mapValue\":{\"fields\":{\"s0\":{\"mapValue\":{\"fields\":{\"revision\":{\"integerValue\":\""+revision+"\"}}}}}}},\"players\":{\"mapValue\":{\"fields\":{}}}}}";}
      else if(path.endsWith(":runQuery")){blockQueries++;response="[{\"document\":{\"name\":\"fixture/blocks/10_30_10\",\"updateTime\":\"2026-10-31T12:00:00Z\",\"fields\":{\"x\":{\"integerValue\":\"10\"},\"y\":{\"integerValue\":\"30\"},\"z\":{\"integerValue\":\"10\"},\"type\":{\"integerValue\":\"7\"},\"updatedAt\":{\"timestampValue\":\"2026-10-31T12:00:00Z\"}}}}]";}
+     else if(path.endsWith(":commit")){
+      try{
+       org.json.JSONObject request=new org.json.JSONObject(body.toString("UTF-8"));commits.add(request);
+       org.json.JSONArray changes=request.getJSONArray("writes"),results=new org.json.JSONArray();documentWrites+=changes.length();
+       String time=java.time.Instant.now().toString();
+       for(int i=0;i<changes.length();i++){
+        org.json.JSONObject write=changes.getJSONObject(i);results.put(new org.json.JSONObject().put("updateTime",time));
+        org.json.JSONArray transforms=write.optJSONArray("updateTransforms");boolean position=false,signal=false;
+        if(transforms!=null)for(int j=0;j<transforms.length();j++){String field=transforms.getJSONObject(j).getString("fieldPath");if(field.endsWith(".revision")){revision++;signal=true;}if(field.startsWith("players."))position=true;}
+        if(position&&signal)mergedPositions++;
+       }
+       response=new org.json.JSONObject().put("writeResults",results).put("commitTime",time).toString();
+      }catch(org.json.JSONException e){throw new IOException(e);}
+     }
      else if(path.endsWith("/inventory/main")){inventoryReads++;response=inventory;}
      else{unexpected++;throw new IOException("Unexpected fixture request");}
      return new java.io.ByteArrayInputStream(response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -247,6 +263,37 @@ public final class SmokeInstrumentation extends Instrumentation {
    backend.status=429;session.poll();long until=session.nextAttempt;int requests=backend.attempts;for(int i=0;i<10;i++)session.poll();
    check(!session.healthy&&until-System.currentTimeMillis()>55000&&backend.attempts==requests,"actual HTTP 429 pauses building and prevents immediate repeated network requests");
    backend.status=200;session.nextAttempt=0;session.poll();check(session.healthy&&session.failures==0,"successful reconnect restores the session");
+  }finally{session.close();}
+ }
+ void testActiveSyncBudget(MainActivity activity,GameView game)throws Exception{
+  SyncBackend backend=new SyncBackend();FirebaseRest rest=new FirebaseRest(activity,backend);rest.uid="fixture-parent";rest.token="fixture-token";rest.expires=System.currentTimeMillis()+3600000;
+  OnlineSession session=new OnlineSession(activity,rest,new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId()),"Test",new OnlineSession.Listener(){public void loaded(World w,String n){}public void problem(String text,boolean fatal){}});
+  try{
+   session.world=World.onlineSpace(123,2);session.side=2;session.px=48.5f;session.py=35;session.pz=48.5f;session.loading=false;session.healthy=true;session.inventory.chapter=7;session.inventoryVersion="2026-10-31T12:00:00Z";
+   for(int id=0;id<4;id++){OnlineSession.Region region=new OnlineSession.Region(id);region.generated=true;region.revision=0;session.regions.put(id,region);}
+   // 180 moving cycles, two edits per cycle. Force only the first heartbeat due;
+   // block actions themselves still execute immediately, with no batching timer.
+   for(int cycle=0;cycle<180;cycle++){
+    session.lastHeartbeat=0;
+    for(int edit=0;edit<2;edit++){
+     final int x=10+cycle%60,z=10+(cycle/60)*2+edit;
+     onGl(game,()->session.world.set(x,30,z,7));session.edit(x,30,z,0);
+     session.worker.submit(()->{}).get(10,TimeUnit.SECONDS);onGl(game,()->{});
+    }
+    session.poll();
+   }
+   int oldDocumentWrites=180*(2*3+1),oldBlockQueries=180;
+   check(backend.documentWrites==1080&&backend.mergedPositions==180,"actual active-session writes merge all 180 due positions into edit commits");
+   check((oldDocumentWrites-backend.documentWrites)*100/oldDocumentWrites>=14,"two edits per moving cycle save at least fourteen percent of document writes compared with 0.8.2");
+   check(backend.blockQueries==0&&oldBlockQueries==180&&backend.inventoryReads==0,"confirmed own edits do not trigger block queries or inventory reloads");
+   check(session.inventory.inventory[7]==360,"every individual successful edit receives its material without a batching delay");
+   backend.revision++;session.poll();onGl(game,()->{});
+   check(backend.blockQueries==1&&session.world.get(10,30,10)==7,"peer edit after an own-only interval is downloaded in the next unchanged five-second poll");
+   // An unknown commit must not count as a confirmed local revision or heartbeat.
+   long own=session.regions.get(0).ownChanges;session.lastHeartbeat=0;long last=session.lastHeartbeat;
+   backend.status=503;session.edit(10,30,10,0);session.worker.submit(()->{}).get(10,TimeUnit.SECONDS);
+   check(session.regions.get(0).ownChanges==own&&session.lastHeartbeat==last&&session.inventoryUncertain,"failed/ambiguous commits never suppress heartbeat or peer reconciliation");
+   System.out.println("ACTIVE SYNC BUDGET: writes "+oldDocumentWrites+" -> "+backend.documentWrites+"; own-only block queries "+oldBlockQueries+" -> 0");
   }finally{session.close();}
  }
  void testOnlineStreaming(MainActivity activity,GameView game)throws Exception{
@@ -534,6 +581,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   testWorldLibrary(activity,game);
   testRecentOnlineRemoval(activity);
   testSyncRequests(activity,game);
+  testActiveSyncBudget(activity,game);
   testOnlineStreaming(activity,game);
   testHomeAndDeletion(activity,game);
   android.graphics.Bitmap portrait=smallScreenshot();if(portrait!=null){emitScreenshot(portrait,"landscapeScreenshot");portrait.recycle();}

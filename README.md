@@ -2,9 +2,9 @@
 
 Eigenständiges Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Offline ohne Anmeldung, Werbung oder Käufe. Optional gemeinsam online bauen: Firebase speichert dafür eine anonyme Geräte-ID, Weltänderungen und Mitspielerpositionen.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.8.2
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.8.3
 
-## Gemeinsam bauen · 0.8.2
+## Gemeinsam bauen · 0.8.3
 
 **Gemeinsam bauen** öffnet Online-Bauwelten mit 192 × 192 oder 288 × 288 Blöcken.
 Die zusammenhängende Welt lädt beim Weiterlaufen die Umgebung nach. Ihr startet zu
@@ -17,13 +17,15 @@ Schneekappen, Wälder, Seen und geschwungene Flüsse statt unabhängig erzeugter
 Auch Bäume und Rohstoffe setzen sich über Ladegrenzen hinweg fort. Ersteller können
 ihre Online-Welten nach Bestätigung vollständig löschen.
 
-**0.8.2 reduziert Firebase-Zugriffe:** Eine gemeinsame Übersicht ersetzt die einzelnen
-Mitgliedschafts-, Inventar-, Spieler- und unveränderten Blockabfragen. Die Online-Diagnose
-zeigt Zugriffe und konkrete Serverfehler als kopierbaren Bericht. Veraltete Welteinträge
-lassen sich auf jedem Gerät mit **Aus Liste entfernen** bereinigen.
+**0.8.3 spart weitere Zugriffe beim Bauen:** Fällige Positionsmeldungen werden in
+bereits nötige Block-Commits integriert. Bereiche werden nach ausschließlich eigenen,
+bestätigten Änderungen nicht erneut abgefragt. Fremde Änderungen laden weiterhin im
+Fünf-Sekunden-Takt; Bauaktionen werden sofort gespeichert. Die Diagnose zeigt beide
+Einsparungen als eigene Zähler.
 
-**Zuerst die neuen Firestore-Regeln veröffentlichen, dann alle Geräte aktualisieren.**
-Bestehende 0.8.1-Welten öffnet der Besitzer zuerst; Bauten und Inventare bleiben erhalten.
+**Zuerst die neuen Firestore-Regeln veröffentlichen.** Vorhandene 0.8.2-Welten und
+Inventare bleiben ohne Umstellung erhalten; die Regeln unterstützen auch 0.8.2 weiter.
+Welten aus 0.8.1 öffnet weiterhin der Besitzer zuerst.
 [Einrichtung und Update](docs/ONLINE.md).
 
 ## Hauptmenü und Weltenverwaltung · 0.6.0
