@@ -22,7 +22,7 @@ final class OnlineSession implements AutoCloseable {
     volatile int sector,side;
     volatile World world;
     volatile String owner="",name="";
-    long seed,lastHeartbeat,nextAttempt;int failures;
+    long seed,lastHeartbeat,nextAttempt;volatile long actionStarted;int failures;
     static final class Region {
         final int id;String watermark="";boolean generated;long revision=-1,ownChanges;
         final Map<String,String> versions=new HashMap<>();final Map<String,Integer> types=new HashMap<>();final Map<String,Boolean> renewable=new HashMap<>();
@@ -242,8 +242,9 @@ final class OnlineSession implements AutoCloseable {
         if(doc==null)throw new IOException("Online-Inventar konnte nicht geladen werden.");
         String version=doc.getString("updateTime");if(!version.equals(inventoryVersion)){inventory=decodeInventory(doc.getJSONObject("fields"));inventoryVersion=version;if(world!=null)applyInventory(inventory);}
     }
-    void applyInventory(Story state){
-        Story snapshot=OnlineInventory.copy(state);activity.game.gl.queueEvent(()->{World current=world;if(!closed&&current!=null){synchronized(current){OnlineInventory.apply(current.progress,snapshot);}}});
+    void applyInventory(Story state){applyInventory(state,0);}
+    void applyInventory(Story state,long started){
+        Story snapshot=OnlineInventory.copy(state);activity.game.gl.queueEvent(()->{World current=world;if(!closed&&current!=null){synchronized(current){OnlineInventory.apply(current.progress,snapshot);}if(started!=0)FirebaseRest.DIAGNOSTICS.actionCompleted(System.nanoTime()-started);}});
     }
     void mutationFailed(Exception error){
         healthy=false;inventoryUncertain=true;
@@ -252,10 +253,11 @@ final class OnlineSession implements AutoCloseable {
     }
     boolean beginAction(){
         if(closed)return false;if(!healthy||loading||!foreground){activity.game.message("Verbindung wird hergestellt …");return false;}
-        if(pending){activity.game.message("Aktion wird gespeichert …");return false;}pending=true;return true;
+        if(pending){activity.game.message("Aktion wird gespeichert …");return false;}pending=true;actionStarted=System.nanoTime();return true;
     }
     void edit(int x,int y,int z,int type){
         World target=world;if(target==null||!target.contains(x,y,z)||y==0||type<0||type>=World.NAMES.length||!beginAction())return;
+        final long started=actionStarted;
         int region=OnlineWorld.sectorAt(x,z,side);final int expected=target.get(x,y,z),lx=x-region%side*World.W,lz=z-region/side*World.D;
         worker.execute(()->{try{
             Region data=regions.get(region);if(data==null||!data.generated)return;String id=lx+"_"+y+"_"+lz,path=base()+"/sectors/"+region+"/blocks/"+id;
@@ -273,7 +275,7 @@ final class OnlineSession implements AutoCloseable {
                 inventory=next;inventoryVersion=result.getJSONArray("writeResults").getJSONObject(1).getString("updateTime");
                 data.ownChanges++;
                 if(presence!=null){presenceConfirmed(presence);FirebaseRest.DIAGNOSTICS.positionMerged();}
-                apply(target,region,lx,y,lz,actual,false);applyInventory(next);
+                apply(target,region,lx,y,lz,actual,false);applyInventory(next,started);
             }catch(FirebaseRest.Failure e){
                 if(e.status!=409&&e.status!=400&&e.status!=412)throw e;
                 JSONObject current=firebase.get(path);if(current!=null){data.versions.put(id,current.getString("updateTime"));int changed=FirebaseRest.integer(current.getJSONObject("fields"),"type");data.types.put(id,changed);data.renewable.put(id,current.getJSONObject("fields").optJSONObject("renewable")!=null&&current.getJSONObject("fields").getJSONObject("renewable").optBoolean("booleanValue",false));apply(target,region,lx,y,lz,changed,false);}
@@ -282,13 +284,13 @@ final class OnlineSession implements AutoCloseable {
         }catch(Exception e){mutationFailed(e);}finally{pending=false;}});
     }
     void progressAction(int recipe){
-        if(!beginAction())return;
+        if(!beginAction())return;final long started=actionStarted;
         worker.execute(()->{try{
             Story next=OnlineInventory.copy(inventory);String message;
             if(recipe<0){boolean claimed=next.claim();message=claimed?"Werkzeug / Auftrag freigeschaltet":next.goal();}
             else message=next.craft(recipe);
             if(!OnlineInventory.same(next,inventory)){
-                try{JSONObject result=firebase.commit(new JSONArray().put(inventoryUpdate(next,"")));inventory=next;inventoryVersion=result.getJSONArray("writeResults").getJSONObject(0).getString("updateTime");applyInventory(next);}
+                try{JSONObject result=firebase.commit(new JSONArray().put(inventoryUpdate(next,"")));inventory=next;inventoryVersion=result.getJSONArray("writeResults").getJSONObject(0).getString("updateTime");applyInventory(next,started);}
                 catch(FirebaseRest.Failure e){if(e.status!=409&&e.status!=400&&e.status!=412)throw e;loadInventory(false);message="Dein Vorrat wurde inzwischen geändert. Bitte erneut versuchen.";}
             }
             final String notice=message;activity.runOnUiThread(()->{if(!closed){activity.toast(notice);activity.online.refreshWorkbench();}});

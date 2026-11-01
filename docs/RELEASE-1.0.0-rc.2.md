@@ -17,7 +17,9 @@ Weiterer Testkandidat auf PR #20. Bleibt ohne Merge und ohne öffentliches App-R
   Ein GPU-Pixelvergleich gegen den alten Shader prüft Tag, Dämmerung, Nacht, Nebel und
   normale bzw. selbstleuchtende Flächen im Android-Test.
 - Häufige Hilfsarrays, Shader-Samplerposition und leere Mitspielerlisten werden wiederverwendet.
-- Diagnose ergänzt p99 der Frame-/CPU-Zeiten und gezählte ausgelassene Gelände-Zeichnungen.
+- Diagnose ergänzt p99 und Maxima der Frame-/CPU-Zeiten, gezählte ausgelassene Gelände-Zeichnungen
+  sowie die Dauer angenommener Aktionen bis zur bestätigten Übernahme im Renderthread
+  (einschließlich Worker-Wartezeit und Netzwerk, ohne GPU-Ausführung).
 - Nach grüner PR-CI wird für diesen eigenen Entwicklungsbranch eine APK mit der bestehenden
   Update-Signatur als `meiCraft-test-apk` bereitgestellt. Kein Merge oder Release dafür nötig.
 
