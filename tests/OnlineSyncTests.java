@@ -31,9 +31,10 @@ public final class OnlineSyncTests {
         String clean=OnlineDiagnostics.clean("Firestore firestore.googleapis.com document/read_count key="+key+" Bearer "+jwt+" refresh_token="+refresh+" uid="+"a".repeat(32),key,refresh);
         check(!clean.contains(key)&&!clean.contains(jwt)&&!clean.contains(refresh)&&!clean.contains("a".repeat(32)),"Tokens, API keys, refresh tokens and invitation IDs are redacted");
         check(clean.contains("firestore.googleapis.com")&&clean.contains("document/read_count"),"Useful quota metric and service remain readable");
-        OnlineDiagnostics diagnostics=new OnlineDiagnostics();diagnostics.request("Blockänderungen lesen");diagnostics.read(3);diagnostics.committed(2,0);
+        OnlineDiagnostics diagnostics=new OnlineDiagnostics();diagnostics.request("Blockänderungen lesen");diagnostics.read(3);diagnostics.committed(2,0);diagnostics.actionCompleted(1000000);diagnostics.actionCompleted(3000000);
         for(int i=0;i<20;i++)diagnostics.failed("HTTP 429 test-"+i);
         String report=diagnostics.report();check(report.contains("HTTP-Anfragen: 1")&&report.contains("Empfangene Dokumente: 3")&&report.contains("Schreibvorgänge: 2"),"Report distinguishes requests, actual documents and writes");
+        check(report.contains("Bestätigte Aktionen mit Render-Übernahme: 2")&&report.contains("1,00 / 3,00 / 3,00 ms"),"Action timings include bounded quantiles and distinguish confirmed visible state from network requests");
         check(!report.contains("test-7\n")&&report.contains("test-8\n")&&report.contains("test-19\n"),"Error history is bounded to the latest twelve entries");
         check(OnlineDiagnostics.clean("x".repeat(3000)).length()<1250,"Server errors have bounded storage");
         System.out.println("PASS: "+checks+" sync request-budget, quota backoff and diagnostic privacy assertions");

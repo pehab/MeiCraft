@@ -57,6 +57,21 @@ final class FirebaseRest {
     JSONObject get(String path)throws IOException,JSONException{
         authenticate();try{JSONObject result=new JSONObject(request(root+"/"+path,"GET",null,true,false));DIAGNOSTICS.read(1);return result;}catch(Failure e){if(e.status==404)return null;throw e;}
     }
+    static final class Snapshot {
+        final JSONObject document;final String readTime;
+        Snapshot(JSONObject document,String readTime){this.document=document;this.readTime=readTime;}
+    }
+    /** One overview document, with a server snapshot shared by every delta-query page. */
+    Snapshot snapshot(String path)throws IOException,JSONException{
+        authenticate();
+        JSONArray response=new JSONArray(request(root+":batchGet","POST",new JSONObject().put("documents",new JSONArray().put(documentName(path))).toString(),true,false));
+        for(int i=0;i<response.length();i++){
+            JSONObject row=response.getJSONObject(i);
+            if(row.has("found")){DIAGNOSTICS.read(1);return new Snapshot(row.getJSONObject("found"),row.getString("readTime"));}
+            if(row.has("missing"))return new Snapshot(null,row.getString("readTime"));
+        }
+        throw new IOException("Unvollständiger Synchronisierungs-Snapshot.");
+    }
     JSONObject commit(JSONArray writes)throws IOException,JSONException{
         authenticate();JSONObject result=new JSONObject(request(root+":commit","POST",new JSONObject().put("writes",writes).toString(),true,false));
         long removed=0;for(int i=0;i<writes.length();i++)if(writes.getJSONObject(i).has("delete"))removed++;
@@ -96,6 +111,7 @@ final class FirebaseRest {
         if(url.contains("identitytoolkit.googleapis.com"))return "Anmeldung anlegen";
         if(url.contains("securetoken.googleapis.com"))return "Anmeldung erneuern";
         if(url.contains(":commit"))return "Änderungen speichern";
+        if(url.contains(":batchGet"))return "Änderungsübersicht lesen";
         if(url.contains("/sync/state"))return "Änderungsübersicht lesen";
         if(url.contains(":runQuery"))return "Blockänderungen lesen";
         if(url.contains("/inventory/"))return "Inventar lesen";
@@ -116,7 +132,7 @@ final class FirebaseRest {
         try{
             connection.setConnectTimeout(8000);connection.setReadTimeout(10000);connection.setInstanceFollowRedirects(false);connection.setRequestMethod(method);
             if(authorized)connection.setRequestProperty("Authorization","Bearer "+token);
-            if(body!=null){connection.setDoOutput(true);connection.setRequestProperty("Content-Type",form?"application/x-www-form-urlencoded":"application/json; charset=UTF-8");byte[] bytes=body.getBytes(StandardCharsets.UTF_8);connection.setFixedLengthStreamingMode(bytes.length);try(OutputStream output=connection.getOutputStream()){output.write(bytes);}}
+            if(body!=null){connection.setDoOutput(true);connection.setRequestProperty("Content-Type",form?"application/x-www-form-urlencoded":"application/json; charset=UTF-8");byte[] bytes=body.getBytes(StandardCharsets.UTF_8);DIAGNOSTICS.sent(bytes.length);connection.setFixedLengthStreamingMode(bytes.length);try(OutputStream output=connection.getOutputStream()){output.write(bytes);}}
             int status=connection.getResponseCode();
             if(status<200||status>=300){String response="";try(InputStream input=connection.getErrorStream()){if(input!=null)response=new String(read(input),StandardCharsets.UTF_8);}catch(IOException ignored){/* The status remains useful when the error body is unavailable. */}Failure error=failure(status,service,operation,response);if(status==401&&authorized){token="";expires=0;}throw error;}
             try(InputStream input=connection.getInputStream()){byte[] response=read(input);DIAGNOSTICS.received(response.length);return new String(response,StandardCharsets.UTF_8);}

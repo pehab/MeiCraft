@@ -22,13 +22,13 @@ final class OnlineSession implements AutoCloseable {
     volatile int sector,side;
     volatile World world;
     volatile String owner="",name="";
-    long seed,lastHeartbeat,nextAttempt;int failures;
+    long seed,lastHeartbeat,nextAttempt;volatile long actionStarted;int failures;
     static final class Region {
         final int id;String watermark="";boolean generated;long revision=-1,ownChanges;
         final Map<String,String> versions=new HashMap<>();final Map<String,Integer> types=new HashMap<>();final Map<String,Boolean> renewable=new HashMap<>();
         Region(int id){this.id=id;}
     }
-    JSONObject announcedRegions=new JSONObject();
+    JSONObject announcedRegions=new JSONObject();String announcedReadTime="";
     final Map<Integer,Region> regions=new HashMap<>();
     volatile Set<Integer> readyRegions=Collections.emptySet();
     volatile Story inventory=new Story();String inventoryVersion="";boolean inventoryUncertain;
@@ -107,6 +107,11 @@ final class OnlineSession implements AutoCloseable {
             long revision=announcedRegions.has("s"+id)?FirebaseRest.integer(announcedRegions.getJSONObject("s"+id).getJSONObject("mapValue").getJSONObject("fields"),"revision"):0;
             if(!OnlineSyncPolicy.reload(region.generated,region.revision,region.ownChanges,revision)){
                 if(region.ownChanges>0){FirebaseRest.DIAGNOSTICS.ownRegionSkipped();region.revision=revision;region.ownChanges=0;}
+                // The shared snapshot proves that every revision through this
+                // point is already present locally (unchanged or confirmed own).
+                // Keep the exclusive watermark current even without a download,
+                // so a later peer edit cannot replay hours of our own history.
+                region.watermark=announcedReadTime;
                 continue;
             }
             if(!region.generated)streaming=true;
@@ -153,7 +158,8 @@ final class OnlineSession implements AutoCloseable {
             problem(e,e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==403);}
     }
     private void readSync()throws Exception{
-        JSONObject document=firebase.get(syncPath());if(document==null)throw new IOException("Synchronisierung fehlt. Bitte zuerst den Weltbesitzer mit der aktuellen Version verbinden lassen.");
+        FirebaseRest.Snapshot snapshot=firebase.snapshot(syncPath());
+        JSONObject document=snapshot.document;announcedReadTime=snapshot.readTime;if(document==null)throw new IOException("Synchronisierung fehlt. Bitte zuerst den Weltbesitzer mit der aktuellen Version verbinden lassen.");
         JSONObject fields=document.getJSONObject("fields");announcedRegions=fields.getJSONObject("regions").getJSONObject("mapValue").optJSONObject("fields");if(announcedRegions==null)announcedRegions=new JSONObject();
         JSONObject presence=fields.getJSONObject("players").getJSONObject("mapValue").optJSONObject("fields");List<Player> next=new ArrayList<>();
         if(presence!=null){Iterator<String> keys=presence.keys();while(keys.hasNext()){
@@ -166,30 +172,35 @@ final class OnlineSession implements AutoCloseable {
         players=Collections.unmodifiableList(next);
     }
     private void loadChanges(Region region,World tile)throws Exception{
-        String parent=base()+"/sectors/"+region.id;JSONArray cursor=null;String latest=region.watermark,snapshot="";World target=world;
+        String parent=base()+"/sectors/"+region.id;JSONArray cursor=null;String snapshot=announcedReadTime;World target=world;
+        if(snapshot.isEmpty())throw new IOException("Synchronisierungs-Snapshot fehlt.");
         do{
-            JSONObject query=new JSONObject().put("from",new JSONArray().put(new JSONObject().put("collectionId","blocks"))).put("orderBy",new JSONArray().put(order("updatedAt")).put(order("__name__"))).put("limit",200);
-            if(!region.watermark.isEmpty())query.put("where",new JSONObject().put("fieldFilter",new JSONObject().put("field",new JSONObject().put("fieldPath","updatedAt")).put("op","GREATER_THAN_OR_EQUAL").put("value",new JSONObject().put("timestampValue",region.watermark))));
+            JSONObject query=new JSONObject().put("from",new JSONArray().put(new JSONObject().put("collectionId","blocks"))).put("orderBy",new JSONArray().put(order("updatedAt")).put(order("__name__"))).put("limit",200)
+                .put("select",new JSONObject().put("fields",new JSONArray().put(field("x")).put(field("y")).put(field("z")).put(field("type")).put(field("renewable")).put(field("updatedAt"))));
+            if(!region.watermark.isEmpty())query.put("where",new JSONObject().put("fieldFilter",new JSONObject().put("field",new JSONObject().put("fieldPath","updatedAt")).put("op","GREATER_THAN").put("value",new JSONObject().put("timestampValue",region.watermark))));
             if(cursor!=null)query.put("startAt",new JSONObject().put("values",cursor).put("before",false));
             JSONArray result=firebase.query(parent,query,snapshot);int count=0;cursor=null;
-            // Hold a single server snapshot across pages so concurrent updates cannot move
-            // an unseen document behind the cursor or beyond the saved watermark.
-            if(snapshot.isEmpty())for(int i=0;i<result.length();i++){String time=result.getJSONObject(i).optString("readTime","");if(!time.isEmpty()){snapshot=time;break;}}
+            // The overview and all pages share one server snapshot. A completed
+            // snapshot is an exclusive lower bound; no document from its boundary
+            // needs downloading again, even when many commits share a timestamp.
             for(int i=0;i<result.length();i++){JSONObject row=result.getJSONObject(i);if(!row.has("document"))continue;JSONObject doc=row.getJSONObject("document"),d=doc.getJSONObject("fields");
                 int x=FirebaseRest.integer(d,"x"),y=FirebaseRest.integer(d,"y"),z=FirebaseRest.integer(d,"z"),type=FirebaseRest.integer(d,"type");
                 if(!OnlineWorld.validBlock(x,y,z,type))throw new IOException("Ungültiger Online-Block.");
-                String id=x+"_"+y+"_"+z,version=doc.getString("updateTime"),timestamp=d.getJSONObject("updatedAt").getString("timestampValue");
+                String id=x+"_"+y+"_"+z,version=doc.getString("updateTime");
                 region.types.put(id,type);region.renewable.put(id,d.optJSONObject("renewable")!=null&&d.getJSONObject("renewable").optBoolean("booleanValue",false));
                 String previous=region.versions.put(id,version);
                 // A retried initial page must restore every delta into the fresh terrain,
                 // including versions seen before a previous request failed.
                 if(tile!=null)tile.set(x,y,z,type);else if(!version.equals(previous))apply(target,region.id,x,y,z,type,false);
-                latest=timestamp;count++;cursor=new JSONArray().put(d.getJSONObject("updatedAt")).put(new JSONObject().put("referenceValue",doc.getString("name")));
+                count++;cursor=new JSONArray().put(d.getJSONObject("updatedAt")).put(new JSONObject().put("referenceValue",doc.getString("name")));
             }
             if(count<200)cursor=null;
         }while(cursor!=null&&!closed);
-        region.watermark=latest;
+        // Failed/cancelled pagination must keep its previous completed watermark.
+        if(closed)return;
+        region.watermark=snapshot;
     }
+    static JSONObject field(String name)throws JSONException{return new JSONObject().put("fieldPath",name);}
     static JSONObject order(String field)throws JSONException{return new JSONObject().put("field",new JSONObject().put("fieldPath",field)).put("direction","ASCENDING");}
     void apply(World target,int region,int x,int y,int z,int type,boolean initial){
         if(initial){target.set(x,y,z,type);return;}
@@ -200,6 +211,19 @@ final class OnlineSession implements AutoCloseable {
         JSONObject fields=FirebaseRest.fields("chapter",state.chapter,"iron",state.iron,"placed",state.placed,"glassPlaced",state.glassPlaced,"buckets",state.buckets,"sword",state.sword,"lastBlock",lastBlock);
         JSONArray items=new JSONArray();for(int n:state.inventory)items.put(FirebaseRest.value(n));
         fields.put("items",new JSONObject().put("arrayValue",new JSONObject().put("values",items)));return fields;
+    }
+    /** Preserve unmodified fields on the server; the inventory CAS stays unchanged. */
+    JSONObject inventoryUpdate(Story next,String lastBlock)throws JSONException{
+        JSONObject fields=inventoryFields(next,lastBlock);
+        if(Arrays.equals(next.inventory,inventory.inventory))fields.remove("items");
+        if(next.chapter==inventory.chapter)fields.remove("chapter");
+        if(next.iron==inventory.iron)fields.remove("iron");
+        if(next.placed==inventory.placed)fields.remove("placed");
+        if(next.glassPlaced==inventory.glassPlaced)fields.remove("glassPlaced");
+        if(next.buckets==inventory.buckets)fields.remove("buckets");
+        if(next.sword==inventory.sword)fields.remove("sword");
+        List<String> mask=new ArrayList<>();Iterator<String> keys=fields.keys();while(keys.hasNext())mask.add(keys.next());
+        return firebase.write(inventoryPath(),fields,mask.toArray(new String[0]),new JSONObject().put("updateTime",inventoryVersion),true);
     }
     Story decodeInventory(JSONObject d)throws JSONException,IOException{
         Story state=new Story();JSONArray items=d.getJSONObject("items").getJSONObject("arrayValue").getJSONArray("values");
@@ -218,8 +242,9 @@ final class OnlineSession implements AutoCloseable {
         if(doc==null)throw new IOException("Online-Inventar konnte nicht geladen werden.");
         String version=doc.getString("updateTime");if(!version.equals(inventoryVersion)){inventory=decodeInventory(doc.getJSONObject("fields"));inventoryVersion=version;if(world!=null)applyInventory(inventory);}
     }
-    void applyInventory(Story state){
-        Story snapshot=OnlineInventory.copy(state);activity.game.gl.queueEvent(()->{World current=world;if(!closed&&current!=null){synchronized(current){OnlineInventory.apply(current.progress,snapshot);}}});
+    void applyInventory(Story state){applyInventory(state,0);}
+    void applyInventory(Story state,long started){
+        Story snapshot=OnlineInventory.copy(state);activity.game.gl.queueEvent(()->{World current=world;if(!closed&&current!=null){synchronized(current){OnlineInventory.apply(current.progress,snapshot);}if(started!=0)FirebaseRest.DIAGNOSTICS.actionCompleted(System.nanoTime()-started);}});
     }
     void mutationFailed(Exception error){
         healthy=false;inventoryUncertain=true;
@@ -228,10 +253,11 @@ final class OnlineSession implements AutoCloseable {
     }
     boolean beginAction(){
         if(closed)return false;if(!healthy||loading||!foreground){activity.game.message("Verbindung wird hergestellt …");return false;}
-        if(pending){activity.game.message("Aktion wird gespeichert …");return false;}pending=true;return true;
+        if(pending){activity.game.message("Aktion wird gespeichert …");return false;}pending=true;actionStarted=System.nanoTime();return true;
     }
     void edit(int x,int y,int z,int type){
         World target=world;if(target==null||!target.contains(x,y,z)||y==0||type<0||type>=World.NAMES.length||!beginAction())return;
+        final long started=actionStarted;
         int region=OnlineWorld.sectorAt(x,z,side);final int expected=target.get(x,y,z),lx=x-region%side*World.W,lz=z-region/side*World.D;
         worker.execute(()->{try{
             Region data=regions.get(region);if(data==null||!data.generated)return;String id=lx+"_"+y+"_"+lz,path=base()+"/sectors/"+region+"/blocks/"+id;
@@ -243,13 +269,13 @@ final class OnlineSession implements AutoCloseable {
             JSONObject condition=data.versions.containsKey(id)?new JSONObject().put("updateTime",data.versions.get(id)):new JSONObject().put("exists",false);
             JSONObject fields=FirebaseRest.fields("x",lx,"y",y,"z",lz,"type",actual,"by",firebase.uid,"renewable",renewable);
             Presence presence=duePresence();
-            JSONArray writes=new JSONArray().put(firebase.write(path,fields,null,condition,true)).put(firebase.write(inventoryPath(),inventoryFields(next,region+"/"+id),null,new JSONObject().put("updateTime",inventoryVersion),true)).put(revisionWrite(region,presence));
+            JSONArray writes=new JSONArray().put(firebase.write(path,fields,null,condition,true)).put(inventoryUpdate(next,region+"/"+id)).put(revisionWrite(region,presence));
             try{
                 JSONObject result=firebase.commit(writes);data.versions.put(id,result.getJSONArray("writeResults").getJSONObject(0).getString("updateTime"));data.types.put(id,actual);data.renewable.put(id,renewable);
                 inventory=next;inventoryVersion=result.getJSONArray("writeResults").getJSONObject(1).getString("updateTime");
                 data.ownChanges++;
                 if(presence!=null){presenceConfirmed(presence);FirebaseRest.DIAGNOSTICS.positionMerged();}
-                apply(target,region,lx,y,lz,actual,false);applyInventory(next);
+                apply(target,region,lx,y,lz,actual,false);applyInventory(next,started);
             }catch(FirebaseRest.Failure e){
                 if(e.status!=409&&e.status!=400&&e.status!=412)throw e;
                 JSONObject current=firebase.get(path);if(current!=null){data.versions.put(id,current.getString("updateTime"));int changed=FirebaseRest.integer(current.getJSONObject("fields"),"type");data.types.put(id,changed);data.renewable.put(id,current.getJSONObject("fields").optJSONObject("renewable")!=null&&current.getJSONObject("fields").getJSONObject("renewable").optBoolean("booleanValue",false));apply(target,region,lx,y,lz,changed,false);}
@@ -258,13 +284,13 @@ final class OnlineSession implements AutoCloseable {
         }catch(Exception e){mutationFailed(e);}finally{pending=false;}});
     }
     void progressAction(int recipe){
-        if(!beginAction())return;
+        if(!beginAction())return;final long started=actionStarted;
         worker.execute(()->{try{
             Story next=OnlineInventory.copy(inventory);String message;
             if(recipe<0){boolean claimed=next.claim();message=claimed?"Werkzeug / Auftrag freigeschaltet":next.goal();}
             else message=next.craft(recipe);
             if(!OnlineInventory.same(next,inventory)){
-                try{JSONObject result=firebase.commit(new JSONArray().put(firebase.write(inventoryPath(),inventoryFields(next,""),null,new JSONObject().put("updateTime",inventoryVersion),true)));inventory=next;inventoryVersion=result.getJSONArray("writeResults").getJSONObject(0).getString("updateTime");applyInventory(next);}
+                try{JSONObject result=firebase.commit(new JSONArray().put(inventoryUpdate(next,"")));inventory=next;inventoryVersion=result.getJSONArray("writeResults").getJSONObject(0).getString("updateTime");applyInventory(next,started);}
                 catch(FirebaseRest.Failure e){if(e.status!=409&&e.status!=400&&e.status!=412)throw e;loadInventory(false);message="Dein Vorrat wurde inzwischen geändert. Bitte erneut versuchen.";}
             }
             final String notice=message;activity.runOnUiThread(()->{if(!closed){activity.toast(notice);activity.online.refreshWorkbench();}});

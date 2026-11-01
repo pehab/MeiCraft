@@ -96,7 +96,7 @@ final class OnlineController {
     }
     void diagnostics(){
         activity.paused=true;activity.game.clearInput();
-        String report="App-Version: "+activity.versionName()+" · Android "+android.os.Build.VERSION.RELEASE+"\n"+FirebaseRest.DIAGNOSTICS.report()+"\nZuletzt gespeicherter Fehler (auch nach Neustart):\n"+activity.getSharedPreferences("online-diagnostics",0).getString("lastError","Keiner.");
+        String report="App-Version: "+activity.versionName()+" · Android "+android.os.Build.VERSION.RELEASE+"\n"+FirebaseRest.DIAGNOSTICS.report()+"\n"+activity.game.renderer.metrics.report()+"\nZuletzt gespeicherter Fehler (auch nach Neustart):\n"+activity.getSharedPreferences("online-diagnostics",0).getString("lastError","Keiner.");
         android.widget.TextView text=new android.widget.TextView(activity);text.setText(report);text.setTextIsSelectable(true);int pad=(int)(20*activity.getResources().getDisplayMetrics().density);text.setPadding(pad,pad,pad,pad);
         android.widget.ScrollView scroll=new android.widget.ScrollView(activity);scroll.addView(text);
         new AlertDialog.Builder(activity).setTitle("Online-Diagnose").setView(scroll).setPositiveButton("Zurück",null)
