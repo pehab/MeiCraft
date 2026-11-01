@@ -9,6 +9,12 @@ public final class OnlineSyncTests {
         check(!OnlineSyncPolicy.reload(true,12,12),"Moving players cannot invalidate an unchanged block area");
         check(OnlineSyncPolicy.reload(true,12,14),"Multiple edits between polls are not missed");
         check(OnlineSyncPolicy.reload(true,0,1),"First edit of an empty area is fetched");
+        check(!OnlineSyncPolicy.reload(true,20,3,23),"Only confirmed own revisions skip the download");
+        check(OnlineSyncPolicy.reload(true,20,3,24),"A single peer revision amongst own commits requires a download");
+        check(OnlineSyncPolicy.reload(true,20,3,22),"An uncertain/stale revision never consumes local confirmations");
+        check(OnlineSyncPolicy.reload(false,20,3,23),"Unloaded areas cannot skip their initial download");
+        check(OnlineSyncPolicy.reload(true,-1,1,0),"Unknown revision cannot be offset by an own commit");
+        check(OnlineSyncPolicy.reload(true,Long.MAX_VALUE,1,Long.MIN_VALUE),"Revision addition cannot wrap around");
         int manifests=0,idleWrites=0,movingWrites=0;long lastIdle=0,lastMoving=0;
         for(long now=100000;now<3700000;now+=OnlineSyncPolicy.POLL_MS){
             manifests++;if(OnlineSyncPolicy.heartbeat(now,lastIdle,false)){idleWrites++;lastIdle=now;}

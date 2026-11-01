@@ -242,3 +242,34 @@ test('paginated REST block queries use one snapshot while another player edits',
   assert.equal(next.status,200,JSON.stringify(next.body));
   assert.equal(next.body.filter(row=>row.document).length,5,'updated first-page block must not move onto the next snapshot page');
 });
+
+function combinedRevisionPresence(uid,sector='0',x=48.5){
+  const position=presenceWrite(uid,x),signal=revisionWrite(sector);
+  return {...position,updateTransforms:[...position.updateTransforms,...signal.updateTransforms]};
+}
+async function harvestWithSignal(uid,x,signal){
+  const inventory=await readRest(uid,invPath(uid)),state=emptyInventory();state.items[2]=1;
+  const block=resourceBlock(uid,0,{exists:false});block.update.name=docName(`${root}/sectors/0/blocks/${x}_3_2`);block.update.fields.x={integerValue:String(x)};
+  return rest(uid,':commit',{writes:[block,inventoryWrite(uid,state,`0/${x}_3_2`,inventory.updateTime),signal]});
+}
+test('one shared write combines an edit signal and own presence; peer positions survive',async()=>{
+  await create(4);await join();await join('sibling');for(const uid of ['child','sibling'])await initInventory(uid);
+  const before=await rest('sibling',':commit',{writes:[presenceWrite('sibling',60)]});assert.equal(before.status,200);
+  const result=await harvestWithSignal('child',1,combinedRevisionPresence('child','0',55));assert.equal(result.status,200,JSON.stringify(result.body));
+  assert.equal(result.body.writeResults.length,3,'block, inventory and combined signal/position remain exactly three document writes');
+  const state=(await getDoc(doc(db('child'),syncPath))).data();assert.equal(state.regions.s0.revision,1);assert.equal(state.players.child.x,55);assert.equal(state.players.sibling.x,60);
+});
+test('combined edit signal refuses foreign, invalid and missing-timestamp positions atomically',async()=>{
+  await create(4);await join();for(const uid of ['child'])await initInventory(uid);
+  for(const signal of [combinedRevisionPresence('parent'),combinedRevisionPresence('child','0',150),(()=>{const w=combinedRevisionPresence('child');w.updateTransforms=w.updateTransforms.filter(t=>!t.fieldPath.startsWith('players.'));return w;})()]){
+    const result=await harvestWithSignal('child',1,signal);assert.ok(result.status>=400,JSON.stringify(result.body));
+    assert.equal((await getDoc(doc(db('child'),blockPath))).exists(),false);
+    assert.equal((await getDoc(doc(db('child'),invPath('child')))).data().items[2],0);
+  }
+});
+test('concurrent combined position and block writes keep both players and all revisions',async()=>{
+  await create(4);await join();await join('sibling');for(const uid of ['child','sibling'])await initInventory(uid);
+  const results=await Promise.all(['child','sibling'].map((uid,i)=>harvestWithSignal(uid,i+1,combinedRevisionPresence(uid,'0',40+i))));
+  for(const result of results)assert.equal(result.status,200,JSON.stringify(result.body));
+  const state=(await getDoc(doc(db('child'),syncPath))).data();assert.equal(state.regions.s0.revision,2);assert.equal(state.players.child.x,40);assert.equal(state.players.sibling.x,41);
+});

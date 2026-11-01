@@ -110,22 +110,22 @@ service cloud.firestore {
         allow list: if false;
       }
       match /sync/{slot} {
-        function presence() {
+        function ownPresence() {
           let data = request.resource.data.players[request.auth.uid];
-          return request.resource.data.regions == resource.data.regions
-            && request.resource.data.players.diff(resource.data.players).affectedKeys().hasOnly([request.auth.uid])
+          return request.resource.data.players.diff(resource.data.players).affectedKeys().hasOnly([request.auth.uid])
             && request.resource.data.players.size() <= 256
             && data.keys().hasAll(['name','sector','x','y','z','yaw','updatedAt'])
             && data.keys().hasOnly(['name','sector','x','y','z','yaw','updatedAt'])
             && name(data.name,24) && position(data,get(worldPath(world)).data.side)
             && data.updatedAt == request.time;
         }
+        function presence() { return request.resource.data.regions == resource.data.regions && ownPresence(); }
         function revision() {
           let inventory = getAfter(/databases/$(database)/documents/onlineWorlds/$(world)/members/$(request.auth.uid)/inventory/main).data;
           let parts = inventory.lastBlock.split('/');
           let key = 's' + parts[0];
           let data = request.resource.data.regions[key];
-          return request.resource.data.players == resource.data.players && parts.size() == 2
+          return (request.resource.data.players == resource.data.players || ownPresence()) && parts.size() == 2
             && parts[0].matches('^[0-8]$') && int(parts[0]) < get(worldPath(world)).data.side * get(worldPath(world)).data.side
             && inventory.updatedAt == request.time
             && getAfter(/databases/$(database)/documents/onlineWorlds/$(world)/sectors/$(parts[0])/blocks/$(parts[1])).data.updatedAt == request.time

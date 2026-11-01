@@ -24,7 +24,7 @@ final class OnlineSession implements AutoCloseable {
     volatile String owner="",name="";
     long seed,lastHeartbeat,nextAttempt;int failures;
     static final class Region {
-        final int id;String watermark="";boolean generated;long revision=-1;
+        final int id;String watermark="";boolean generated;long revision=-1,ownChanges;
         final Map<String,String> versions=new HashMap<>();final Map<String,Integer> types=new HashMap<>();final Map<String,Boolean> renewable=new HashMap<>();
         Region(int id){this.id=id;}
     }
@@ -42,11 +42,13 @@ final class OnlineSession implements AutoCloseable {
     JSONObject emptySync()throws JSONException{return new JSONObject().put("regions",new JSONObject().put("mapValue",new JSONObject().put("fields",new JSONObject()))).put("players",new JSONObject().put("mapValue",new JSONObject().put("fields",new JSONObject())));}
     JSONObject createSync()throws JSONException{return firebase.write(syncPath(),emptySync(),null,new JSONObject().put("exists",false),false);}
     static String quoted(String field){return "`"+field.replace("\\","\\\\").replace("`","\\`")+"`";}
-    JSONObject revisionWrite(int region)throws JSONException{
-        JSONObject write=firebase.write(syncPath(),new JSONObject(),new String[0],new JSONObject().put("exists",true),false);
+    JSONObject revisionWrite(int region,Presence presence)throws JSONException{
+        JSONObject write=presence==null?firebase.write(syncPath(),new JSONObject(),new String[0],new JSONObject().put("exists",true),false):presenceWrite(presence);
         String field="regions.s"+region;
-        write.put("updateTransforms",new JSONArray().put(new JSONObject().put("fieldPath",field+".revision").put("increment",FirebaseRest.value(1)))
-            .put(new JSONObject().put("fieldPath",field+".updatedAt").put("setToServerValue","REQUEST_TIME")));
+        JSONArray transforms=write.optJSONArray("updateTransforms");if(transforms==null)transforms=new JSONArray();
+        transforms.put(new JSONObject().put("fieldPath",field+".revision").put("increment",FirebaseRest.value(1)))
+            .put(new JSONObject().put("fieldPath",field+".updatedAt").put("setToServerValue","REQUEST_TIME"));
+        write.put("updateTransforms",transforms);
         return write;
     }
     void start(boolean create,String worldName,int size){
@@ -103,10 +105,13 @@ final class OnlineSession implements AutoCloseable {
         try{for(int id:OnlineWorld.visibleSectors(px,pz,side,82)){
             if(closed)return;Region region=regions.computeIfAbsent(id,Region::new);
             long revision=announcedRegions.has("s"+id)?FirebaseRest.integer(announcedRegions.getJSONObject("s"+id).getJSONObject("mapValue").getJSONObject("fields"),"revision"):0;
-            if(!OnlineSyncPolicy.reload(region.generated,region.revision,revision))continue;
+            if(!OnlineSyncPolicy.reload(region.generated,region.revision,region.ownChanges,revision)){
+                if(region.ownChanges>0){FirebaseRest.DIAGNOSTICS.ownRegionSkipped();region.revision=revision;region.ownChanges=0;}
+                continue;
+            }
             if(!region.generated)streaming=true;
             World tile=region.generated?null:OnlineTerrain.region(seed,id,side);
-            loadChanges(region,tile);region.revision=revision;
+            loadChanges(region,tile);region.revision=revision;region.ownChanges=0;
             if(tile!=null){
                 region.generated=true;
                 if(initial){OnlineInventory.install(target,tile,id,side);markReady(id);}
@@ -117,16 +122,27 @@ final class OnlineSession implements AutoCloseable {
     void markReady(int id){Set<Integer> next=new HashSet<>(readyRegions);next.add(id);readyRegions=Collections.unmodifiableSet(next);}
     boolean canMove(float x,float z){return readyRegions.contains(OnlineWorld.sectorAt(x,z,side));}
     void position(World w){if(w==world){px=w.x;py=w.y;pz=w.z;angle=w.yaw;sector=OnlineWorld.sectorAt(w.x,w.z,side);}}
-    private void heartbeat()throws Exception{
-        long now=System.currentTimeMillis();boolean moved=Float.isNaN(lastX)||Math.abs(px-lastX)>.35f||Math.abs(py-lastY)>.35f||Math.abs(pz-lastZ)>.35f||Math.abs(angle-lastAngle)>.2f;
-        if(!OnlineSyncPolicy.heartbeat(now,lastHeartbeat,moved))return;
-        float x=px,y=py,z=pz,a=angle;int cell=OnlineWorld.sectorAt(x,z,side);
-        JSONObject player=FirebaseRest.fields("name",playerName,"sector",cell,"x",x-(cell%side)*World.W,"y",y,"z",z-(cell/side)*World.D,"yaw",a);
+    static final class Presence {
+        final float x,y,z,angle;final int cell;final long time;
+        Presence(float x,float y,float z,float angle,int side,long time){this.x=x;this.y=y;this.z=z;this.angle=angle;this.cell=OnlineWorld.sectorAt(x,z,side);this.time=time;}
+    }
+    Presence duePresence(){
+        long now=System.currentTimeMillis();float x=px,y=py,z=pz,a=angle;
+        boolean moved=Float.isNaN(lastX)||Math.abs(x-lastX)>.35f||Math.abs(y-lastY)>.35f||Math.abs(z-lastZ)>.35f||Math.abs(a-lastAngle)>.2f;
+        return OnlineSyncPolicy.heartbeat(now,lastHeartbeat,moved)?new Presence(x,y,z,a,side,now):null;
+    }
+    JSONObject presenceWrite(Presence p)throws JSONException{
+        JSONObject player=FirebaseRest.fields("name",playerName,"sector",p.cell,"x",p.x-(p.cell%side)*World.W,"y",p.y,"z",p.z-(p.cell/side)*World.D,"yaw",p.angle);
         JSONObject fields=new JSONObject().put("players",new JSONObject().put("mapValue",new JSONObject().put("fields",new JSONObject().put(firebase.uid,new JSONObject().put("mapValue",new JSONObject().put("fields",player))))));
         String field="players."+quoted(firebase.uid);
         JSONObject write=firebase.write(syncPath(),fields,new String[]{field},new JSONObject().put("exists",true),false);
         write.put("updateTransforms",new JSONArray().put(new JSONObject().put("fieldPath",field+".updatedAt").put("setToServerValue","REQUEST_TIME")));
-        firebase.commit(new JSONArray().put(write));lastX=x;lastY=y;lastZ=z;lastAngle=a;lastHeartbeat=now;
+        return write;
+    }
+    void presenceConfirmed(Presence p){lastX=p.x;lastY=p.y;lastZ=p.z;lastAngle=p.angle;lastHeartbeat=p.time;}
+    private void heartbeat()throws Exception{
+        Presence presence=duePresence();if(presence==null)return;
+        firebase.commit(new JSONArray().put(presenceWrite(presence)));presenceConfirmed(presence);
     }
     void poll(){
         if(closed||!foreground||loading||System.currentTimeMillis()<nextAttempt)return;
@@ -226,10 +242,13 @@ final class OnlineSession implements AutoCloseable {
             boolean renewable=type==0&&expected==10&&(data.renewable.getOrDefault(id,false)||!data.versions.containsKey(id));int actual=renewable?10:type;
             JSONObject condition=data.versions.containsKey(id)?new JSONObject().put("updateTime",data.versions.get(id)):new JSONObject().put("exists",false);
             JSONObject fields=FirebaseRest.fields("x",lx,"y",y,"z",lz,"type",actual,"by",firebase.uid,"renewable",renewable);
-            JSONArray writes=new JSONArray().put(firebase.write(path,fields,null,condition,true)).put(firebase.write(inventoryPath(),inventoryFields(next,region+"/"+id),null,new JSONObject().put("updateTime",inventoryVersion),true)).put(revisionWrite(region));
+            Presence presence=duePresence();
+            JSONArray writes=new JSONArray().put(firebase.write(path,fields,null,condition,true)).put(firebase.write(inventoryPath(),inventoryFields(next,region+"/"+id),null,new JSONObject().put("updateTime",inventoryVersion),true)).put(revisionWrite(region,presence));
             try{
                 JSONObject result=firebase.commit(writes);data.versions.put(id,result.getJSONArray("writeResults").getJSONObject(0).getString("updateTime"));data.types.put(id,actual);data.renewable.put(id,renewable);
                 inventory=next;inventoryVersion=result.getJSONArray("writeResults").getJSONObject(1).getString("updateTime");
+                data.ownChanges++;
+                if(presence!=null){presenceConfirmed(presence);FirebaseRest.DIAGNOSTICS.positionMerged();}
                 apply(target,region,lx,y,lz,actual,false);applyInventory(next);
             }catch(FirebaseRest.Failure e){
                 if(e.status!=409&&e.status!=400&&e.status!=412)throw e;

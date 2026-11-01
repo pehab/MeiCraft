@@ -1,11 +1,11 @@
-# Gemeinsam bauen · Online-Bauwelten (0.8.2)
+# Gemeinsam bauen · Online-Bauwelten (0.8.3)
 
 Online-Welten sind zusammenhängende Landschaften mit begrenzten Rohstoffen. Spieler
 starten zu Fuß, sammeln Materialien und schalten an der Werkbank Werkzeuge frei.
 Es gibt keine Gegner, keinen Tag/Nacht-Wechsel, keine Flüssigkeitsströme und keine
 automatischen Materialreaktionen. Nur Spieleraktionen verändern die Landschaft.
 
-## Firebase einrichten oder auf 0.8.2 aktualisieren
+## Firebase einrichten oder auf 0.8.3 aktualisieren
 
 Projekt: `meicraft-be298`, Android-Paket: `de.meiapps.meicraft`.
 Die öffentliche Android-Konfiguration liegt unter
@@ -17,8 +17,8 @@ Die öffentliche Android-Konfiguration liegt unter
 2. Firestore Standard Edition mit Datenbank-ID **`(default)`** verwenden.
 3. Firestore → **Regeln**: Den vollständigen Inhalt von
    [`firestore.rules`](../firestore.rules) einsetzen und **Veröffentlichen** klicken.
-   **Für 0.8.2 sind aktualisierte Regeln erforderlich**, damit die gemeinsame
-   Änderungsübersicht und Protokoll 4 genutzt werden können. Ein Git-Push veröffentlicht diese Regeln nicht.
+   **Für 0.8.3 sind aktualisierte Regeln erforderlich**, damit eine fällige
+   Positionsmeldung zusammen mit einer Bereichsrevision gespeichert werden darf. Ein Git-Push veröffentlicht diese Regeln nicht.
 
 Die Datei ist für ein eigenes MeiCraft-Projekt bestimmt. Regeln anderer Anwendungen
 nicht damit überschreiben. Alternativ mit berechtigtem Firebase-Konto vom Rechner:
@@ -29,7 +29,10 @@ npx firebase login
 npx firebase deploy --only firestore:rules --project meicraft-be298
 ```
 
-**Zuerst die Regeln veröffentlichen, dann alle Geräte auf 0.8.2 aktualisieren.**
+**Zuerst die Regeln veröffentlichen, dann die Geräte auf 0.8.3 aktualisieren.**
+0.8.2-Welten verwenden weiterhin dasselbe Protokoll 4. Bauten, Vorräte und Landschaft
+bleiben ohne Migration erhalten; 0.8.2 kann mit den neuen Regeln weiterhin mitspielen.
+Die folgenden Schritte zur einmaligen Umstellung betreffen nur Welten aus 0.8.1.
 Bestehende 0.8.1-Welten bleiben einschließlich Gelände, Bauten und Inventaren erhalten:
 Der Besitzer öffnet die Welt zuerst. Dabei werden die Änderungsübersicht und Protokoll 4
 atomar eingerichtet. Danach können Mitspieler mit 0.8.2 wieder beitreten. Frühere
@@ -119,6 +122,10 @@ aufgebaut und bei größerem Abstand wieder freigegeben.
 Bei langsamer Verbindung kann der Spieler kurz vor einer noch nicht synchronisierten
 Umgebung anhalten, bis sie geladen ist. Die Kamera wird dabei nicht versetzt. Die gemeinsame Änderungsübersicht wird etwa alle fünf Sekunden gelesen. Nur Bereiche
 mit geänderter Revision werden abgefragt; Bewegung allein löst keine Blockabfrage aus.
+Seit 0.8.3 zählt die App eigene, erfolgreich bestätigte Block-Commits pro Bereich mit.
+Sind damit alle neuen Revisionen erklärt, bleibt das Nachladen aus. Sobald eine weitere
+Revision auf fremde oder unklare Änderungen hinweist, erfolgt der normale Abgleich.
+Der Zeitstempel für Blockabfragen wird durch eigene Commits nicht vorgezogen.
 Die Anzeige anderer Spieler wird aus derselben Übersicht gelesen;
 Mitspielerbewegungen werden geglättet. Dies ist gemeinsames Bauen, kein schneller
 Echtzeit-Kampf. Der Besitzer muss nicht dauerhaft online sein.
@@ -137,6 +144,10 @@ Bauwarteschlange. Netzwerkfehler werden mit wachsendem Abstand bis maximal zwei 
 Bei HTTP 429 beginnt die Pause bei einer Minute und wächst bis auf 15 Minuten.
 Anwesenheit wird bei Bewegung frühestens alle fünf Sekunden, im Stand alle 30 Sekunden
 aktualisiert; nach etwa 75 Sekunden ohne Aktualisierung wird eine Figur ausgeblendet.
+Ist eine Positionsmeldung beim Bauen bereits fällig, schreibt 0.8.3 sie in dasselbe
+Dokument wie die Bereichsrevision innerhalb des bestehenden atomaren Commits. Der
+separate Positions-Commit entfällt. Erst nach erfolgreicher Bestätigung gelten Position
+und eigene Revision als gespeichert; bei Fehlern bleibt der Abgleich erforderlich.
 Das persönliche Inventar wird beim Verbinden und nach unklarem Schreibausgang oder
 Versionskonflikten gelesen, nicht mehr in jedem Abfragezyklus. Im Hintergrund pausieren neue Abfragen.
 Eine bereits laufende Anfrage kann noch zu Ende gehen.
@@ -195,7 +206,8 @@ und `world.contains`. Online bleiben Nature- und Survival-Simulationen ausgescha
 **Gemeinsam bauen → Beitreten / Öffnen → Online-Diagnose** ist auch ohne aktive
 Verbindung erreichbar. In einer Welt: **Menü → Online-Diagnose**. Der Bericht enthält
 App-/Android-Version, HTTP-Anfragen nach Vorgang, empfangene Dokumente/Daten,
-bestätigte Schreib-/Löschvorgänge und die letzten zwölf Fehler mit Uhrzeit, Firebase-Dienst,
+bestätigte Schreib-/Löschvorgänge, zusammengefasste Positionsschreibvorgänge,
+übersprungene Bereichsabfragen nach eigenen Änderungen und die letzten zwölf Fehler mit Uhrzeit, Firebase-Dienst,
 Vorgang, HTTP-/Servercode und bereinigter Servermeldung einschließlich verfügbarer
 Kontingentdetails. **Bericht kopieren** kopiert den Text. Der letzte Serverfehler bleibt
 auch nach App-Neustart erhalten. Anfrage-URLs, Nutzdaten und Anmeldetokens werden
@@ -206,6 +218,13 @@ und Mindestkosten leerer Abfragen sind nicht enthalten. Bei vier sichtbaren Bere
 sinken die regelmäßigen HTTP-Anfragen ohne Blockänderungen rechnerisch von etwa
 10.440 auf 840 pro Stunde im Stand und von 11.520 auf 1.440 bei ständiger Bewegung. Aktives Bauen
 verursacht zusätzliche Zugriffe: jeder Block speichert jetzt Block, Inventar und Revision.
+0.8.3 behält diese drei atomaren Dokumentänderungen pro Block bei, integriert aber eine
+bereits fällige Position in die Revisionsänderung und spart deren zusätzlichen Write.
+In einem kontrollierten Szenario mit 180 Bewegungszyklen und je zwei Blockaktionen
+beträgt das Sollbudget 1.080 statt 1.260 Dokument-Schreibvorgänge (14,3 % weniger).
+Ausschließlich eigene Änderungen lösen in diesem Szenario keine Bereichsabfragen mehr aus.
+Das ist keine Zusage für euren Tagesverbrauch: Bei anderem Bauverhalten, fremden
+Änderungen im selben Bereich und Wiederholungen nach Konflikten ändern sich die Werte.
 Das kostenlose Kontingent bleibt begrenzt; den tatsächlichen Verbrauch in Firebase prüfen.
 
 ## Prüfen
