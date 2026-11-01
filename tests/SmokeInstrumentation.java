@@ -77,6 +77,16 @@ public final class SmokeInstrumentation extends Instrumentation {
   game.gl.queueEvent(()->{try{synchronized(game.world){task.run();}}catch(Throwable t){error[0]=t;}finally{done.countDown();}});
   check(done.await(30,TimeUnit.SECONDS),"survival GL operation completed");if(error[0]!=null)throw new AssertionError(error[0]);
  }
+ void onGlAfterFrame(GameView game,Runnable task)throws Exception{
+  // queueEvent alone can run while a preserved EGL context is not current
+  // after QR/orientation/home transitions. Observe a real rendered frame first.
+  long[] previous=new long[1];onGl(game,()->previous[0]=game.renderer.last);game.gl.requestRender();
+  for(int i=0;i<100;i++){
+   Thread.sleep(10);boolean[] ready=new boolean[1];onGl(game,()->ready[0]=game.renderer.last!=previous[0]);
+   if(ready[0]){onGl(game,task);return;}
+  }
+  throw new AssertionError("No rendered EGL frame before GPU validation");
+ }
  void testSurvival(MainActivity activity,GameView game)throws Exception{
   World original=game.world;
   runOnMainSync(()->{activity.paused=true;activity.handler.removeCallbacks(activity.autosave);});
@@ -250,7 +260,7 @@ public final class SmokeInstrumentation extends Instrumentation {
  static final String REFERENCE_FRAGMENT_SHADER="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;uniform float uAmbient;uniform vec4 uLamps[8];varying vec3 vWorld;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){float brightness=uAmbient;for(int i=0;i<8;i++){brightness=max(brightness,uLamps[i].w*max(0.0,1.0-distance(vWorld,uLamps[i].xyz)/6.0));}vec3 c=texture2D(uTex,vUv).rgb*min(vLight,1.0)*(vLight>1.1?1.0:brightness);float f=smoothstep(27.0,55.0,vDistance);gl_FragColor=vec4(mix(c,uFog,f),1.0);}";
  void checkGl(String stage){int error=GLES20.glGetError();check(error==GLES20.GL_NO_ERROR,stage+" · OpenGL 0x"+Integer.toHexString(error));}
  void testLightingEquivalence(GameView game)throws Exception{
-  onGl(game,()->{
+  onGlAfterFrame(game,()->{
    checkGl("renderer before lighting comparison");
    String vertex="attribute vec2 aPos;uniform float uLight;varying vec2 vUv;varying float vLight;varying float vDistance;varying vec3 vWorld;void main(){gl_Position=vec4(aPos,0.0,1.0);vWorld=vec3(144.0+aPos.x*3.0,30.0,144.0+aPos.y*3.0);vUv=vec2(0.5);vLight=uLight;vDistance=30.0+(aPos.x+1.0)*20.0;}";
    int[] programs=new int[2],textures=new int[2],framebuffer=new int[1];
@@ -629,17 +639,17 @@ public final class SmokeInstrumentation extends Instrumentation {
   runOnMainSync(activity::save);activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);World saved=World.decode(activity.file.readFully());check(saved.get(48,34,45)==9,"edited block written to disk");check(saved.selected==9,"selected material written to disk");
   check(java.util.Arrays.asList(context.getPackageManager().getPackageInfo(context.getPackageName(),android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions).contains("android.permission.INTERNET"),"update permission present");
   runOnMainSync(()->{synchronized(game.world){World w=game.world;w.yaw=.55f;w.pitch=-.38f;w.y=26;w.x=48.5f;w.z=48.5f;}activity.paused=false;});
-  testStory(activity,game);onGl(game,()->checkGl("after testStory"));
-  testSurvival(activity,game);onGl(game,()->checkGl("after testSurvival"));
-   testNature(activity,game);onGl(game,()->checkGl("after testNature"));
-   testForge(activity,game);onGl(game,()->checkGl("after testForge"));
-   testQrTransfer(activity,game);onGl(game,()->checkGl("after testQrTransfer"));
+  testStory(activity,game);onGlAfterFrame(game,()->checkGl("after testStory"));
+  testSurvival(activity,game);onGlAfterFrame(game,()->checkGl("after testSurvival"));
+   testNature(activity,game);onGlAfterFrame(game,()->checkGl("after testNature"));
+   testForge(activity,game);onGlAfterFrame(game,()->checkGl("after testForge"));
+   testQrTransfer(activity,game);onGlAfterFrame(game,()->checkGl("after testQrTransfer"));
   Thread.sleep(1500);
   android.graphics.Bitmap screenshot=smallScreenshot();
   if(screenshot!=null){try(FileOutputStream out=context.openFileOutput("smoke.png",0)){screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out);}emitScreenshot(screenshot,"screenshot");screenshot.recycle();}
   orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE,960);testSwipeControl(activity,game);
   orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,960);
-  testWorldLibrary(activity,game);onGl(game,()->checkGl("after testWorldLibrary"));
+  testWorldLibrary(activity,game);onGlAfterFrame(game,()->checkGl("after testWorldLibrary"));
   testRecentOnlineRemoval(activity);
   testLightingEquivalence(game);
   testSyncRequests(activity,game);

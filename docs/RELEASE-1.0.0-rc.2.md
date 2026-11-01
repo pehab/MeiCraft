@@ -8,6 +8,9 @@ Weiterer Testkandidat auf PR #20. Bleibt ohne Merge und ohne öffentliches App-R
 - Inventar-Updates übertragen nur veränderte Felder plus Aktionsbezug. Serverversion und
   atomarer Block-/Inventar-/Revisions-Commit bleiben gleich. Das Inventar wird nicht
   vor einer Serverbestätigung verändert. Drei Dokumentänderungen pro Block bleiben bestehen.
+- Geteilte Eckpunkte und ein gemeinsamer 16-Bit-Indexpuffer reduzieren die Gelände-Vertexdaten
+  und deren GPU-Uploads um ein Drittel. Die expandierten Dreiecke bleiben floatgenau gleich;
+  selbst extrem dichte Abschnitte bleiben über begrenzte Batches vollständig darstellbar.
 - Geländeteile, die vollständig außerhalb des Kamerabilds liegen, müssen nicht von der
   GPU gezeichnet werden. Der bestehende Aufbau dieser Abschnitte bleibt erhalten, damit
   Umdrehen keinen neuen Geometrie-Stau erzeugt. Nebel, Sichtweite und Geometrie bleiben gleich.

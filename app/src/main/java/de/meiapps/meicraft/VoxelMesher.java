@@ -3,7 +3,7 @@ package de.meiapps.meicraft;
 import java.util.Arrays;
 
 /** Pure geometry kernel. The caller owns the world lock and reuses this scratch buffer.
- * Output is the exact ordered vertex stream of the original renderer, not a new LOD.
+ * Indexed expansion is the exact ordered vertex stream of the original renderer, not a new LOD.
  */
 final class VoxelMesher {
     static final int[][] N={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
@@ -52,7 +52,7 @@ final class VoxelMesher {
                     int tile=block==16?21:block==13?(heat>0?22:16):block==14?(heat>0?23:17):block==15?18:block;if(block==1)tile=face==2?1:face==3?2:13;if(block==5&&face>=2&&face<=3)tile=14;
                     float u0=(tile*32+.5f)/1024f,u1=(tile*32+31.5f)/1024f;
                     float shade=block==11||block==15||block==16||heat>0?1.2f:SHADE[face];
-                    for(int corner:ORDER){float[] f=F[face];float u=(corner==0||corner==1)?u0:u1;float v=(corner==0||corner==3)?31.5f/32:.5f/32;add(x+f[corner*3],y+f[corner*3+1],z+f[corner*3+2],u,v,shade);}
+                    for(int corner=0;corner<4;corner++){float[] f=F[face];float u=(corner==0||corner==1)?u0:u1;float v=(corner==0||corner==3)?31.5f/32:.5f/32;add(x+f[corner*3],y+f[corner*3+1],z+f[corner*3+2],u,v,shade);}
                 }
             }
         }

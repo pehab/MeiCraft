@@ -9,8 +9,8 @@ public final class PerformanceContractTests {
     static void check(boolean b,String message){checks++;if(!b)throw new AssertionError(message);}
     static void equal(World world,int cx,int cz,VoxelMesher mesher){
         float[] expected=ReferenceMesher.build(world,cx,cz);mesher.build(world,cx,cz);
-        check(expected.length==mesher.size,"Vertex count at "+cx+","+cz);
-        for(int i=0;i<expected.length;i++)if(Float.floatToIntBits(expected[i])!=Float.floatToIntBits(mesher.values[i]))throw new AssertionError("Vertex/UV/light mismatch at float "+i+" chunk "+cx+","+cz);
+        check(expected.length==mesher.size/4*6,"Expanded indexed vertex count at "+cx+","+cz);
+        for(int i=0;i<expected.length;i++)if(Float.floatToIntBits(expected[i])!=Float.floatToIntBits(mesher.values[(i/36)*24+ReferenceMesher.ORDER[i/6%6]*6+i%6]))throw new AssertionError("Vertex/UV/light mismatch at float "+i+" chunk "+cx+","+cz);
         checks++;
         float[] scratch=mesher.values;int growths=mesher.growths;
         mesher.build(world,cx,cz);
@@ -32,6 +32,15 @@ public final class PerformanceContractTests {
         Arrays.fill(mixed.blocks,(byte)3);equal(mixed,2,2,mesher);
         check(mesher.heatLookups==256,"Solid interior consults heat only for the visible top, not 12288 blocks");
         check(mesher.neighborChecks==16L*16*(World.H*6-1),"Foundation underside skips even the neighbor check");
+        short[] indices=TerrainIndices.pattern();
+        check(indices.length==TerrainIndices.MAX_FACES*6,"Shared index pattern has exactly two triangles per quad");
+        for(int face=0;face<TerrainIndices.MAX_FACES;face++)for(int corner=0;corner<6;corner++)check(Short.toUnsignedInt(indices[face*6+corner])==face*4+ReferenceMesher.ORDER[corner],"Unsigned indices preserve the original triangle ordering without restart values");
+        for(int y=0;y<World.H;y++)for(int z=0;z<World.D;z++)for(int x=0;x<World.W;x++)mixed.blocks[mixed.idx(x,y,z)]=(byte)(((x+y+z)&1)==0?10:15);
+        equal(mixed,2,2,mesher);
+        int vertices=mesher.size/6,covered=0,batches=0;
+        for(int first=0;first<vertices;first+=TerrainIndices.MAX_VERTICES){int count=Math.min(TerrainIndices.MAX_VERTICES,vertices-first);check(count%4==0&&count<=65532,"Every dense-world draw uses complete quads and valid unsigned-short indices");covered+=count;batches++;}
+        check(covered==vertices&&batches>1,"Pathological all-liquid boundaries are covered fully over multiple 16-bit batches");
+        benchmark(mixed,2,2,"dense-liquid-boundaries");
         Arrays.fill(mixed.blocks,(byte)0);equal(mixed,0,0,mesher);check(mesher.size==0,"Empty chunk clears the previous vertex count");
         RenderMetrics metrics=new RenderMetrics();
         check(metrics.report().contains("Aktive Frames: 0"),"Empty metrics do not invent samples");
