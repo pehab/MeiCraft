@@ -51,10 +51,10 @@ public final class PerformanceContractTests {
         System.out.println("PASS: "+checks+" exact geometry, boundary, heat and allocation contracts");
         benchmark(local,2,2,"terrain");benchmark(wide,6,6,"online-boundary");benchmark(mixed,0,0,"empty");
     }
-    static volatile int sink;
+    static volatile int sink;static volatile float[] meshSink;
     static void benchmark(World world,int cx,int cz,String name){
         VoxelMesher mesher=new VoxelMesher();
-        for(int i=0;i<40;i++){sink=ReferenceMesher.build(world,cx,cz).length;mesher.build(world,cx,cz);}
+        for(int i=0;i<40;i++){sink=ReferenceMesher.buildData(world,cx,cz).size;mesher.build(world,cx,cz);}
         long[] old=new long[101],next=new long[101];
         for(int i=0;i<old.length;i++){
             // Alternate order to reduce systematic JIT/GC bias. Times are evidence,
@@ -65,6 +65,6 @@ public final class PerformanceContractTests {
         Arrays.sort(old);Arrays.sort(next);
         System.out.printf(java.util.Locale.ROOT,"MESH BENCH %s: reference p50/p95 %.3f/%.3f ms, candidate %.3f/%.3f ms; floats %d; scratch growths %d%n",name,old[50]/1e6,old[95]/1e6,next[50]/1e6,next[95]/1e6,mesher.size,mesher.growths);
     }
-    static long reference(World world,int x,int z){long t=System.nanoTime();sink=ReferenceMesher.build(world,x,z).length;return System.nanoTime()-t;}
-    static long candidate(World world,int x,int z,VoxelMesher mesher){long t=System.nanoTime();mesher.build(world,x,z);sink=mesher.size;return System.nanoTime()-t;}
+    static long reference(World world,int x,int z){long t=System.nanoTime();ReferenceMesher.Floats data=ReferenceMesher.buildData(world,x,z);meshSink=data.values;sink=data.size;return System.nanoTime()-t;}
+    static long candidate(World world,int x,int z,VoxelMesher mesher){long t=System.nanoTime();mesher.build(world,x,z);meshSink=mesher.values;sink=mesher.size;return System.nanoTime()-t;}
 }

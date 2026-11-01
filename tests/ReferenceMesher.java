@@ -11,7 +11,8 @@ final class ReferenceMesher {
     static final float[] SHADE={.82f,.66f,1,.49f,.88f,.73f};
     static final int[] ORDER={0,1,2,0,2,3};
     static final class Floats{float[] values=new float[8192];int size;void add(float a,float b,float c,float u,float v,float l){if(size+6>values.length)values=java.util.Arrays.copyOf(values,values.length*2);values[size++]=a;values[size++]=b;values[size++]=c;values[size++]=u;values[size++]=v;values[size++]=l;}}
-    static float[] build(World world,int cx,int cz){
+    static float[] build(World world,int cx,int cz){Floats data=buildData(world,cx,cz);return java.util.Arrays.copyOf(data.values,data.size);}
+    static Floats buildData(World world,int cx,int cz){
         Floats data=new Floats();
         for(int y=0;y<World.H;y++)for(int z=cz*16;z<cz*16+16;z++)for(int x=cx*16;x<cx*16+16;x++){
             int block=world.get(x,y,z);if(block==0)continue;float heat=world.forge.heat(x,y,z);
@@ -25,6 +26,6 @@ final class ReferenceMesher {
                 for(int corner:ORDER){float[] f=F[face];float u=(corner==0||corner==1)?u0:u1;float v=(corner==0||corner==3)?31.5f/32:.5f/32;data.add(x+f[corner*3],y+f[corner*3+1],z+f[corner*3+2],u,v,shade);}
             }
         }
-        return java.util.Arrays.copyOf(data.values,data.size);
+        return data;
     }
 }
