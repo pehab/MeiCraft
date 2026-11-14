@@ -67,8 +67,9 @@ final class OnlineCheckpoint implements AutoCloseable {
         JSONObject publish=f.write(manifest(),record,null,condition,false).put("updateTransforms",new JSONArray().put(new JSONObject().put("fieldPath","at").put("setToServerValue","REQUEST_TIME")));
         JSONObject committed=f.write(s.base()+"/uploads/"+upload,FirebaseRest.fields("state","committed"),new String[]{"state"},new JSONObject().put("updateTime",stageVersion),false);
         try{f.commit(new JSONArray().put(publish).put(committed));}catch(Exception e){manifestDocument=null;throw e;}
-        manifestDocument=f.get(manifest());savedAt=System.nanoTime();if(!FirebaseRest.string(fields(manifestDocument),"upload").equals(upload))return;
-        db.request("PUT",v.storage()+"/checkpoint",new JSONObject().put("g",h.generation).put("actors",actorRevs).put("token",upload));prune(actorRevs);recoverAbandoned();lastMaintenance=System.nanoTime();FirebaseRest.DIAGNOSTICS.checkpoint(h.generation,pages.size());
+        manifestDocument=f.get(manifest());savedAt=System.nanoTime();failures=0;nextRetry=0;if(!FirebaseRest.string(fields(manifestDocument),"upload").equals(upload))return;
+        FirebaseRest.DIAGNOSTICS.checkpoint(h.generation,pages.size());
+        try{db.request("PUT",v.storage()+"/checkpoint",new JSONObject().put("g",h.generation).put("actors",actorRevs).put("token",upload));prune(actorRevs);recoverAbandoned();lastMaintenance=System.nanoTime();}catch(Exception e){FirebaseRest.DIAGNOSTICS.failed("Checkpoint bestätigt · Bereinigung wird erneut versucht · "+e.getClass().getSimpleName());}
     }
     void collectGarbage(JSONObject old)throws Exception{
         List<String> versions=strings(old,"garbage"),uploads=strings(old,"oldUploads");JSONArray batch=new JSONArray();for(String id:versions){batch.put(new JSONObject().put("delete",f.documentName(s.base()+"/saved/"+id)));if(batch.length()==200){f.commit(batch);batch=new JSONArray();}}

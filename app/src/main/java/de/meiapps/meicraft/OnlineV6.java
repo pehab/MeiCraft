@@ -44,20 +44,20 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
         OnlineInventory.apply(s.world.progress,s.inventory);syncVisible(fresh);s.remember();
         checkpoints=new OnlineCheckpoint(this);if(services){checkpoints.start();journalReader.execute(this::listen);}
     }
-    void listen(){int failures=0;RealtimeTree tree=new RealtimeTree();
+    void listen(){java.util.concurrent.atomic.AtomicInteger failures=new java.util.concurrent.atomic.AtomicInteger();RealtimeTree tree=new RealtimeTree();
         while(!stopped&&!s.closed){
             if(!s.foreground){journalConnected=false;LockSupport.parkNanos(200000000);continue;}
             try{
                 db.listen(storage()+"/head",(type,payload)->{
-                    if(stopped||!s.foreground)throw new IOException("Journal pausiert.");if(type.equals("keep-alive"))return;
+                    if(stopped||!s.foreground)throw new IOException("Journal pausiert.");if(type.equals("keep-alive")){failures.set(0);return;}
                     if(type.equals("auth_revoked")){f.invalidateToken(f.token);throw new IOException("Journal-Anmeldung erneuern.");}if(type.equals("cancel"))throw new IOException("Journal-Zugriff beendet.");
                     if(!type.equals("put")&&!type.equals("patch"))return;
-                    try{tree.apply(type,payload);FirebaseRest.DIAGNOSTICS.realtimeEvent();long g=tree.root.optLong("g",-1);if(g>=0){latest=tree.root.toString();boolean resumed=!journalConnected;journalConnected=true;if(resumed)s.realtimeStatus();s.requestRealtimeSync();}}
+                    try{tree.apply(type,payload);FirebaseRest.DIAGNOSTICS.realtimeEvent();long g=tree.root.optLong("g",-1);if(g>=0){latest=tree.root.toString();boolean resumed=!journalConnected;journalConnected=true;failures.set(0);if(resumed){FirebaseRest.DIAGNOSTICS.journal(true);s.realtimeStatus();}s.requestRealtimeSync();}}
                     catch(JSONException e){throw new IOException("Ungültiger Journal-Stream.",e);}
                 });
-            }catch(Exception e){if(!stopped&&s.foreground){try{if(Boolean.TRUE.equals(db.request("GET",base+"/meta/closed",null))){s.problem(new IOException("Diese Welt wurde geschlossen."),true);return;}}catch(Exception ignored){/* Own membership / Firestore diagnostics explain revoked access. */}failures=Math.min(6,failures+1);}}
-            finally{boolean lost=journalConnected;journalConnected=false;if(lost)s.realtimeStatus();}
-            long until=System.nanoTime()+Math.min(60000,1000L<<Math.min(5,failures))*1000000L;while(!stopped&&s.foreground&&System.nanoTime()<until)LockSupport.parkNanos(100000000);
+            }catch(Exception e){if(!stopped&&s.foreground){try{if(Boolean.TRUE.equals(db.request("GET",base+"/meta/closed",null))){s.problem(new IOException("Diese Welt wurde geschlossen."),true);return;}}catch(Exception ignored){/* Own membership / Firestore diagnostics explain revoked access. */}failures.updateAndGet(n->Math.min(6,n+1));}}
+            finally{boolean lost=journalConnected;journalConnected=false;FirebaseRest.DIAGNOSTICS.journal(false);if(lost)s.realtimeStatus();}
+            long until=System.nanoTime()+Math.min(60000,1000L<<Math.min(5,failures.get()))*1000000L;while(!stopped&&s.foreground&&System.nanoTime()<until)LockSupport.parkNanos(100000000);
         }
     }
     JournalHead fetchHead()throws Exception{return new JournalHead(remote(storage()+"/head"));}
@@ -128,5 +128,5 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
             }super.deleteWorld(success,failure);
         }catch(Exception e){s.activity.runOnUiThread(()->failure.accept("Löschen unterbrochen. Bitte erneut versuchen."));}});
     }
-    @Override public void close(){stopped=true;journalConnected=false;if(db!=null)db.close();journalReader.shutdownNow();if(checkpoints!=null)checkpoints.close();}
+    @Override public void close(){stopped=true;journalConnected=false;if(activated)FirebaseRest.DIAGNOSTICS.journal(false);if(db!=null)db.close();journalReader.shutdownNow();if(checkpoints!=null)checkpoints.close();}
 }

@@ -42,6 +42,7 @@ public final class OnlineSyncTests {
         check(report.contains("Bestätigte Aktionen mit Render-Übernahme: 2")&&report.contains("1,00 / 3,00 / 3,00 ms"),"Action timings include bounded quantiles and distinguish confirmed visible state from network requests");
         check(!report.contains("test-7\n")&&report.contains("test-8\n")&&report.contains("test-19\n"),"Error history is bounded to the latest twelve entries");
         check(OnlineDiagnostics.clean("x".repeat(3000)).length()<1250,"Server errors have bounded storage");
+        diagnostics.journal(true);check(diagnostics.report().contains("RTDB-Journal: verbunden"),"Journal connectivity is reported independently of position streaming");diagnostics.journal(false);check(diagnostics.report().contains("RTDB-Journal: nicht verbunden")&&!diagnostics.report().contains("Firestore-Fallback"),"Disconnected RTDB does not claim a Firestore write fallback");
         System.out.println("PASS: "+checks+" sync request-budget, quota backoff and diagnostic privacy assertions");
     }
 }
