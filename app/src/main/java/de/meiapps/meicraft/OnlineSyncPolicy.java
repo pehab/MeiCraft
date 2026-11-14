@@ -2,9 +2,11 @@ package de.meiapps.meicraft;
 
 /** Bounded polling fallback without SDK dependencies; idle worlds never reread their blocks. */
 public final class OnlineSyncPolicy {
-    public static final long POLL_MS=5000,IDLE_HEARTBEAT_MS=30000,PRESENCE_TTL_MS=75000;
+    public static final long POLL_MS=5000,MULTIPLAYER_POLL_MS=2000,IDLE_HEARTBEAT_MS=30000,PRESENCE_TTL_MS=75000;
     private OnlineSyncPolicy(){}
-    public static boolean heartbeat(long now,long last,boolean moved){return last==0||now-last>=(moved?POLL_MS:IDLE_HEARTBEAT_MS);}
+    public static long pollInterval(boolean peers){return peers?MULTIPLAYER_POLL_MS:POLL_MS;}
+    public static boolean heartbeat(long now,long last,boolean moved){return heartbeat(now,last,moved,false);}
+    public static boolean heartbeat(long now,long last,boolean moved,boolean peers){return last==0||now-last>=(moved?pollInterval(peers):IDLE_HEARTBEAT_MS);}
     public static boolean reload(boolean generated,long seen,long announced){return reload(generated,seen,0,announced);}
     // Only skip when every revision since the last download is a confirmed local commit.
     // Never advance a timestamp watermark past unseen peer edits.

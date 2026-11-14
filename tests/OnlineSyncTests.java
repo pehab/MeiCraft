@@ -27,6 +27,11 @@ public final class OnlineSyncTests {
         check(OnlineSyncPolicy.retryDelay(1,true)>=60000,"Quota errors wait at least one minute");
         for(int i=1;i<100;i++)check(OnlineSyncPolicy.retryDelay(i,true)<=900000,"Quota retry has bounded delay");
         check(OnlineSyncPolicy.retryDelay(6,true)>OnlineSyncPolicy.retryDelay(1,true),"Repeated quota errors reduce request rate further");
+        check(OnlineSyncPolicy.pollInterval(true)==2000&&OnlineSyncPolicy.pollInterval(false)==5000,"Multiplayer sync every two seconds; solo polling remains five seconds");
+        check(!OnlineSyncPolicy.heartbeat(11999,10000,true,true)&&OnlineSyncPolicy.heartbeat(12000,10000,true,true),"Moving with peers can publish every two seconds");
+        check(!OnlineSyncPolicy.heartbeat(12000,10000,true,false)&&OnlineSyncPolicy.heartbeat(15000,10000,true,false),"Solo movement keeps the lower write budget");
+        check(!OnlineSyncPolicy.heartbeat(39999,10000,false,true)&&OnlineSyncPolicy.heartbeat(40000,10000,false,true),"Multiplayer still players retain thirty-second heartbeats");
+        check(OnlineSyncPolicy.retryDelay(1,true)>OnlineSyncPolicy.pollInterval(true),"Faster multiplayer interval never overrides quota backoff");
         String jwt="eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJhbm9uIn0.signature",key="AIza-private-key",refresh="private-refresh-token";
         String clean=OnlineDiagnostics.clean("Firestore firestore.googleapis.com document/read_count key="+key+" Bearer "+jwt+" refresh_token="+refresh+" uid="+"a".repeat(32),key,refresh);
         check(!clean.contains(key)&&!clean.contains(jwt)&&!clean.contains(refresh)&&!clean.contains("a".repeat(32)),"Tokens, API keys, refresh tokens and invitation IDs are redacted");

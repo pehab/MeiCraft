@@ -260,3 +260,8 @@ Initialdownload. Einzelne bestätigte Bauaktionen warten nicht auf Dateischreibv
 
 Die Diagnose sichert bei einem Fehler auch die bis dahin erfassten lokalen Netzwerkzähler;
 dieser Bericht bleibt nach einem Neustart unter „Gesicherte Zähler beim letzten Fehler“ erhalten.
+
+Mit einem weiteren aktiven Spieler laufen Übersicht und bewegte Positionsupdates ab rc.3
+im Zweiesekundentakt, allein weiterhin alle fünf Sekunden. Stillstand bleibt bei 30 Sekunden;
+Quotenfehler behalten ihren längeren Backoff. Häufigere Positionsupdates benötigen zusätzliche
+Lese- und Schreibvorgänge, während der lokale Bereichscache erneute Blockdownloads spart.

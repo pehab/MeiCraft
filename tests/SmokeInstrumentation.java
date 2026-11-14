@@ -333,6 +333,13 @@ public final class SmokeInstrumentation extends Instrumentation {
    Story updated=new Story();updated.inventory[2]=4;backend.inventory="{\"updateTime\":\"2026-10-31T12:00:01Z\",\"fields\":"+session.inventoryFields(updated,"").toString()+"}";
    session.inventoryUncertain=true;session.poll();session.poll();onGl(game,()->{});
    check(backend.inventoryReads==1&&session.inventory.inventory[2]==4,"an ambiguous write response reconciles inventory once instead of polling it forever");
+   session.players=java.util.Collections.singletonList(new OnlineSession.Player(rest.uid,FirebaseRest.fields("name","Self","sector",0,"x",0,"y",0,"z",0,"yaw",0,"banned",false)));
+   check(!session.hasPeers(),"own presence does not activate the faster multiplayer loop");
+   session.players=java.util.Collections.singletonList(new OnlineSession.Player("fixture-peer",FirebaseRest.fields("name","Peer","sector",0,"x",0,"y",0,"z",0,"yaw",0,"banned",false)));
+   session.lastHeartbeat=System.currentTimeMillis()-2500;session.lastX=session.px-1;
+   check(session.hasPeers()&&session.duePresence()!=null,"active peer enables a position update after two seconds");
+   session.players=java.util.Collections.emptyList();check(session.duePresence()==null,"without a peer the same movement waits for five seconds");
+   session.lastX=session.px;session.lastHeartbeat=System.currentTimeMillis();
    backend.status=429;session.poll();long until=session.nextAttempt;int requests=backend.attempts;for(int i=0;i<10;i++)session.poll();
    check(!session.healthy&&until-System.currentTimeMillis()>55000&&backend.attempts==requests,"actual HTTP 429 pauses building and prevents immediate repeated network requests");
    String savedFailure=activity.getSharedPreferences("online-diagnostics",0).getString("failureReport","");

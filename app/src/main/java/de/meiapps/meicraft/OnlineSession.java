@@ -93,7 +93,7 @@ final class OnlineSession implements AutoCloseable {
             readSync();syncVisible(true);heartbeat();remember();
             if(!closed)activity.runOnUiThread(()->{if(!closed)listener.loaded(world,name);});
             healthy=true;loading=false;
-            if(!closed)worker.scheduleWithFixedDelay(this::poll,OnlineSyncPolicy.POLL_MS,OnlineSyncPolicy.POLL_MS,TimeUnit.MILLISECONDS);
+            scheduleNextPoll();
         }catch(Exception e){if(e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==403&&create)e=new IOException("Bitte die aktualisierten Firestore-Regeln für 0.8.2 veröffentlichen.");problem(e,true);}});
     }
     JSONObject memberWrite()throws JSONException{
@@ -143,7 +143,7 @@ final class OnlineSession implements AutoCloseable {
     Presence duePresence(){
         long now=System.currentTimeMillis();float x=px,y=py,z=pz,a=angle;
         boolean moved=Float.isNaN(lastX)||Math.abs(x-lastX)>.35f||Math.abs(y-lastY)>.35f||Math.abs(z-lastZ)>.35f||Math.abs(a-lastAngle)>.2f;
-        return OnlineSyncPolicy.heartbeat(now,lastHeartbeat,moved)?new Presence(x,y,z,a,side,now):null;
+        return OnlineSyncPolicy.heartbeat(now,lastHeartbeat,moved,hasPeers())?new Presence(x,y,z,a,side,now):null;
     }
     JSONObject presenceWrite(Presence p)throws JSONException{
         JSONObject player=FirebaseRest.fields("name",playerName,"sector",p.cell,"x",p.x-(p.cell%side)*World.W,"y",p.y,"z",p.z-(p.cell/side)*World.D,"yaw",p.angle);
@@ -157,6 +157,12 @@ final class OnlineSession implements AutoCloseable {
     private void heartbeat()throws Exception{
         Presence presence=duePresence();if(presence==null)return;
         firebase.commit(new JSONArray().put(presenceWrite(presence)));presenceConfirmed(presence);
+    }
+    boolean hasPeers(){for(Player player:players)if(!player.uid.equals(firebase.uid))return true;return false;}
+    private void scheduleNextPoll(){
+        if(closed)return;
+        try{worker.schedule(()->{poll();scheduleNextPoll();},OnlineSyncPolicy.pollInterval(hasPeers()),TimeUnit.MILLISECONDS);}
+        catch(RejectedExecutionException e){if(!closed)throw e;}
     }
     void poll(){
         if(closed||!foreground||loading||System.currentTimeMillis()<nextAttempt)return;

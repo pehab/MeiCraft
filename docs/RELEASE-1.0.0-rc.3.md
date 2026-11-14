@@ -21,6 +21,17 @@
   Mindestabfragen sind darin nicht enthalten. Gesicherter Bericht enthält keine Rohantworten,
   URLs, Zugangsdaten oder Einladungen.
 
+## Häufigere Positionen
+
+Alle Spielerpositionen stehen bereits in einem gemeinsamen Übersichts-Dokument.
+Ein erfolgreicher Poll empfängt dieses eine Dokument, unabhängig von der Spielerzahl;
+zusätzliche Regelzugriffe sind darin nicht enthalten. Die schnellere Taktung erhöht
+bei zwei ständig bewegten Spielern den rechnerischen Zweistundenbedarf von 2.880 auf
+7.200 Übersichts-Dokumente und von bis zu 2.880 auf 7.200 Positions-Dokumentwrites,
+vor Bauaktionen und zusätzlichen Regel-/Indexzugriffen. Vorhandene Piggyback-Commits
+können separate Positionswrites einsparen. Das ist ein bewusster Verbrauchs-Tausch
+für häufigere Bewegungssynchronisierung, keine weitere Verbrauchsreduktion.
+
 ## Prüfung
 
 - Hosttests prüfen 3.000 gespeicherte Änderungen, entfernte Blöcke, Wasserstatus,
@@ -31,8 +42,11 @@
   Peer-Edit und Wiederholung nach beschädigtem Cache plus Abbruch der zweiten Seite.
 - Zusätzliche Android-Prüfung: ein HTTP-429-Fehler hinterlässt Zähler und bereinigte
   Fehlerbeschreibung in persistenten Einstellungen.
-- Firestore-Protokoll, Regeln, Abfrageintervall und sofortige atomare Bau-Commits bleiben
-  unverändert. Es gibt keine Firebase-Veröffentlichung oder Änderung am kostenlosen Tarif.
+- Firestore-Protokoll, Regeln und sofortige atomare Bau-Commits bleiben unverändert.
+  Bei mindestens einem weiteren aktiven Spieler werden Übersicht und bewegte Positionen
+  alle zwei Sekunden abgeglichen; allein bleiben es fünf Sekunden. Stillstehende Positionen
+  bleiben bei 30 Sekunden. Eigene Präsenz zählt nicht als Mitspieler. Quoten-Backoff bleibt
+  maßgeblich. Es gibt keine Firebase-Veröffentlichung oder Änderung am kostenlosen Tarif.
 
 ## Gerätetest auf beiden Tablets
 
