@@ -39,8 +39,13 @@ public final class SmokeInstrumentation extends Instrumentation {
    matches.sort(java.util.Comparator.comparingInt(node->text.equalsIgnoreCase(node.getText()==null?"":node.getText().toString())?0:1));
    for(android.view.accessibility.AccessibilityNodeInfo node:matches){
     android.graphics.Rect bounds=new android.graphics.Rect();node.getBoundsInScreen(bounds);if(!node.isVisibleToUser()||bounds.isEmpty())continue;
-    // Native dialog rows expose a semantic click, independent of window animations.
-    if(node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)){waitForIdleSync();return;}
+    // A text label may report ACTION_CLICK without invoking its containing tile.
+    // Prefer the actual clickable node; list rows retain the coordinate fallback below.
+    android.view.accessibility.AccessibilityNodeInfo target=node;
+    while(target!=null&&!target.isClickable()){
+     android.view.accessibility.AccessibilityNodeInfo parent=target.getParent();if(parent==null||String.valueOf(parent.getClassName()).contains("ListView"))break;target=parent;
+    }
+    if(target!=null&&target.isClickable()&&target.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)){waitForIdleSync();return;}
     boolean actionable=node.isClickable();
     for(android.view.accessibility.AccessibilityNodeInfo parent=node.getParent();parent!=null&&!actionable;parent=parent.getParent()){
      String kind=String.valueOf(parent.getClassName());actionable=parent.isClickable()||kind.contains("ListView");
