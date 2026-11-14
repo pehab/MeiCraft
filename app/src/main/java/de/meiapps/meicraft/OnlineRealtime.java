@@ -14,7 +14,7 @@ final class OnlineRealtime implements AutoCloseable {
     final ScheduledExecutorService sender=Executors.newSingleThreadScheduledExecutor();
     final AtomicLong outgoing=new AtomicLong();final RealtimeTree tree=new RealtimeTree();
     final Map<String,Long> revisions=new HashMap<>();final Map<String,OnlineSession.Player> poses=new HashMap<>();
-    volatile String access;volatile boolean connected,closed,legacyPeers;volatile List<OnlineSession.Player> legacyPlayers=Collections.emptyList();boolean hadPosition;long lastSend;float x,y,z,yaw;long retryAt;
+    volatile Exception lastFailure;volatile String access;volatile boolean connected,closed,legacyPeers;volatile List<OnlineSession.Player> legacyPlayers=Collections.emptyList();boolean hadPosition;long lastSend;float x,y,z,yaw;long retryAt;
     OnlineRealtime(OnlineSession s)throws Exception{this.s=s;db=new RtdbRest(s.firebase);base="worlds/"+s.owner+"/"+s.invitation.id;access=s.modern.state.has("access")?OnlineV5.fields(s.modern.state,"access").toString():"{}";if(s.modern.sequence>0)outgoing.set(s.modern.revision);}
     void start(){reader.execute(this::run);sender.scheduleWithFixedDelay(this::tick,0,100,TimeUnit.MILLISECONDS);}
     void status(boolean active){if(connected==active)return;connected=active;FirebaseRest.DIAGNOSTICS.realtime(active);s.realtimeStatus();}
@@ -31,6 +31,7 @@ final class OnlineRealtime implements AutoCloseable {
         Object raw=db.request("GET",base+"/members/"+s.firebase.uid,null);
         if(raw==JSONObject.NULL)db.request("PUT",base+"/members/"+s.firebase.uid,new JSONObject().put("active",true).put("proof",s.invitation.invitation));
         else if(!(raw instanceof JSONObject)||!((JSONObject)raw).optBoolean("active"))throw new Banned();
+        reconcileAccess(new JSONObject(access));
     }
     static final class Banned extends IOException{private static final long serialVersionUID=1L;Banned(){super("Du wurdest aus dieser Welt entfernt.");}}
     void run(){int failures=0;
@@ -92,10 +93,10 @@ final class OnlineRealtime implements AutoCloseable {
                 db.request("PUT",base+"/live/players/"+s.firebase.uid,position);lastSend=now;x=px;y=py;z=pz;yaw=a;hadPosition=true;
             }
             synchronized(tree){consume();}
-        }catch(Exception e){status(false);db.interrupt();}
+        }catch(Exception e){lastFailure=e;FirebaseRest.DIAGNOSTICS.failed("RTDB · Live-Versand · "+e.getClass().getSimpleName());status(false);db.interrupt();}
     }
     void reconcileAccess(JSONObject access)throws Exception{
-        if(!s.owner()||!connected)return;
+        if(!s.owner())return;
         Object raw=db.request("GET",base+"/members",null);JSONObject members=raw instanceof JSONObject?(JSONObject)raw:new JSONObject(),patch=new JSONObject();
         for(String uid:OnlineV5.keys(access)){boolean allowed=access.getJSONObject(uid).getBoolean("booleanValue");JSONObject saved=members.optJSONObject(uid);
             if(saved==null)patch.put(uid,new JSONObject().put("active",allowed).put("proof",s.invitation.invitation));else if(!allowed&&saved.optBoolean("active"))patch.put(uid+"/active",false);}

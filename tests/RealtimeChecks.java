@@ -49,7 +49,8 @@ final class RealtimeChecks {
             live.event("put","{\"path\":\"/\",\"data\":null}");settle(s,game);int reads=backend.firestore.batchGets.size(),writes=backend.firestore.commits.size();
             long now=System.currentTimeMillis();for(int i=0;i<100;i++)live.event("put",new JSONObject().put("path","/players/child").put("data",new JSONObject().put("name","Child").put("sector",0).put("x",40+i*.01).put("y",30).put("z",40).put("yaw",0).put("t",now+i)).toString());
             live.tick();s.modern.heartbeat();settle(s,game);
-            check(backend.firestore.batchGets.size()==reads&&backend.firestore.commits.size()==writes,"One hundred live positions cause zero Firestore reads or position writes");
+            if(live.lastFailure!=null)throw new AssertionError("RTDB sender failed in offline transport",live.lastFailure);
+            check(backend.firestore.batchGets.size()==reads&&backend.firestore.commits.size()==writes,"One hundred live positions cause zero Firestore reads or position writes (reads "+reads+" -> "+backend.firestore.batchGets.size()+", writes "+writes+" -> "+backend.firestore.commits.size()+", connected="+live.connected+", legacy="+live.legacyPeers+")");
             check(s.players.size()==1&&s.players.get(0).uid.equals("child")&&Math.abs(s.players.get(0).x-40.99f)<.001,"Live peer positions reach the renderer model independently of Firestore polling");
             s.modern.edit(10,44,10,2);v5.drain(s,game);check(live.outgoing.get()>0&&backend.firestore.commits.get(writes).getJSONArray("writes").length()==2,"Only an atomic durable block/inventory commit queues a notification");
             live.tick();check(live.outgoing.get()==0&&backend.methods.contains("PUT"),"Sender drains latest confirmed revision through authenticated RTDB REST");

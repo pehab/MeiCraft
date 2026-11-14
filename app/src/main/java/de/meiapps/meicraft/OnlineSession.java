@@ -138,6 +138,7 @@ final class OnlineSession implements AutoCloseable {
     synchronized void scheduleNextPoll(){
         if(closed)return;if(pollTask!=null)pollTask.cancel(false);
         long interval=realtime!=null&&realtime.live()?30000:OnlineSyncPolicy.pollInterval(hasPeers());
+        if(nextAttempt>System.currentTimeMillis())interval=Math.min(interval,Math.max(100,nextAttempt-System.currentTimeMillis()));
         try{pollTask=worker.schedule(()->{poll();scheduleNextPoll();},interval,TimeUnit.MILLISECONDS);}
         catch(RejectedExecutionException e){if(!closed)throw e;}
     }
@@ -153,7 +154,7 @@ final class OnlineSession implements AutoCloseable {
             if(modern!=null)modern.retryBans();readSync();syncVisible(false);if(inventoryUncertain){loadInventory(false);inventoryUncertain=false;}heartbeat();healthy=true;failures=0;nextAttempt=0;
         }catch(Exception e){healthy=false;failures=Math.min(6,failures+1);boolean quota=e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==429;
             nextAttempt=System.currentTimeMillis()+OnlineSyncPolicy.retryDelay(failures,quota);
-            problem(e,e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==403);}
+            problem(e,e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==403);scheduleNextPoll();}
     }
     private void readSync()throws Exception{
         if(modern!=null){modern.readSync();return;}

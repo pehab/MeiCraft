@@ -107,7 +107,7 @@ final class OnlineV5 {
         }
         if(uncertain&&sequence>previousSequence&&s.realtime!=null)s.realtime.signal(revision);
         s.inventoryUncertain=false;
-        if(s.realtime!=null){s.realtime.access=fields(state,"access").toString();try{s.realtime.reconcileAccess(fields(state,"access"));}catch(Exception ignored){/* Firestore rights remain authoritative; RTDB reconnects independently. */}}
+        if(s.realtime!=null){String rights=fields(state,"access").toString();if(!rights.equals(s.realtime.access)){s.realtime.access=rights;try{s.realtime.reconcileAccess(fields(state,"access"));}catch(Exception ignored){/* Firestore rights remain authoritative; RTDB reconnects independently. */}}}
     }
     void syncVisible(boolean initial)throws Exception{
         World target=s.world;
