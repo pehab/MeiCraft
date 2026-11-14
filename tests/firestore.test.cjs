@@ -416,3 +416,40 @@ test('v5 bounded overview fits 256 identities and sixteen compact entries withou
  const response=await rest('parent',':batchGet',{documents:[docName(v5Path)]});assert.equal(response.status,200,JSON.stringify(response.body));assert.ok(Buffer.byteLength(JSON.stringify(response.body))<4*1024*1024);
  assert.equal(typeof response.body.find(row=>row.found).found.fields.players.mapValue.fields.parent.mapValue.fields.inventory.stringValue,'string');
 });
+test('v5 migration can read its not-yet-created target and the frozen legacy overview only as owner',async()=>{
+ await create(4);await join();
+ await updateDoc(doc(db('parent'),root),{closed:true,migration:'v5'});
+ await assertSucceeds(getDoc(doc(db('parent'),`${root}/sync/state`)));assert.equal((await assertSucceeds(getDoc(doc(db('parent'),v5Path)))).exists(),false);
+ await assertFails(getDoc(doc(db('child'),`${root}/sync/state`)));await assertFails(getDoc(doc(db('child'),v5Path)));
+});
+test('v5 exact REST migration sequence preserves private inventories and can resume after target deletion',async()=>{
+ await create(4);await join();await initInventory('parent');await initInventory('child');
+ const mined=await harvestWithSignal('child',1,revisionWrite('0'));assert.equal(mined.status,200);
+ const childPrivate=await readRest('child',invPath('child'));
+ await updateDoc(doc(db('parent'),root),{closed:true,migration:'v5'});
+ const missing=await fetch(`http://${process.env.FIRESTORE_EMULATOR_HOST}/v1/${docName(v5Path)}`,{headers:{Authorization:`Bearer ${createMockUserToken({sub:'parent',user_id:'parent'},'demo-meicraft')}`}});assert.equal(missing.status,404);
+ const legacy=await readRest('parent',`${root}/sync/state`);await listRest('parent',`${root}/members`);
+ const state=state5(false);state.players.parent.inventory='';state.players.child={...participant5(),inventory:''};state.access.child=true;state.regions={};
+ const stateFields=typed5(state).mapValue.fields;stateFields.regions=legacy.fields.regions;
+ const begin=await rest('parent',':commit',{writes:[{update:{name:docName(v5Path),fields:stateFields},currentDocument:{exists:false}},{update:{name:docName(root),fields:{protocol:{integerValue:'5'}}},updateMask:{fieldPaths:['protocol']},currentDocument:{exists:true}}]});assert.equal(begin.status,200,JSON.stringify(begin.body));
+ const source=await rest('parent',`/${root}/sectors/0:runQuery`,{structuredQuery:{from:[{collectionId:'blocks'}],orderBy:[{field:{fieldPath:'__name__'},direction:'ASCENDING'}],limit:200}});assert.equal(source.status,200);assert.ok(legacy.fields.regions);
+ const original=source.body.find(row=>row.document).document;const crypto=require('node:crypto');const nonce=crypto.createHash('sha256').update(original.name+'|'+original.updateTime).digest('hex').slice(0,32);const digest=crypto.createHash('sha256').update(`0/1_3_2/0:0:${nonce}`).digest('hex');
+ const page=await rest('parent',':commit',{writes:[{update:{name:docName(`${root}/sectors/0/chunks/0_0_0`),fields:typed5({cells:{'1_3_2':`0:0:${nonce}`}}).mapValue.fields},updateMask:{fieldPaths:['cells.`1_3_2`']},updateTransforms:[{fieldPath:'updatedAt',setToServerValue:'REQUEST_TIME'}]},{update:{name:docName(v5Path),fields:typed5({migration:{sector:4,cursor:'',count:1,hash:digest}}).mapValue.fields},updateMask:{fieldPaths:['migration']},currentDocument:{exists:true}}]});assert.equal(page.status,200,JSON.stringify(page.body));
+ await readRest('parent',v5Path);const chunks=await rest('parent',`/${root}/sectors/0:runQuery`,{structuredQuery:{from:[{collectionId:'chunks'}],orderBy:[{field:{fieldPath:'__name__'},direction:'ASCENDING'}],limit:4}});assert.equal(chunks.status,200);assert.equal(chunks.body.filter(row=>row.document).length,1);assert.equal(chunks.body.find(row=>row.document).document.fields.cells.mapValue.fields['1_3_2'].stringValue,`0:0:${nonce}`);
+ const activate=await rest('parent',':commit',{writes:[{update:{name:docName(v5Path),fields:typed5({phase:'ready',open:true}).mapValue.fields},updateMask:{fieldPaths:['phase','open']},currentDocument:{exists:true}},{update:{name:docName(root),fields:typed5({closed:false}).mapValue.fields},updateMask:{fieldPaths:['closed','migration']},currentDocument:{exists:true}}]});assert.equal(activate.status,200,JSON.stringify(activate.body));
+ assert.deepEqual((await readRest('child',invPath('child'))).fields,childPrivate.fields);
+ for(const uid of ['parent','child']){const adopted=await rest(uid,':commit',{writes:[{update:{name:docName(v5Path),fields:typed5({players:{[uid]:{inventory:inv5(),rev:1}}}).mapValue.fields},updateMask:{fieldPaths:[`players.\`${uid}\`.inventory`,`players.\`${uid}\`.rev`]},currentDocument:{exists:true}}]});assert.equal(adopted.status,200,JSON.stringify(adopted.body));}
+ const owner=db('parent'),close=writeBatch(owner);close.update(doc(owner,root),{closed:true});close.update(doc(owner,v5Path),{open:false});await close.commit();await deleteDoc(doc(owner,`${root}/members/parent`));await deleteDoc(doc(owner,v5Path));
+ assert.equal((await assertSucceeds(getDoc(doc(owner,v5Path)))).exists(),false);await assertSucceeds(deleteDoc(doc(owner,root)));
+});
+test('v5 retains legacy historical-snapshot semantics while denying current reads and writes after a ban',async()=>{
+ for(const protocol of [4,5]){
+  await env.clearFirestore();if(protocol===4){await create(4);await join();}else{await create5();await join5();}
+  const path=protocol===4?`${root}/sync/state`:v5Path;const before=await rest('child',':batchGet',{documents:[docName(path)]});assert.equal(before.status,200);const row=before.body.find(row=>row.found),time=row.readTime;
+  const parent=db('parent'),ban=writeBatch(parent);if(protocol===5)ban.update(doc(parent,v5Path),{'access.child':false});ban.update(doc(parent,`${root}/members/child`),{banned:true});await ban.commit();
+  if(protocol===4){const moved=await rest('parent',':commit',{writes:[presenceWrite('parent',88)]});assert.equal(moved.status,200);}else await updateDoc(doc(parent,v5Path),{'players.parent.position':{name:'Parent',sector:0,x:88,y:30,z:0,yaw:0,updatedAt:serverTimestamp()}});
+  const current=await rest('child',':batchGet',{documents:[docName(path)]});assert.equal(current.status,403);
+  const historical=await rest('child',':batchGet',{documents:[docName(path)],readTime:time});assert.equal(historical.status,200,JSON.stringify(historical.body));assert.deepEqual(historical.body.find(row=>row.found).found.fields,row.found.fields,'historical response contains only the earlier authorized data, never post-ban updates');
+  if(protocol===4){const denied=await rest('child',':commit',{writes:[presenceWrite('child',20)]});assert.equal(denied.status,403);}else await assertFails(updateDoc(doc(db('child'),v5Path),{'players.child.position':{name:'Child',sector:0,x:20,y:30,z:0,yaw:0,updatedAt:serverTimestamp()}}));
+ }
+});

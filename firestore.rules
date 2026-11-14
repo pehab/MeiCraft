@@ -119,9 +119,10 @@ service cloud.firestore {
         allow list: if false;
       }
       function v5Read() {
-        return signedIn() && (resource.data.owner == request.auth.uid || resource.data.phase == 'ready' && resource.data.open
+        return signedIn() && (resource != null && (resource.data.owner == request.auth.uid || resource.data.phase == 'ready' && resource.data.open
           && (resource.data.access.get(request.auth.uid,false) == true
-            || !resource.data.access.keys().hasAny([request.auth.uid]) && member(world)));
+            || !resource.data.access.keys().hasAny([request.auth.uid]) && member(world)))
+          || resource == null && deleting(world));
       }
       function v5Inventory(data) {
         return data is string && data.matches('^1[.][A-Za-z0-9_-]{16}[.][A-Za-z0-9_-]{146}$');
@@ -257,7 +258,7 @@ service cloud.firestore {
             && data.revision is int && data.revision == resource.data.regions.get(key,{'revision':0}).revision + 1
             && data.updatedAt == request.time;
         }
-        allow get: if slot == 'state' && member(world) || slot == 'v5' && v5Read();
+        allow get: if slot == 'state' && (member(world) || deleting(world)) || slot == 'v5' && v5Read();
         allow create: if slot == 'v5' && v5Create() || slot == 'state' && signedIn() && getAfter(worldPath(world)).data.owner == request.auth.uid
           && getAfter(worldPath(world)).data.protocol == 4
           && request.resource.data.keys().hasAll(['regions','players']) && request.resource.data.keys().hasOnly(['regions','players'])

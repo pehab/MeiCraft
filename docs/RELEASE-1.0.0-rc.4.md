@@ -82,6 +82,12 @@ Rückkehr zur alten APK kein sicherer Rollback: neue Bauten stehen ausschließli
 Die alten Daten bleiben als unveränderte Ausgangskopie erhalten, werden aber nicht weiter
 aktualisiert. Löschen der Welt entfernt beide Strukturen. Es erfolgt kein Tarifwechsel.
 
+Bereits früher autorisierte historische Snapshots verhalten sich wie im bisherigen
+Protokoll. Die Emulatortests vergleichen beide Protokolle direkt: historische Antworten
+enthalten nur den früheren Stand; nach einer Sperre werden aktuelle Reads und sämtliche
+Schreibversuche verweigert. Ein Cache oder historischer Stand lässt sich nicht nachträglich
+von einem bereits berechtigten Gerät entfernen.
+
 ## Gemessene/prüfbare Grenzen
 
 - Kontrollierte Zwei-Stunden-Simulation, gleicher Zweiesekundentakt, eine Bauaktion je
