@@ -126,16 +126,17 @@ jobs:
         run: |
           bash build-local.sh
           python3 scripts/prepare-release.py
-          cp firestore.rules firestore.indexes.json docs/RELEASE-1.0.0-rc.4.md build/release/
+          cp database.rules.json firestore.rules firestore.indexes.json docs/RELEASE-1.0.0-rc.5.md build/release/
       - uses: actions/upload-artifact@v6
         with:
           name: meiCraft-test-apk
           path: |
             build/release/*.apk
             build/release/*.apk.sha256
+            build/release/database.rules.json
             build/release/firestore.rules
             build/release/firestore.indexes.json
-            build/release/RELEASE-1.0.0-rc.4.md
+            build/release/RELEASE-1.0.0-rc.5.md
           if-no-files-found: error
 
   verify-release-package:

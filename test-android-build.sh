@@ -12,7 +12,7 @@ QR_JAR=build/dependencies/zxing-core-3.5.4.jar
 APP_VERSION="$(sed -n 's/^versionName=//p' version.properties)"
 cp "build/meiCraft-$APP_VERSION.apk" build/test-assets/current.apk
 "$BT/aapt2" link -I "$SDK/platforms/$PLATFORM/android.jar" --manifest tests/AndroidManifest.xml -A build/test-assets -o build/test-apk/resources.apk
-"$JAVA_BIN/java" -m jdk.compiler/com.sun.tools.javac.Main -Xlint:deprecation -Werror -encoding UTF-8 -source 17 -target 17 -classpath "$SDK/platforms/$PLATFORM/android.jar:build/classes:$QR_JAR" -d build/test-apk/classes tests/SmokeInstrumentation.java tests/OnlineV5Checks.java
+"$JAVA_BIN/java" -m jdk.compiler/com.sun.tools.javac.Main -Xlint:deprecation -Werror -encoding UTF-8 -source 17 -target 17 -classpath "$SDK/platforms/$PLATFORM/android.jar:build/classes:$QR_JAR" -d build/test-apk/classes tests/SmokeInstrumentation.java tests/OnlineV5Checks.java tests/RealtimeChecks.java
 python3 - <<'PY'
 import zipfile,pathlib
 with zipfile.ZipFile('build/test-apk/classes.jar','w') as z:

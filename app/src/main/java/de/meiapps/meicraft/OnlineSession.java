@@ -10,14 +10,16 @@ import java.util.concurrent.*;
 final class OnlineSession implements AutoCloseable {
     interface Listener { void loaded(World world,String name); void problem(String text,boolean fatal); }
     static final class Player {
-        final String uid,name;final int sector;final float x,y,z,yaw;final boolean banned;
-        Player(String uid,JSONObject d)throws JSONException{this.uid=uid;name=FirebaseRest.string(d,"name");sector=FirebaseRest.integer(d,"sector");x=(float)FirebaseRest.number(d,"x");y=(float)FirebaseRest.number(d,"y");z=(float)FirebaseRest.number(d,"z");yaw=(float)FirebaseRest.number(d,"yaw");banned=d.getJSONObject("banned").getBoolean("booleanValue");}
+        final String uid,name;final int sector;final float x,y,z,yaw;final boolean banned;final long serverTime,receivedAt;
+        Player(String uid,JSONObject d)throws JSONException{serverTime=0;receivedAt=System.nanoTime();this.uid=uid;name=FirebaseRest.string(d,"name");sector=FirebaseRest.integer(d,"sector");x=(float)FirebaseRest.number(d,"x");y=(float)FirebaseRest.number(d,"y");z=(float)FirebaseRest.number(d,"z");yaw=(float)FirebaseRest.number(d,"yaw");banned=d.getJSONObject("banned").getBoolean("booleanValue");}
+        Player(String uid,String name,int sector,float x,float y,float z,float yaw,long serverTime,long receivedAt){this.uid=uid;this.name=name;this.sector=sector;this.x=x;this.y=y;this.z=z;this.yaw=yaw;this.serverTime=serverTime;this.receivedAt=receivedAt;banned=false;}
     }
     final MainActivity activity;final FirebaseRest firebase;final Listener listener;
     final ScheduledExecutorService worker=Executors.newSingleThreadScheduledExecutor();
     volatile OnlineWorld invitation;
     final String playerName;
-    volatile OnlineV5 modern;
+    volatile OnlineV5 modern;volatile OnlineRealtime realtime;
+    private ScheduledFuture<?> pollTask;private final java.util.concurrent.atomic.AtomicBoolean realtimeSyncQueued=new java.util.concurrent.atomic.AtomicBoolean();
     volatile boolean closed,foreground=true,healthy,loading=true,pending,streaming,deletionOnly;
     volatile List<Player> players=Collections.emptyList();
     volatile int sector,side;
@@ -35,7 +37,7 @@ final class OnlineSession implements AutoCloseable {
     volatile OnlineRegionCache regionCache;
     volatile Set<Integer> readyRegions=Collections.emptySet();
     volatile Story inventory=new Story();String inventoryVersion="";boolean inventoryUncertain;
-    volatile float px,py,pz,angle;
+    volatile float px,py,pz,angle;int visibleX=Integer.MIN_VALUE,visibleZ=Integer.MIN_VALUE;
     float lastX=Float.NaN,lastY,lastZ,lastAngle;
     OnlineSession(MainActivity activity,FirebaseRest firebase,OnlineWorld invitation,String playerName,Listener listener){this.activity=activity;this.firebase=firebase;this.invitation=invitation;this.playerName=OnlineWorld.playerName(playerName);this.listener=listener;}
     String base(){return "onlineWorlds/"+invitation.id;}
@@ -58,7 +60,8 @@ final class OnlineSession implements AutoCloseable {
         worker.execute(()->{try{
             firebase.authenticate();modern=new OnlineV5(this);modern.start(create,worldName,size);
             if(closed)return;healthy=true;loading=false;
-            activity.runOnUiThread(()->{if(!closed)listener.loaded(world,name);});scheduleNextPoll();
+            activity.runOnUiThread(()->{if(!closed)listener.loaded(world,name);});
+            if(firebase.realtimeEligible){realtime=new OnlineRealtime(this);realtime.start();}scheduleNextPoll();
         }catch(Exception e){problem(e,true);}});
     }
     JSONObject memberWrite()throws JSONException{
@@ -101,12 +104,18 @@ final class OnlineSession implements AutoCloseable {
     }
     void markReady(int id){Set<Integer> next=new HashSet<>(readyRegions);next.add(id);readyRegions=Collections.unmodifiableSet(next);}
     boolean canMove(float x,float z){return readyRegions.contains(OnlineWorld.sectorAt(x,z,side));}
-    void position(World w){if(w==world){px=w.x;py=w.y;pz=w.z;angle=w.yaw;sector=OnlineWorld.sectorAt(w.x,w.z,side);}}
+    void position(World w){if(w==world){
+        px=w.x;py=w.y;pz=w.z;angle=w.yaw;sector=OnlineWorld.sectorAt(w.x,w.z,side);
+        int gx=(int)(px/8),gz=(int)(pz/8);if(modern!=null&&!loading&&!streaming&&(gx!=visibleX||gz!=visibleZ)){
+            visibleX=gx;visibleZ=gz;for(int id:OnlineWorld.visibleSectors(px,pz,side,82))if(!readyRegions.contains(id)){requestRealtimeSync();break;}
+        }
+    }}
     static final class Presence {
         final float x,y,z,angle;final int cell;final long time;
         Presence(float x,float y,float z,float angle,int side,long time){this.x=x;this.y=y;this.z=z;this.angle=angle;this.cell=OnlineWorld.sectorAt(x,z,side);this.time=time;}
     }
     Presence duePresence(){
+        if(realtime!=null&&realtime.live())return null;
         long now=System.currentTimeMillis();float x=px,y=py,z=pz,a=angle;
         boolean moved=Float.isNaN(lastX)||Math.abs(x-lastX)>.35f||Math.abs(y-lastY)>.35f||Math.abs(z-lastZ)>.35f||Math.abs(a-lastAngle)>.2f;
         return OnlineSyncPolicy.heartbeat(now,lastHeartbeat,moved,hasPeers())?new Presence(x,y,z,a,side,now):null;
@@ -126,15 +135,22 @@ final class OnlineSession implements AutoCloseable {
         firebase.commit(new JSONArray().put(presenceWrite(presence)));presenceConfirmed(presence);
     }
     boolean hasPeers(){for(Player player:players)if(!player.uid.equals(firebase.uid))return true;return false;}
-    private void scheduleNextPoll(){
-        if(closed)return;
-        try{worker.schedule(()->{poll();scheduleNextPoll();},OnlineSyncPolicy.pollInterval(hasPeers()),TimeUnit.MILLISECONDS);}
+    synchronized void scheduleNextPoll(){
+        if(closed)return;if(pollTask!=null)pollTask.cancel(false);
+        long interval=realtime!=null&&realtime.live()?30000:OnlineSyncPolicy.pollInterval(hasPeers());
+        try{pollTask=worker.schedule(()->{poll();scheduleNextPoll();},interval,TimeUnit.MILLISECONDS);}
         catch(RejectedExecutionException e){if(!closed)throw e;}
+    }
+    void realtimeStatus(){if(!closed){scheduleNextPoll();requestRealtimeSync();}}
+    void requestRealtimeSync(){
+        if(closed||!realtimeSyncQueued.compareAndSet(false,true))return;
+        try{worker.schedule(()->{realtimeSyncQueued.set(false);if(!closed)poll();},25,TimeUnit.MILLISECONDS);}
+        catch(RejectedExecutionException ignored){realtimeSyncQueued.set(false);}
     }
     void poll(){
         if(closed||!foreground||loading||System.currentTimeMillis()<nextAttempt)return;
         try{
-            readSync();syncVisible(false);if(inventoryUncertain){loadInventory(false);inventoryUncertain=false;}heartbeat();healthy=true;failures=0;nextAttempt=0;
+            if(modern!=null)modern.retryBans();readSync();syncVisible(false);if(inventoryUncertain){loadInventory(false);inventoryUncertain=false;}heartbeat();healthy=true;failures=0;nextAttempt=0;
         }catch(Exception e){healthy=false;failures=Math.min(6,failures+1);boolean quota=e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==429;
             nextAttempt=System.currentTimeMillis()+OnlineSyncPolicy.retryDelay(failures,quota);
             problem(e,e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==403);}
@@ -233,7 +249,7 @@ final class OnlineSession implements AutoCloseable {
     void mutationFailed(Exception error){
         healthy=false;inventoryUncertain=true;
         if(error instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)error).status==429){failures=Math.min(6,failures+1);nextAttempt=System.currentTimeMillis()+OnlineSyncPolicy.retryDelay(failures,true);}
-        problem(error,false);
+        problem(error,false);if(realtime!=null)requestRealtimeSync();
     }
     boolean beginAction(){
         if(closed)return false;if(!healthy||loading||!foreground){activity.game.message("Verbindung wird hergestellt …");return false;}
@@ -326,5 +342,5 @@ final class OnlineSession implements AutoCloseable {
         String message=e instanceof FirebaseRest.Failure?e.getMessage():e instanceof IOException&&e.getMessage()!=null&&!e.getMessage().startsWith("Unable")?e.getMessage():"Verbindung unterbrochen. Bauen pausiert; erneuter Versuch folgt.";
         activity.runOnUiThread(()->{if(!closed)listener.problem(message,fatal);});
     }
-    @Override public void close(){closed=true;healthy=false;players=Collections.emptyList();worker.shutdownNow();OnlineRegionCache cache=regionCache;if(cache!=null)cache.close();}
+    @Override public void close(){closed=true;healthy=false;OnlineRealtime live=realtime;if(live!=null)live.close();players=Collections.emptyList();worker.shutdownNow();OnlineRegionCache cache=regionCache;if(cache!=null)cache.close();}
 }

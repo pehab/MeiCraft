@@ -122,7 +122,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
     }
     static final class PlayerLabel {final String name;final float x,y;PlayerLabel(String name,float x,float y){this.name=name;this.x=x;this.y=y;}}
     volatile java.util.List<PlayerLabel> playerLabels=java.util.Collections.emptyList();
-    final java.util.Map<String,float[]> avatarPositions=new java.util.HashMap<>();
+    final java.util.Map<String,OnlinePose> avatarPositions=new java.util.HashMap<>();
     void actorPart(float cx,float feet,float cz,float yaw,float ox,float oy,float oz,float sx,float sy,float sz,int tile){
         float sin=(float)Math.sin(yaw),cos=(float)Math.cos(yaw);
         for(int face=0;face<6;face++)for(int corner:ORDER){float[] f=F[face];float xx=ox+f[corner*3]*sx,zz=oz+f[corner*3+2]*sz;boolean plainSkin=Math.abs(tile)==25&&(tile<0||face!=5);int atlas=Math.abs(tile);
@@ -141,10 +141,10 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             if(player.uid.equals(online.firebase.uid)||!online.readyRegions.contains(player.sector))continue;
             float targetX=player.sector%online.side*World.W+player.x,targetZ=player.sector/online.side*World.D+player.z;
             if((targetX-world.x)*(targetX-world.x)+(targetZ-world.z)*(targetZ-world.z)>65*65)continue;seen.add(player.uid);
-            float[] p=avatarPositions.get(player.uid);if(p==null){p=new float[]{targetX,player.y,targetZ,player.yaw};avatarPositions.put(player.uid,p);}
+            OnlinePose pose=avatarPositions.get(player.uid);if(pose==null){pose=new OnlinePose();avatarPositions.put(player.uid,pose);}
+            pose.receive(player.receivedAt,targetX,player.y,targetZ,player.yaw);float[] p=pose.at(System.nanoTime());
             float remaining=(targetX-p[0])*(targetX-p[0])+(targetZ-p[2])*(targetZ-p[2]);
-            p[0]+=(targetX-p[0])*.09f;p[1]+=(player.y-p[1])*.09f;p[2]+=(targetZ-p[2])*.09f;p[3]+=(float)Math.IEEEremainder(player.yaw-p[3],Math.PI*2)*.09f;
-            float x=p[0],feet=p[1]-1.6f,z=p[2],yaw=p[3],swing=remaining>.02f?(float)Math.sin(System.nanoTime()*1e-9*7)*.09f:0;int shirt=27+OnlineWorld.colorIndex(player.uid);
+            float x=p[0],feet=p[1]-1.6f,z=p[2],yaw=p[3],swing=remaining>.0004f?(float)Math.sin(System.nanoTime()*1e-9*7)*.09f:0;int shirt=27+OnlineWorld.colorIndex(player.uid);
             actorPart(x,feet,z,yaw,-.25f,.65f,-.15f,.5f,.55f,.3f,shirt);actorPart(x,feet,z,yaw,-.22f,1.2f,-.22f,.44f,.44f,.44f,25);
             actorPart(x,feet,z,yaw,-.24f,0,-.14f+swing,.19f,.65f,.28f,26);actorPart(x,feet,z,yaw,.05f,0,-.14f-swing,.19f,.65f,.28f,26);
             actorPart(x,feet,z,yaw,-.4f,.6f,-.13f-swing,.15f,.6f,.26f,-25);actorPart(x,feet,z,yaw,.25f,.6f,-.13f+swing,.15f,.6f,.26f,-25);

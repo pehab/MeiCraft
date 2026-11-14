@@ -75,6 +75,7 @@ final class OnlineV5 {
         OnlineInventory.apply(s.world.progress,s.inventory);syncVisible(true);heartbeat();s.remember();
     }
     void readSync()throws Exception{
+        boolean uncertain=s.inventoryUncertain;long previousSequence=sequence;
         List<String> projection=null;
         if(s.world!=null&&!s.inventoryUncertain&&state.has("access")){
             projection=new ArrayList<>(Arrays.asList("phase","open","access","regions"));
@@ -92,7 +93,7 @@ final class OnlineV5 {
                 String time=position.getJSONObject("updatedAt").getString("timestampValue");if(System.currentTimeMillis()-Instant.parse(time).toEpochMilli()<=OnlineSyncPolicy.PRESENCE_TTL_MS&&players.size()<32)players.add(new OnlineSession.Player(uid,new JSONObject(position.toString()).put("banned",FirebaseRest.value(false))));
             }
         }
-        s.players=Collections.unmodifiableList(players);
+        if(s.realtime==null||!s.realtime.connected)s.players=Collections.unmodifiableList(players);else s.realtime.fallbackPlayers(players);
         if(people.has(f.uid)){
             JSONObject me=fields(people,f.uid);long rev=integer(me,"rev");sequence=integer(me,"seq");
             String encrypted=FirebaseRest.string(me,"inventory");
@@ -104,7 +105,9 @@ final class OnlineV5 {
             if(s.inventoryVersion.isEmpty()||rev!=revision){s.inventory=cipher(false).decrypt(encrypted,s.invitation.id,f.uid,rev);revision=rev;s.inventoryVersion=Long.toString(rev);if(s.world!=null)s.applyInventory(s.inventory);}
 
         }
+        if(uncertain&&sequence>previousSequence&&s.realtime!=null)s.realtime.signal(revision);
         s.inventoryUncertain=false;
+        if(s.realtime!=null){s.realtime.access=fields(state,"access").toString();try{s.realtime.reconcileAccess(fields(state,"access"));}catch(Exception ignored){/* Firestore rights remain authoritative; RTDB reconnects independently. */}}
     }
     void syncVisible(boolean initial)throws Exception{
         World target=s.world;
@@ -176,7 +179,7 @@ final class OnlineV5 {
             OnlineSession.Presence p=s.duePresence();JSONObject overview=playerPatch(entry,mask,p);String field="regions.s"+region;
             JSONArray transforms=overview.optJSONArray("updateTransforms");if(transforms==null)transforms=new JSONArray();overview.put("updateTransforms",transforms.put(new JSONObject().put("fieldPath",field+".revision").put("increment",FirebaseRest.value(1))).put(new JSONObject().put("fieldPath",field+".updatedAt").put("setToServerValue","REQUEST_TIME")));
             JSONObject chunk=f.write(chunks(region)+"/"+c.chunk(),new JSONObject().put("cells",map(new JSONObject().put(key,FirebaseRest.value(c.value())))),new String[]{"cells."+OnlineSession.quoted(key)},null,true);
-            try{f.commit(new JSONArray().put(chunk).put(overview));data.versions.put(key,c.token);data.types.put(key,c.type);data.renewable.put(key,water);data.own.add(c);data.ownChanges++;sequence++;revision++;s.inventory=next;s.inventoryVersion=Long.toString(revision);
+            try{f.commit(new JSONArray().put(chunk).put(overview));data.versions.put(key,c.token);data.types.put(key,c.type);data.renewable.put(key,water);data.own.add(c);data.ownChanges++;sequence++;revision++;if(s.realtime!=null)s.realtime.signal(revision);s.inventory=next;s.inventoryVersion=Long.toString(revision);
                 if(p!=null){s.presenceConfirmed(p);FirebaseRest.DIAGNOSTICS.positionMerged();}s.apply(target,region,lx,y,lz,c.type,false);s.applyInventory(next,started);
             }catch(FirebaseRest.Failure error){if(error.status!=403&&error.status!=409&&error.status!=412&&error.status!=400)throw error;readSync();syncVisible(false);s.activity.game.message("Der Block oder dein Vorrat wurde inzwischen geändert. Bitte erneut versuchen.");}
         }catch(Exception error){s.mutationFailed(error);}finally{s.pending=false;}});
@@ -189,10 +192,23 @@ final class OnlineV5 {
             String notice=message;s.activity.runOnUiThread(()->{if(!s.closed){s.activity.toast(notice);s.activity.online.refreshWorkbench();}});
         }catch(Exception error){s.mutationFailed(error);}finally{s.pending=false;}});
     }
-    void ban(String uid){if(!s.owner()||uid.equals(s.owner))return;s.worker.execute(()->{try{f.commit(new JSONArray().put(f.write(path(),new JSONObject().put("access",map(new JSONObject().put(uid,FirebaseRest.value(false)))),new String[]{"access."+OnlineSession.quoted(uid)},new JSONObject().put("exists",true),false)).put(f.write(s.member(uid),FirebaseRest.fields("banned",true),new String[]{"banned"},new JSONObject().put("exists",true),false)));readSync();s.activity.runOnUiThread(()->s.activity.toast("Spieler entfernt und für diese Geräte-ID gesperrt."));}catch(Exception e){s.problem(e,false);}});}
+    android.content.SharedPreferences bans(){return s.activity.getSharedPreferences("online-pending-bans",0);}
+    void retryBans()throws Exception{
+        if(!s.owner())return;Set<String> pending=new HashSet<>(bans().getStringSet(s.invitation.id,Collections.emptySet()));
+        for(String uid:pending){
+            if(s.realtime!=null)s.realtime.revoke(uid);
+            f.commit(new JSONArray().put(f.write(path(),new JSONObject().put("access",map(new JSONObject().put(uid,FirebaseRest.value(false)))),new String[]{"access."+OnlineSession.quoted(uid)},new JSONObject().put("exists",true),false)).put(f.write(s.member(uid),FirebaseRest.fields("banned",true),new String[]{"banned"},new JSONObject().put("exists",true),false)));
+            Set<String> remaining=new HashSet<>(bans().getStringSet(s.invitation.id,Collections.emptySet()));remaining.remove(uid);if(!bans().edit().putStringSet(s.invitation.id,remaining).commit())throw new IOException("Sperrstatus konnte nicht gespeichert werden.");
+        }
+    }
+    void ban(String uid){if(!s.owner()||uid.equals(s.owner))return;s.worker.execute(()->{try{
+        Set<String> pending=new HashSet<>(bans().getStringSet(s.invitation.id,Collections.emptySet()));pending.add(uid);if(!bans().edit().putStringSet(s.invitation.id,pending).commit())throw new IOException("Sperrauftrag konnte nicht gespeichert werden.");
+        retryBans();readSync();s.activity.runOnUiThread(()->s.activity.toast("Spieler entfernt und für diese Geräte-ID gesperrt."));
+    }catch(Exception e){s.activity.runOnUiThread(()->s.activity.toast("Sperren noch nicht abgeschlossen. Der gespeicherte Auftrag wird erneut versucht."));s.problem(e,false);}});}
     void deleteWorld(Runnable success,java.util.function.Consumer<String> failure){
         if(!s.owner()||s.closed)return;s.loading=true;s.healthy=false;s.worker.execute(()->{try{
             JSONObject root=f.get(s.base());if(root!=null){
+                if(s.realtime==null&&f.realtimeEligible)s.realtime=new OnlineRealtime(s);if(s.realtime!=null)s.realtime.closeWorld();
                 JSONArray close=new JSONArray().put(f.write(s.base(),FirebaseRest.fields("closed",true),new String[]{"closed"},new JSONObject().put("updateTime",root.getString("updateTime")),false));
                 JSONObject current=FirebaseRest.integer(root.getJSONObject("fields"),"protocol")==5?f.get(path()):null;if(current!=null)close.put(f.write(path(),FirebaseRest.fields("open",false),new String[]{"open"},new JSONObject().put("exists",true),false));f.commit(close);
                 for(int id=0;id<s.side*s.side;id++){s.deleteCollection(chunks(id),false);s.deleteCollection(s.base()+"/sectors/"+id+"/blocks",false);}s.deleteCollection(s.base()+"/members",true);

@@ -1,0 +1,100 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "worlds": {
+      "$owner": {
+        "$world": {
+          ".read": "auth != null && (auth.uid == $owner || (root.child('worlds').child($owner).child($world).child('members').child(auth.uid).child('active').val() == true && data.child('meta/closed').val() == false))",
+          ".write": "auth != null && auth.uid == $owner && ((!data.exists() && newData.exists() && !newData.child('live').exists() && newData.child('members').child($owner).child('active').val() == true) || (data.exists() && !newData.exists()))",
+          ".validate": "$world.matches(/^[a-f0-9]{32}$/) && newData.hasChildren(['meta','members'])",
+          "meta": {
+            ".validate": "newData.hasChildren(['invite','side','closed'])",
+            "invite": {
+              ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{32}$/) && (!data.exists() || newData.val() == data.val())"
+            },
+            "side": {
+              ".validate": "(newData.val() == 2 || newData.val() == 3) && (!data.exists() || newData.val() == data.val())"
+            },
+            "closed": {
+              ".write": "auth != null && auth.uid == $owner && data.exists() && newData.val() == true",
+              ".validate": "newData.isBoolean() && (!data.exists() || data.val() == false || newData.val() == true)"
+            },
+            "$other": {
+              ".validate": false
+            }
+          },
+          "members": {
+            "$uid": {
+              ".read": "auth != null && (auth.uid == $uid || auth.uid == $owner)",
+              ".write": "auth != null && newData.exists() && root.child('worlds').child($owner).child($world).child('meta').child('closed').val() == false && ((auth.uid == $owner && (!data.exists() || data.child('active').val() == true || newData.child('active').val() == false) && ($uid != $owner || newData.child('active').val() == true)) || (auth.uid == $uid && !data.exists() && newData.child('active').val() == true && newData.child('proof').val() == root.child('worlds').child($owner).child($world).child('meta').child('invite').val()))",
+              ".validate": "newData.hasChildren(['active','proof']) && (!data.exists() || newData.child('proof').val() == data.child('proof').val())",
+              "active": {
+                ".validate": "newData.isBoolean()"
+              },
+              "proof": {
+                ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{32}$/)"
+              },
+              "$other": {
+                ".validate": false
+              }
+            }
+          },
+          "live": {
+            "players": {
+              "$uid": {
+                ".write": "auth != null && root.child('worlds').child($owner).child($world).child('members').child(auth.uid).child('active').val() == true && root.child('worlds').child($owner).child($world).child('meta').child('closed').val() == false && auth.uid == $uid",
+                ".validate": "newData.hasChildren(['name','sector','x','y','z','yaw','t'])",
+                "name": {
+                  ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 24"
+                },
+                "sector": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() < root.child('worlds').child($owner).child($world).child('meta').child('side').val() * root.child('worlds').child($owner).child($world).child('meta').child('side').val()"
+                },
+                "x": {
+                  ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 96"
+                },
+                "y": {
+                  ".validate": "newData.isNumber() && newData.val() >= 1.62 && newData.val() <= 64"
+                },
+                "z": {
+                  ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 96"
+                },
+                "yaw": {
+                  ".validate": "newData.isNumber() && newData.val() >= -1000000 && newData.val() <= 1000000"
+                },
+                "t": {
+                  ".validate": "newData.isNumber() && newData.val() == now"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              }
+            },
+            "signals": {
+              "$uid": {
+                ".write": "auth != null && root.child('worlds').child($owner).child($world).child('members').child(auth.uid).child('active').val() == true && root.child('worlds').child($owner).child($world).child('meta').child('closed').val() == false && auth.uid == $uid && newData.exists()",
+                ".validate": "newData.hasChildren(['rev','t'])",
+                "rev": {
+                  ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() > 0 && newData.val() < 9000000000000 && (!data.exists() || newData.val() >= data.val())"
+                },
+                "t": {
+                  ".validate": "newData.isNumber() && newData.val() == now"
+                },
+                "$other": {
+                  ".validate": false
+                }
+              }
+            },
+            "$other": {
+              ".validate": false
+            }
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    }
+  }
+}

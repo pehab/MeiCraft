@@ -22,14 +22,15 @@ final class FirebaseRest {
         String diagnostic(){return service+" · "+operation+" · HTTP "+status+" · "+serverStatus+" · "+detail;}
     }
     interface ConnectionFactory {HttpURLConnection open(URL url)throws IOException;}
-    final ConnectionFactory connections;
+    final ConnectionFactory connections;final boolean realtimeEligible;
     final android.content.Context context;
     final String project,key,root;
     final SharedPreferences credentials;
-    String uid,token="";long expires;
-    FirebaseRest(Context context)throws IOException,JSONException{this(context,url->(HttpURLConnection)url.openConnection());}
-    FirebaseRest(Context context,ConnectionFactory connections)throws IOException,JSONException{
-        this.connections=connections;this.context=context.getApplicationContext();
+    volatile String uid,token="";volatile long expires;
+    FirebaseRest(Context context)throws IOException,JSONException{this(context,url->(HttpURLConnection)url.openConnection(),true);}
+    FirebaseRest(Context context,ConnectionFactory connections)throws IOException,JSONException{this(context,connections,false);}
+    private FirebaseRest(Context context,ConnectionFactory connections,boolean realtimeEligible)throws IOException,JSONException{
+        this.realtimeEligible=realtimeEligible;this.connections=connections;this.context=context.getApplicationContext();
         JSONObject config;
         try(InputStream input=context.getAssets().open("google-services.json")){config=new JSONObject(new String(read(input),StandardCharsets.UTF_8));}
         project=config.getJSONObject("project_info").getString("project_id");
@@ -40,7 +41,7 @@ final class FirebaseRest {
         root="https://firestore.googleapis.com/v1/projects/"+project+"/databases/(default)/documents";
         credentials=context.getSharedPreferences("firebase-user",Context.MODE_PRIVATE);uid=credentials.getString("uid","");
     }
-    void authenticate()throws IOException,JSONException{
+    synchronized void authenticate()throws IOException,JSONException{
         if(!token.isEmpty()&&System.currentTimeMillis()<expires)return;
         String refresh=credentials.getString("refresh","");JSONObject result;
         if(refresh.isEmpty()){
@@ -55,6 +56,8 @@ final class FirebaseRest {
         if(!credentials.edit().putString("uid",uid).putString("refresh",refresh).commit())throw new IOException("Geräteanmeldung konnte nicht gespeichert werden.");
         expires=System.currentTimeMillis()+Math.max(0,result.optLong("expiresIn",result.optLong("expires_in",3600))-120)*1000;
     }
+    synchronized void invalidateToken(String used){if(token.equals(used)){token="";expires=0;}}
+    synchronized String idToken()throws IOException,JSONException{authenticate();return token;}
     JSONObject get(String path)throws IOException,JSONException{
         authenticate();try{JSONObject result=new JSONObject(request(root+"/"+path,"GET",null,true,false));DIAGNOSTICS.read(1);return result;}catch(Failure e){if(e.status==404)return null;throw e;}
     }
@@ -139,13 +142,13 @@ final class FirebaseRest {
     }
     private String request(String url,String method,String body,boolean authorized,boolean form)throws IOException{
         String operation=operation(url,method),service=url.contains("firestore.googleapis.com")?"Firestore":url.contains("securetoken.googleapis.com")?"Firebase Token":"Firebase Auth";
-        DIAGNOSTICS.request(operation);HttpURLConnection connection=connections.open(new URL(url));
+        String usedToken=token;DIAGNOSTICS.request(operation);HttpURLConnection connection=connections.open(new URL(url));
         try{
             connection.setConnectTimeout(8000);connection.setReadTimeout(10000);connection.setInstanceFollowRedirects(false);connection.setRequestMethod(method);
-            if(authorized)connection.setRequestProperty("Authorization","Bearer "+token);
+            if(authorized)connection.setRequestProperty("Authorization","Bearer "+usedToken);
             if(body!=null){connection.setDoOutput(true);connection.setRequestProperty("Content-Type",form?"application/x-www-form-urlencoded":"application/json; charset=UTF-8");byte[] bytes=body.getBytes(StandardCharsets.UTF_8);DIAGNOSTICS.sent(bytes.length);connection.setFixedLengthStreamingMode(bytes.length);try(OutputStream output=connection.getOutputStream()){output.write(bytes);}}
             int status=connection.getResponseCode();
-            if(status<200||status>=300){String response="";try(InputStream input=connection.getErrorStream()){if(input!=null)response=new String(read(input),StandardCharsets.UTF_8);}catch(IOException ignored){/* The status remains useful when the error body is unavailable. */}Failure error=failure(status,service,operation,response);if(status==401&&authorized){token="";expires=0;}throw error;}
+            if(status<200||status>=300){String response="";try(InputStream input=connection.getErrorStream()){if(input!=null)response=new String(read(input),StandardCharsets.UTF_8);}catch(IOException ignored){/* The status remains useful when the error body is unavailable. */}Failure error=failure(status,service,operation,response);if(status==401&&authorized)invalidateToken(usedToken);throw error;}
             try(InputStream input=connection.getInputStream()){byte[] response=read(input);DIAGNOSTICS.received(response.length);return new String(response,StandardCharsets.UTF_8);}
         }catch(Failure e){throw e;}catch(IOException e){String detail=DIAGNOSTICS.failed(service+" · "+operation+" · Netzwerkfehler: "+e.getClass().getSimpleName());saveFailure(detail);throw e;}
         finally{connection.disconnect();}

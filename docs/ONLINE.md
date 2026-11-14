@@ -273,3 +273,7 @@ Neue Welten und durch den Besitzer migrierte Welten verwenden `sync/v5` und räu
 sind die neuen Regeln erforderlich; der APK-Workflow veröffentlicht sie nicht automatisch.
 Der Ablauf, die fortsetzbare Migration, private Inventarübernahme und Messgrenzen stehen
 in [RELEASE-1.0.0-rc.4.md](RELEASE-1.0.0-rc.4.md). Die Weltkarte benötigt keine eigene Abfrage.
+
+## RTDB-Teststand rc.5
+
+Positionen und Änderungsbenachrichtigungen verwenden RTDB; die atomare Firestore-Buchung von Block und Inventar bleibt bestehen. Einrichtung, Regeln, Grenzen und Tablet-Test: [RELEASE-1.0.0-rc.5.md](RELEASE-1.0.0-rc.5.md). Dieser Stand verwendet noch keine verzögerten Host-Checkpoints.

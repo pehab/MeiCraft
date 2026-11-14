@@ -9,7 +9,7 @@ public final class OnlineDiagnostics {
     private final long started=System.currentTimeMillis();
     private long requests,failures,documents,writes,deletes,receivedBytes,sentBytes,mergedPositions,ownRegionSkips;
     private final long[] actionTimes=new long[256];
-    private long actionCount,maxAction,cachedRegions,cachedBlocks,tailBlocks;
+    private long actionCount,maxAction,cachedRegions,cachedBlocks,tailBlocks,liveEvents,liveWrites;private boolean live;
     private final Map<String,Long> operations=new LinkedHashMap<>();
     private final ArrayDeque<String> errors=new ArrayDeque<>();
     public static String clean(String text,String... secrets){
@@ -17,7 +17,7 @@ public final class OnlineDiagnostics {
         for(String secret:secrets)if(secret!=null&&!secret.isEmpty())value=value.replace(secret,"[entfernt]");
         value=value.replaceAll("(?i)(bearer\\s+)[^\\s\\\"']+","$1[entfernt]")
             .replaceAll("eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+","[Token entfernt]")
-            .replaceAll("(?i)(key|token|refresh_token|id_token|access_token)=([^&\\s\\\"']+)","$1=[entfernt]")
+            .replaceAll("(?i)(auth|key|token|refresh_token|id_token|access_token)=([^&\\s\\\"']+)","$1=[entfernt]")
             .replaceAll("[a-fA-F0-9]{32}","[Kennung entfernt]")
             .replaceAll("[\\r\\n\\t]+"," ").trim();
         return value.length()>1200?value.substring(0,1200)+" …":value;
@@ -27,6 +27,9 @@ public final class OnlineDiagnostics {
         int n=(int)Math.min(actionCount,actionTimes.length);if(n==0)return 0;
         long[] sorted=java.util.Arrays.copyOf(actionTimes,n);java.util.Arrays.sort(sorted);return sorted[Math.min(n-1,(int)Math.ceil(n*p/100.0)-1)]/1e6;
     }
+    public synchronized void realtime(boolean connected){live=connected;}
+    public synchronized void realtimeEvent(){liveEvents++;}
+    public synchronized void realtimeWrite(){liveWrites++;}
     public synchronized void tailApplied(long blocks){tailBlocks+=blocks;}
     public synchronized void cacheRestored(long blocks){cachedRegions++;cachedBlocks+=blocks;}
     public synchronized void positionMerged(){mergedPositions++;}
@@ -42,6 +45,7 @@ public final class OnlineDiagnostics {
     }
     public synchronized String report(){
         StringBuilder out=new StringBuilder("meiCraft Online-Diagnose\n");
+        out.append("RTDB-Livekanal: ").append(live?"verbunden":"Firestore-Fallback").append(" · Ereignisse: ").append(liveEvents).append(" · bestätigte RTDB-Writes: ").append(liveWrites).append("\nFirestore-Dokumentzähler enthalten keine RTDB-Operationen.\n");
         out.append("Laufzeit seit App-Start: ").append((System.currentTimeMillis()-started)/60000).append(" min\n")
            .append("HTTP-Anfragen: ").append(requests).append(" · Fehler: ").append(failures)
            .append("\nEmpfangene Dokumente: ").append(documents).append("\nBestätigte Schreibvorgänge: ").append(writes)
