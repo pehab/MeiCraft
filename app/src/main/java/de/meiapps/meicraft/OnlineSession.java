@@ -24,12 +24,13 @@ final class OnlineSession implements AutoCloseable {
     volatile String owner="",name="";
     long seed,lastHeartbeat,nextAttempt;volatile long actionStarted;int failures;
     static final class Region {
-        final int id;String watermark="";boolean generated;long revision=-1,ownChanges;
+        final int id;String watermark="";boolean generated,complete;long revision=-1,ownChanges;
         final Map<String,String> versions=new HashMap<>();final Map<String,Integer> types=new HashMap<>();final Map<String,Boolean> renewable=new HashMap<>();
         Region(int id){this.id=id;}
     }
     JSONObject announcedRegions=new JSONObject();String announcedReadTime="";
     final Map<Integer,Region> regions=new HashMap<>();
+    volatile OnlineRegionCache regionCache;
     volatile Set<Integer> readyRegions=Collections.emptySet();
     volatile Story inventory=new Story();String inventoryVersion="";boolean inventoryUncertain;
     volatile float px,py,pz,angle;
@@ -86,6 +87,8 @@ final class OnlineSession implements AutoCloseable {
             owner=FirebaseRest.string(data,"owner");name=FirebaseRest.string(data,"name");seed=data.getJSONObject("seed").getLong("integerValue");side=FirebaseRest.integer(data,"side");
             if(side!=2&&side!=3)throw new IOException("Ungültige Weltgröße.");
             try{loadInventory(true);}catch(FirebaseRest.Failure e){if(e.status==403)throw new IOException("Bitte die aktualisierten Firestore-Regeln für 0.8.2 veröffentlichen.");throw e;}
+            regionCache=new OnlineRegionCache(new java.io.File(activity.getCacheDir(),"online-regions-v1"),invitation.id,seed,side);
+            if(closed){regionCache.close();return;}
             world=World.onlineSpace(seed,side);World origin=OnlineTerrain.region(seed,0,side);world.x=origin.x;world.y=origin.y;world.z=origin.z;world.yaw=0;px=world.x;py=world.y;pz=world.z;OnlineInventory.apply(world.progress,inventory);
             readSync();syncVisible(true);heartbeat();remember();
             if(!closed)activity.runOnUiThread(()->{if(!closed)listener.loaded(world,name);});
@@ -103,20 +106,26 @@ final class OnlineSession implements AutoCloseable {
     void syncVisible(boolean initial)throws Exception{
         World target=world;
         try{for(int id:OnlineWorld.visibleSectors(px,pz,side,82)){
-            if(closed)return;Region region=regions.computeIfAbsent(id,Region::new);
-            long revision=announcedRegions.has("s"+id)?FirebaseRest.integer(announcedRegions.getJSONObject("s"+id).getJSONObject("mapValue").getJSONObject("fields"),"revision"):0;
-            if(!OnlineSyncPolicy.reload(region.generated,region.revision,region.ownChanges,revision)){
-                if(region.ownChanges>0){FirebaseRest.DIAGNOSTICS.ownRegionSkipped();region.revision=revision;region.ownChanges=0;}
-                // The shared snapshot proves that every revision through this
-                // point is already present locally (unchanged or confirmed own).
-                // Keep the exclusive watermark current even without a download,
-                // so a later peer edit cannot replay hours of our own history.
-                region.watermark=announcedReadTime;
-                continue;
+            if(closed)return;Region region=regions.get(id);
+            if(region==null){
+                region=new Region(id);regions.put(id,region);
+                OnlineRegionCache.Snapshot cached=regionCache==null?null:regionCache.load(id);
+                if(cached!=null){region.versions.putAll(cached.versions);region.types.putAll(cached.types);region.renewable.putAll(cached.renewable);region.revision=cached.revision;region.watermark=cached.watermark;region.complete=true;FirebaseRest.DIAGNOSTICS.cacheRestored(cached.types.size());}
             }
+            long revision=announcedRegions.has("s"+id)?FirebaseRest.integer(announcedRegions.getJSONObject("s"+id).getJSONObject("mapValue").getJSONObject("fields"),"revision"):0;
+            // A revision rollback cannot use a newer exclusive watermark.
+            if(region.revision>revision){if(region.generated)throw new IOException("Weltstand zurückgesetzt. Bitte erneut beitreten.");region.versions.clear();region.types.clear();region.renewable.clear();region.watermark="";region.complete=false;region.revision=-1;region.ownChanges=0;}
+            boolean reload=OnlineSyncPolicy.reload(region.complete||region.generated,region.revision,region.ownChanges,revision);
             if(!region.generated)streaming=true;
             World tile=region.generated?null:OnlineTerrain.region(seed,id,side);
-            loadChanges(region,tile);region.revision=revision;region.ownChanges=0;
+            if(tile!=null)for(Map.Entry<String,Integer> entry:region.types.entrySet()){
+                String[] xyz=entry.getKey().split("_");tile.set(Integer.parseInt(xyz[0]),Integer.parseInt(xyz[1]),Integer.parseInt(xyz[2]),entry.getValue());
+            }
+            boolean changed=reload||region.ownChanges>0;
+            if(reload){loadChanges(region,tile);if(closed)return;}
+            else{if(region.ownChanges>0)FirebaseRest.DIAGNOSTICS.ownRegionSkipped();region.watermark=announcedReadTime;}
+            region.revision=revision;region.ownChanges=0;region.complete=true;
+            if(changed&&regionCache!=null)regionCache.offer(id,new OnlineRegionCache.Snapshot(region.revision,region.watermark,region.versions,region.types,region.renewable));
             if(tile!=null){
                 region.generated=true;
                 if(initial){OnlineInventory.install(target,tile,id,side);markReady(id);}
@@ -338,5 +347,5 @@ final class OnlineSession implements AutoCloseable {
         String message=e instanceof FirebaseRest.Failure?e.getMessage():e instanceof IOException&&e.getMessage()!=null&&!e.getMessage().startsWith("Unable")?e.getMessage():"Verbindung unterbrochen. Bauen pausiert; erneuter Versuch folgt.";
         activity.runOnUiThread(()->{if(!closed)listener.problem(message,fatal);});
     }
-    @Override public void close(){closed=true;healthy=false;players=Collections.emptyList();worker.shutdownNow();}
+    @Override public void close(){closed=true;healthy=false;players=Collections.emptyList();worker.shutdownNow();OnlineRegionCache cache=regionCache;if(cache!=null)cache.close();}
 }

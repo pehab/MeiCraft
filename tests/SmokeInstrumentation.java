@@ -222,6 +222,20 @@ public final class SmokeInstrumentation extends Instrumentation {
   String inventory="";int documentWrites,mergedPositions,nextCommitStatus=200;
   final java.util.List<org.json.JSONObject> commits=new java.util.ArrayList<>(),queries=new java.util.ArrayList<>();
   String snapshotTime="2026-10-31T12:00:02Z";
+  org.json.JSONArray blockDocuments;int queryRequests,failQueryRequest=-1,returnedDocuments;
+  String cachedQuery(org.json.JSONObject request)throws org.json.JSONException{
+   org.json.JSONObject query=request.getJSONObject("structuredQuery");String lower="",after="";
+   if(query.has("where"))lower=query.getJSONObject("where").getJSONObject("fieldFilter").getJSONObject("value").getString("timestampValue");
+   if(query.has("startAt"))after=query.getJSONObject("startAt").getJSONArray("values").getJSONObject(1).getString("referenceValue");
+   org.json.JSONArray result=new org.json.JSONArray();
+   for(int i=0;i<blockDocuments.length();i++){
+    org.json.JSONObject doc=blockDocuments.getJSONObject(i);String time=doc.getJSONObject("fields").getJSONObject("updatedAt").getString("timestampValue");
+    if(!lower.isEmpty()&&!java.time.Instant.parse(time).isAfter(java.time.Instant.parse(lower)))continue;
+    if(!after.isEmpty()&&doc.getString("name").compareTo(after)<=0)continue;
+    result.put(new org.json.JSONObject().put("document",doc));returnedDocuments++;if(result.length()==200)break;
+   }
+   return result.toString();
+  }
   @Override public java.net.HttpURLConnection open(java.net.URL url){
    attempts++;
    return new java.net.HttpURLConnection(url){
@@ -229,7 +243,7 @@ public final class SmokeInstrumentation extends Instrumentation {
     @Override public void connect(){}
     @Override public void disconnect(){}
     @Override public boolean usingProxy(){return false;}
-    @Override public int getResponseCode(){if(url.getPath().endsWith(":commit")&&nextCommitStatus!=200){int code=nextCommitStatus;nextCommitStatus=200;return code;}return status;}
+    @Override public int getResponseCode(){if(url.getPath().endsWith(":runQuery")&&++queryRequests==failQueryRequest)return 503;if(url.getPath().endsWith(":commit")&&nextCommitStatus!=200){int code=nextCommitStatus;nextCommitStatus=200;return code;}return status;}
     @Override public java.io.OutputStream getOutputStream(){if(url.getPath().endsWith(":commit"))writes++;return body;}
     @Override public java.io.InputStream getErrorStream(){return new java.io.ByteArrayInputStream("{\"error\":{\"status\":\"RESOURCE_EXHAUSTED\",\"message\":\"Read quota exceeded\"}}".getBytes(java.nio.charset.StandardCharsets.UTF_8));}
     @Override public java.io.InputStream getInputStream()throws IOException{
@@ -252,6 +266,7 @@ public final class SmokeInstrumentation extends Instrumentation {
      }
      else if(path.endsWith("/inventory/main")){inventoryReads++;response=inventory;}
      else{unexpected++;throw new IOException("Unexpected fixture request");}
+     if(path.endsWith(":runQuery")&&blockDocuments!=null)try{response=cachedQuery(new org.json.JSONObject(body.toString("UTF-8")));}catch(org.json.JSONException e){throw new IOException(e);}
      return new java.io.ByteArrayInputStream(response.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
    };
@@ -320,8 +335,44 @@ public final class SmokeInstrumentation extends Instrumentation {
    check(backend.inventoryReads==1&&session.inventory.inventory[2]==4,"an ambiguous write response reconciles inventory once instead of polling it forever");
    backend.status=429;session.poll();long until=session.nextAttempt;int requests=backend.attempts;for(int i=0;i<10;i++)session.poll();
    check(!session.healthy&&until-System.currentTimeMillis()>55000&&backend.attempts==requests,"actual HTTP 429 pauses building and prevents immediate repeated network requests");
+   String savedFailure=activity.getSharedPreferences("online-diagnostics",0).getString("failureReport","");
+   check(savedFailure.contains("HTTP-Anfragen:")&&savedFailure.contains("Empfangene Dokumente:")&&savedFailure.contains("RESOURCE_EXHAUSTED")&&!savedFailure.contains("fixture-token"),"quota failure preserves counters and sanitized error across restart");
    backend.status=200;session.nextAttempt=0;session.poll();check(session.healthy&&session.failures==0,"successful reconnect restores the session");
   }finally{session.close();}
+ }
+ OnlineSession cachedSession(MainActivity activity,SyncBackend backend,OnlineWorld invitation,java.io.File directory)throws Exception{
+  FirebaseRest rest=new FirebaseRest(activity,backend);rest.uid="fixture-parent";rest.token="fixture-token";rest.expires=System.currentTimeMillis()+3600000;
+  OnlineSession session=new OnlineSession(activity,rest,invitation,"Test",new OnlineSession.Listener(){public void loaded(World w,String n){}public void problem(String t,boolean f){}});
+  session.seed=123;session.side=2;session.world=World.onlineSpace(123,2);session.px=48.5f;session.pz=48.5f;
+  session.regionCache=new OnlineRegionCache(directory,invitation.id,123,2);session.announcedReadTime=backend.snapshotTime;
+  session.announcedRegions=new org.json.JSONObject().put("s0",new org.json.JSONObject().put("mapValue",new org.json.JSONObject().put("fields",FirebaseRest.fields("revision",backend.revision))));
+  return session;
+ }
+ void finishCache(OnlineSession session)throws Exception{session.close();check(session.regionCache.writer.awaitTermination(10,TimeUnit.SECONDS),"cache writer finishes detached snapshots");}
+ void testPersistentRegionCache(MainActivity activity)throws Exception{
+  OnlineWorld invitation=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());java.io.File directory=new java.io.File(activity.getCacheDir(),"cache-fixture-"+invitation.id);
+  SyncBackend backend=new SyncBackend();backend.blockDocuments=new org.json.JSONArray();backend.revision=3000;
+  for(int i=0;i<3000;i++)backend.blockDocuments.put(new org.json.JSONObject().put("name",String.format(java.util.Locale.ROOT,"fixture/blocks/%04d",i)).put("updateTime","2026-10-31T12:00:00Z")
+    .put("fields",FirebaseRest.fields("x",i%96,"y",30,"z",i/96,"type",i==0?0:7,"renewable",false).put("updatedAt",new org.json.JSONObject().put("timestampValue","2026-10-31T12:00:00Z"))));
+  OnlineSession cold=cachedSession(activity,backend,invitation,directory);
+  try{cold.syncVisible(true);check(backend.returnedDocuments==12000,"cold join reads fixture history in four regions");check(cold.world.get(10,30,10)==7&&cold.world.get(0,30,0)==0,"cold history restores placed and removed blocks");}finally{finishCache(cold);}
+  int queries=backend.blockQueries,documents=backend.returnedDocuments;
+  OnlineSession warm=cachedSession(activity,backend,invitation,directory);
+  try{warm.syncVisible(true);check(backend.blockQueries==queries&&backend.returnedDocuments==documents,"warm unchanged join reads zero block documents and no empty queries");check(warm.world.get(10,30,10)==7&&warm.world.get(0,30,0)==0,"warm join overlays the complete cached base onto fresh terrain");}finally{finishCache(warm);}
+  backend.revision++;backend.snapshotTime="2026-10-31T12:00:04Z";
+  org.json.JSONObject peer=backend.blockDocuments.getJSONObject(10);peer.put("updateTime","2026-10-31T12:00:03Z");peer.getJSONObject("fields").put("type",FirebaseRest.value(8)).put("updatedAt",new org.json.JSONObject().put("timestampValue","2026-10-31T12:00:03Z"));
+  OnlineSession delta=cachedSession(activity,backend,invitation,directory);
+  try{delta.syncVisible(true);check(backend.returnedDocuments==documents+1&&backend.blockQueries==queries+1,"offline peer edit downloads only its single changed document");check(delta.world.get(10,30,0)==8&&delta.world.get(10,30,10)==7,"delta join keeps cached constructions and overlays the newer peer edit");
+   org.json.JSONObject query=backend.queries.get(queries);check(query.getString("readTime").equals(backend.snapshotTime)&&query.getJSONObject("structuredQuery").getJSONObject("where").getJSONObject("fieldFilter").getJSONObject("value").getString("timestampValue").equals("2026-10-31T12:00:02Z"),"rejoin uses completed cached watermark and current consistent snapshot");
+  }finally{finishCache(delta);}
+  // Corrupt region zero, then fail its second page: neither partial data nor a new watermark may become a checkpoint.
+  OnlineRegionCache cache=new OnlineRegionCache(directory,invitation.id,123,2);java.nio.file.Files.write(cache.file(0).toPath(),new byte[]{1,2,3});cache.close();
+  backend.failQueryRequest=backend.queryRequests+2;OnlineSession interrupted=cachedSession(activity,backend,invitation,directory);
+  try{boolean failed=false;try{interrupted.syncVisible(true);}catch(IOException expected){failed=true;}
+   check(failed&&!interrupted.regions.get(0).complete&&interrupted.regions.get(0).watermark.isEmpty()&&interrupted.regionCache.load(0)==null,"failed pagination never persists a partial base or watermark");
+   backend.failQueryRequest=-1;interrupted.syncVisible(true);check(interrupted.world.get(10,30,0)==8&&interrupted.world.get(10,30,10)==7,"retry after corrupt cache and failed page restores full world");
+  }finally{finishCache(interrupted);java.io.File[] files=directory.listFiles();if(files!=null)for(java.io.File file:files)file.delete();directory.delete();}
+  System.out.println("PERSISTENT CACHE: 3000 cached region documents -> 0 unchanged / 1 offline peer edit; interrupted pagination safely retried");
  }
  void testActiveSyncBudget(MainActivity activity,GameView game)throws Exception{
   SyncBackend backend=new SyncBackend();FirebaseRest rest=new FirebaseRest(activity,backend);rest.uid="fixture-parent";rest.token="fixture-token";rest.expires=System.currentTimeMillis()+3600000;
@@ -654,6 +705,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   testLightingEquivalence(game);
   testSyncRequests(activity,game);
   testActiveSyncBudget(activity,game);
+  testPersistentRegionCache(activity);
   testOnlineStreaming(activity,game);
   testHomeAndDeletion(activity,game);
   android.graphics.Bitmap portrait=smallScreenshot();if(portrait!=null){emitScreenshot(portrait,"landscapeScreenshot");portrait.recycle();}

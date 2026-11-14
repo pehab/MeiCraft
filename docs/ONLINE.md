@@ -249,3 +249,14 @@ Testszene ohne Produktionsanfragen. CI veröffentlicht `online.png` als Prüfauf
 Auf echten Tablets gemeinsam prüfen: Rohstoffe sammeln, Werkzeug freischalten,
 Bauen/Abbauen desselben Blocks, Werkbank, erneutes Öffnen mit erhaltenem Inventar,
 Weiterlaufen über den alten Rand, Flugmodus und Wiederverbindung sowie Spielersperre.
+
+## Lokaler Wiederbeitrittscache ab 1.0.0-rc.3
+
+Vollständige Bereichsstände werden privat im App-Cache gespeichert. Nach der normalen
+Online-Zugriffsprüfung vergleicht die App die Serverrevision und lädt nur fehlende Deltas.
+Unveränderte Bereiche brauchen keine Blockabfrage. Der Cache enthält weder Inventar noch
+Zugriffsrechte. Löschen des App-Caches ist zulässig und erzwingt lediglich einen erneuten
+Initialdownload. Einzelne bestätigte Bauaktionen warten nicht auf Dateischreibvorgänge.
+
+Die Diagnose sichert bei einem Fehler auch die bis dahin erfassten lokalen Netzwerkzähler;
+dieser Bericht bleibt nach einem Neustart unter „Gesicherte Zähler beim letzten Fehler“ erhalten.

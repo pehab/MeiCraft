@@ -124,7 +124,15 @@ final class FirebaseRest {
         if(message.isEmpty())message="Server lieferte keine strukturierte Fehlerbeschreibung.";
         String refresh=credentials.getString("refresh","");
         Failure failure=new Failure(status,service,operation,OnlineDiagnostics.clean(serverStatus),OnlineDiagnostics.clean(message+reason,token,key,refresh,uid));
-        if(status!=404)context.getSharedPreferences("online-diagnostics",0).edit().putString("lastError",DIAGNOSTICS.failed(failure.diagnostic())).apply();return failure;
+        if(status!=404)saveFailure(DIAGNOSTICS.failed(failure.diagnostic()));return failure;
+    }
+    private String diagnosticVersion(){
+        try{return context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionName;}
+        catch(android.content.pm.PackageManager.NameNotFoundException e){return "unbekannt";}
+    }
+    private void saveFailure(String detail){
+        context.getSharedPreferences("online-diagnostics",0).edit().putString("lastError",detail)
+            .putString("failureReport","App-Version: "+diagnosticVersion()+" · Android "+android.os.Build.VERSION.RELEASE+"\n"+DIAGNOSTICS.report()).apply();
     }
     private String request(String url,String method,String body,boolean authorized,boolean form)throws IOException{
         String operation=operation(url,method),service=url.contains("firestore.googleapis.com")?"Firestore":url.contains("securetoken.googleapis.com")?"Firebase Token":"Firebase Auth";
@@ -136,7 +144,7 @@ final class FirebaseRest {
             int status=connection.getResponseCode();
             if(status<200||status>=300){String response="";try(InputStream input=connection.getErrorStream()){if(input!=null)response=new String(read(input),StandardCharsets.UTF_8);}catch(IOException ignored){/* The status remains useful when the error body is unavailable. */}Failure error=failure(status,service,operation,response);if(status==401&&authorized){token="";expires=0;}throw error;}
             try(InputStream input=connection.getInputStream()){byte[] response=read(input);DIAGNOSTICS.received(response.length);return new String(response,StandardCharsets.UTF_8);}
-        }catch(Failure e){throw e;}catch(IOException e){String detail=DIAGNOSTICS.failed(service+" · "+operation+" · Netzwerkfehler: "+e.getClass().getSimpleName());context.getSharedPreferences("online-diagnostics",0).edit().putString("lastError",detail).apply();throw e;}
+        }catch(Failure e){throw e;}catch(IOException e){String detail=DIAGNOSTICS.failed(service+" · "+operation+" · Netzwerkfehler: "+e.getClass().getSimpleName());saveFailure(detail);throw e;}
         finally{connection.disconnect();}
     }
     static byte[] read(InputStream input)throws IOException{ByteArrayOutputStream output=new ByteArrayOutputStream();byte[] buffer=new byte[8192];int n;while((n=input.read(buffer))!=-1){if(output.size()+n>4*1024*1024)throw new IOException("Serverantwort zu groß.");output.write(buffer,0,n);}return output.toByteArray();}
