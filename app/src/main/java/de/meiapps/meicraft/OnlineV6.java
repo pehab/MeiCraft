@@ -52,7 +52,7 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
                     if(stopped||!s.foreground)throw new IOException("Journal pausiert.");if(type.equals("keep-alive"))return;
                     if(type.equals("auth_revoked")){f.invalidateToken(f.token);throw new IOException("Journal-Anmeldung erneuern.");}if(type.equals("cancel"))throw new IOException("Journal-Zugriff beendet.");
                     if(!type.equals("put")&&!type.equals("patch"))return;
-                    try{tree.apply(type,payload);long g=tree.root.optLong("g",-1);if(g>=0){latest=tree.root.toString();boolean resumed=!journalConnected;journalConnected=true;if(resumed)s.realtimeStatus();s.requestRealtimeSync();}}
+                    try{tree.apply(type,payload);FirebaseRest.DIAGNOSTICS.realtimeEvent();long g=tree.root.optLong("g",-1);if(g>=0){latest=tree.root.toString();boolean resumed=!journalConnected;journalConnected=true;if(resumed)s.realtimeStatus();s.requestRealtimeSync();}}
                     catch(JSONException e){throw new IOException("Ungültiger Journal-Stream.",e);}
                 });
             }catch(Exception e){if(!stopped&&s.foreground){try{if(Boolean.TRUE.equals(db.request("GET",base+"/meta/closed",null))){s.problem(new IOException("Diese Welt wurde geschlossen."),true);return;}}catch(Exception ignored){/* Own membership / Firestore diagnostics explain revoked access. */}failures=Math.min(6,failures+1);}}

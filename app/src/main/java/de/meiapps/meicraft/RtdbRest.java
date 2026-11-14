@@ -50,7 +50,7 @@ final class RtdbRest implements AutoCloseable {
     }
     void listen(String path,RealtimeStream.Events events)throws Exception{
         FirebaseRest.DIAGNOSTICS.request("RTDB · Live-Stream");HttpURLConnection c=open(path,"text/event-stream");
-        try(Reader reader=new BufferedReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){RealtimeStream.read(reader,events);}
+        try(Reader reader=new BufferedReader(new InputStreamReader(c.getInputStream(),StandardCharsets.UTF_8))){RealtimeStream.read(reader,(type,payload)->{FirebaseRest.DIAGNOSTICS.received(payload.getBytes(StandardCharsets.UTF_8).length);events.event(type,payload);});}
         finally{if(stream==c)stream=null;c.disconnect();}
     }
     void interrupt(){HttpURLConnection c=stream;if(c!=null)c.disconnect();}

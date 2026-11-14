@@ -35,7 +35,7 @@ PR, CI und APK veröffentlichen Firebase-Regeln nicht automatisch.
 - Unveränderliche Versionen werden in Paketen mit höchstens 200 Dokumenten hochgeladen. Ein abschließender atomarer Firestore-Commit veröffentlicht das neue Manifest und markiert den Upload als abgeschlossen. Das Manifest verbindet Chunks und Inventare desselben Journal-Stands.
 - Ein alter Host kann durch monotone Generationen und die Manifest-Vorbedingung keinen neueren Stand zurücksetzen. Abgebrochene Uploads ersetzen kein gültiges Backup. Nach Ablauf werden sie markiert; dann können sie auch von einem verspäteten Schreiber nicht mehr abgeschlossen werden. Nicht mehr referenzierte Versionen werden aufgeräumt.
 - Erst nach bestätigtem Manifest wird der Journal-Stand quittiert. Verarbeitete Einträge können danach entfernt werden; die letzten 16 Revisionen je Spieler bleiben bestehen. Dauerhafte Zellen und Inventare werden bei dieser Bereinigung **nicht** entfernt.
-- Ist Firestore vorübergehend gestört oder sein Kontingent verbraucht, bleiben Journal und Spielstand in RTDB erhalten. Das Backup wird später erneut versucht. Die Diagnose zeigt bestätigte Checkpoints und deren Generation.
+- Ist Firestore vorübergehend gestört oder sein Kontingent verbraucht, bleiben Journal und Spielstand in RTDB erhalten. Das Backup wird mit wachsendem Abstand erneut versucht, damit ein erreichtes Kontingent nicht weiter abgefragt wird. Die Diagnose zeigt bestätigte Checkpoints und deren Generation.
 - Beim Löschen einer Welt werden zuerst die Zugriffe geschlossen und danach RTDB-Spielstand, Journal und Firestore-Backups entfernt. Ein geschlossener Metadateneintrag verhindert die Wiederverwendung alter Einladungen. Auch eine unterbrochene Löschung einer bereits geschlossenen Welt lässt sich fortsetzen.
 - Fehlt nach abgeschlossener Migration der gesamte RTDB-Spielstand, erfolgt kein stiller Rückgriff auf die alten eingefrorenen Dokumente. Ein administratives Löschen/Zurücksetzen der RTDB ist kein normaler Host-Ausfall; ein älteres Backup darf dabei nicht unbemerkt aktuelle Bauten ersetzen.
 
@@ -56,7 +56,7 @@ Firestore enthält unter der Welt `saved` (unveränderliche Chunk-/Inventarversi
 
 Ein Beispiel mit vier aktiven Spielern, vier geänderten Chunks und vier veränderten Inventaren je Minute benötigt pro zusammengehörigem Backup acht Versionswrites plus Upload und zwei abschließende Dokumentwrites: **elf Writes pro Minute, ungefähr 1.320 Writes in zwei Stunden**, zusätzlich Einrichtung, reine Inventar-Backups, Wiederholungen und Ausnahmen. Unveränderte Minuten kosten keine erneuten Versionswrites. Bereinigung verwendet zusätzliche Löschvorgänge. Die Anzahl einzelner Bauaktionen erhöht die Firestore-Writes dabei nicht mehr unmittelbar.
 
-Das ist ein Modell, keine Firebase-Abrechnung oder Laufzeitgarantie. RTDB-Verkehr wächst weiterhin mit Bewegung, Bauaktionen, Wiederverbindungen und der Verteilung an alle Geräte. Inhaltsbytes in der Diagnose enthalten nicht alle Protokoll-/TLS-Kosten. Reale Tablet-Latenz und Monatsvolumen müssen weiter im Spiel und in Firebase gemessen werden.
+Das ist ein Modell, keine Firebase-Abrechnung oder Laufzeitgarantie. RTDB-Verkehr wächst weiterhin mit Bewegung, Bauaktionen, Wiederverbindungen und der Verteilung an alle Geräte. Die Diagnose erfasst auch die dekodierten Live-Stream-Nutzdaten; Inhaltsbytes enthalten weiterhin nicht alle Protokoll-/TLS-Kosten. Reale Tablet-Latenz und Monatsvolumen müssen weiter im Spiel und in Firebase gemessen werden.
 
 ## Tablet-Test
 

@@ -10,7 +10,7 @@ import java.util.concurrent.*;
 final class OnlineCheckpoint implements AutoCloseable {
     final OnlineV6 v;final OnlineSession s;final FirebaseRest f;final RtdbRest db;
     final ScheduledExecutorService renewal=Executors.newSingleThreadScheduledExecutor(),writer=Executors.newSingleThreadScheduledExecutor();
-    volatile boolean stopped,held;volatile String leaseToken="";volatile JSONObject manifestDocument;long savedAt,lastAttempt,lastMaintenance;boolean wasForeground=true;
+    volatile boolean stopped,held;volatile String leaseToken="";volatile JSONObject manifestDocument;long savedAt,lastAttempt,lastMaintenance,nextRetry;int failures;boolean wasForeground=true;
     OnlineCheckpoint(OnlineV6 v)throws Exception{this.v=v;s=v.s;f=v.f;db=new RtdbRest(f);}
     String manifest(){return s.base()+"/sync/checkpoint";}
     void start(){renewal.scheduleWithFixedDelay(this::lease,0,5,TimeUnit.SECONDS);writer.scheduleWithFixedDelay(this::tick,1,5,TimeUnit.SECONDS);}
@@ -27,7 +27,7 @@ final class OnlineCheckpoint implements AutoCloseable {
     boolean valid()throws Exception{JSONObject lease=(JSONObject)db.request("GET",v.storage()+"/lease",null);return held&&OnlineJournal.Lease.valid(lease.optString("uid"),f.uid,lease.optLong("until"),now())&&leaseToken.equals(lease.optString("token"));}
     void tick(){
         if(stopped)return;if(!s.foreground){if(wasForeground)pause();wasForeground=false;return;}wasForeground=true;
-        if(!held)return;try{save(false);}catch(Exception e){manifestDocument=null;FirebaseRest.DIAGNOSTICS.failed("Firestore-Checkpoint · "+e.getClass().getSimpleName()+" · Journal bleibt erhalten");}
+        if(!held||System.nanoTime()<nextRetry)return;try{save(false);failures=0;nextRetry=0;}catch(Exception e){failures=Math.min(6,failures+1);nextRetry=System.nanoTime()+OnlineSyncPolicy.retryDelay(failures,e instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)e).status==429)*1000000L;manifestDocument=null;FirebaseRest.DIAGNOSTICS.failed("Firestore-Checkpoint · "+e.getClass().getSimpleName()+" · Journal bleibt erhalten");}
     }
     JSONObject fields(JSONObject document)throws JSONException{return document==null?new JSONObject():document.getJSONObject("fields");}
     JSONObject plainMap(JSONObject data,String key)throws JSONException{JSONObject map=new JSONObject();if(data.has(key))for(String id:OnlineV5.keys(OnlineV5.fields(data,key)))map.put(id,FirebaseRest.string(OnlineV5.fields(data,key),id));return map;}
