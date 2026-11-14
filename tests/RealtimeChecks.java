@@ -22,8 +22,8 @@ final class RealtimeChecks {
                 void evaluate()throws IOException{if(response!=null)return;try{
                     if(outage)throw new IOException("fixture offline");
                     if("text/event-stream".equals(getRequestProperty("Accept"))){if(redirects++==0){status=307;response="";}else response="event: put\ndata: {\"path\":\"/\",\"data\":null}\n\n";return;}
-                    methods.add(getRequestMethod());String path=url.getPath().substring(0,url.getPath().length()-5);Object value=JSONObject.NULL;
-                    if(getRequestMethod().equals("GET")){value=data.root;for(String part:path.substring(1).split("/")){if(!(value instanceof JSONObject)){value=JSONObject.NULL;break;}value=((JSONObject)value).opt(part);if(value==null){value=JSONObject.NULL;break;}}}
+                    methods.add(getRequestMethod());String path=url.getPath().substring(0,url.getPath().length()-5);path=path.replaceFirst("^/worlds/[^/]+/[^/]+","");if(path.isEmpty())path="/";Object value=JSONObject.NULL;
+                    if(getRequestMethod().equals("GET")){value=data.root.length()==0?JSONObject.NULL:data.root;if(!path.equals("/"))for(String part:path.substring(1).split("/")){if(!(value instanceof JSONObject)){value=JSONObject.NULL;break;}value=((JSONObject)value).opt(part);if(value==null){value=JSONObject.NULL;break;}}}
                     else{if(!getRequestMethod().equals("DELETE"))value=new JSONTokener(body.toString("UTF-8")).nextValue();String payload=new JSONObject().put("path",path).put("data",value).toString();data.apply(getRequestMethod().equals("PATCH")?"patch":"put",payload);}
                     response=value.toString();
                 }catch(IOException e){throw e;}catch(Exception e){throw new IOException(e);}}
