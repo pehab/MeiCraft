@@ -109,8 +109,8 @@ final class OnlineV5Checks {
             store.lostReply=true;a.modern.edit(13,44,10,2);drain(a,game);check(a.inventoryUncertain,"ambiguous commit is marked uncertain");a.poll();test.onGl(game,()->{});
             check(a.world.get(13,44,10)==2&&a.inventory.inventory[2]==97,"lost response reconciles own inventory and cell exactly once");
             // Exceed the bounded tail while a peer is absent: fall back to a chunk snapshot.
-            for(int i=0;i<10;i++){a.healthy=true;a.modern.edit(20+i,44,10,2);drain(a,game);}int before=store.chunkQueries;b.modern.readSync();b.modern.syncVisible(false);test.onGl(game,()->{});
-            check(store.chunkQueries>before&&b.world.get(29,44,10)==2&&b.world.get(10,44,10)==2,"tail gap downloads changed chunks and preserves old constructions");
+            for(int i=0;i<OnlineChange.TAIL+2;i++){a.healthy=true;a.modern.edit(20+i,44,10,2);drain(a,game);}int before=store.chunkQueries;b.modern.readSync();b.modern.syncVisible(false);test.onGl(game,()->{});
+            check(store.chunkQueries>before&&b.world.get(20+OnlineChange.TAIL+1,44,10)==2&&b.world.get(10,44,10)==2,"tail gap downloads changed chunks and preserves old constructions");
         }finally{finish(a);finish(b);}
         migration(activity,game);
         legacyLifecycle(activity);

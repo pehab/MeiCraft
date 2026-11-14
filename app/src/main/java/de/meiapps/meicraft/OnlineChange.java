@@ -5,7 +5,7 @@ import java.util.*;
 
 /** Compact, bounded commit tail. Cell nonces provide causal ordering even within one millisecond. */
 final class OnlineChange {
-    static final int TAIL=8;
+    static final int TAIL=16;
     final long sequence;final int region,x,y,z,type;final boolean renewable;
     final String token,before,actor;
     OnlineChange(long sequence,int region,int x,int y,int z,int type,boolean renewable,String token,String before,String actor){

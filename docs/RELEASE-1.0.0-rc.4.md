@@ -11,7 +11,7 @@ Das neue Datenmodell verbindet die schnelle Übersicht mit einem begrenzten Änd
 | Daten | Speicherort | Zweck |
 | --- | --- | --- |
 | Weltmetadaten | `onlineWorlds/{world}` | Einladung, Erstzugriff, Migration, Löschen |
-| Zugriffsrechte, Positionen, Inventar-Ciphertexte, letzte acht Änderungen je Spieler, Bereichsrevisionen | `sync/v5` | ein gemeinsamer Snapshot je Abgleich |
+| Zugriffsrechte, Positionen, Inventar-Ciphertexte, letzte 16 Änderungen je Spieler, Bereichsrevisionen | `sync/v5` | ein gemeinsamer Snapshot je Abgleich |
 | Dauerhafter Blockstand, nach 16×16×16 Zellen gebündelt | `sectors/{sector}/chunks/{chunk}` | Erstladung und Nachladen nach längerer Abwesenheit |
 | Bisherige Einzelblöcke und private Inventare | bisherige Pfade | unveränderte Migrationsquelle; keine weitere Spielmutation |
 
@@ -24,7 +24,7 @@ Das neue Datenmodell verbindet die schnelle Übersicht mit einem begrenzten Änd
 - Vorher-/Nachher-Nonces schützen dieselbe Zelle; eine monotone eigene Inventarrevision
   schützt den Vorrat. Beim selben Block gewinnt genau eine Aktion. Der Verlierer
   übernimmt den Serverstand, bevor eine neue Aktion möglich ist.
-- Die Übersicht enthält die letzten acht bestätigten Aktionen je Spieler. Stimmen
+- Die Übersicht enthält die letzten 16 bestätigten Aktionen je Spieler. Stimmen
   Änderungsanzahl und kausale Ketten mit der Bereichsrevision überein, übernehmen andere
   Geräte diese direkt. Eine ältere fremde Aktion kann keine spätere eigene überschreiben.
 - Nach längerer Abwesenheit oder bei einer Lücke lädt die App die seit dem letzten
@@ -33,6 +33,17 @@ Das neue Datenmodell verbindet die schnelle Übersicht mit einem begrenzten Änd
 - Berechtigungen normaler Übersichtslese- und Positionsschreibvorgänge werden direkt
   aus dem betroffenen Dokument geprüft. Welt/Mitgliedschaft werden dafür nicht zusätzlich
   per `get`/`exists` geladen. Chunk-Zugriffe prüfen die zentrale aktuelle Berechtigung.
+
+## Größen- und Latenzentscheidung
+
+Die gesamte Welt passt nicht dauerhaft in das Firestore-Limit von 1 MiB je Dokument.
+Ein alleiniger Schreibvorgang in einen Zwischenspeicher bräuchte spätere Verdichtung;
+volle Zwischenspeicher oder Verdichtungskonflikte können zusätzliche Wartezeiten und
+Wiederholungen erzeugen. Dieser Kandidat behält deshalb für jede Aktion einen direkt
+haltbaren Chunk-Stand und eine feste atomare Zwei-Dokument-Operation bei. Er puffert
+keine bestätigten Bauten nur lokal und benötigt keinen nachlaufenden Serverprozess.
+Der Emulator prüft zudem eine Übersicht mit 256 Identitäten und je 16 Einträgen gegen
+die Dokument- und Antwortgrößen. Das ersetzt keinen realen Last-/Tabletvergleich.
 
 ## Private Inventare
 
@@ -76,7 +87,8 @@ aktualisiert. Löschen der Welt entfernt beide Strukturen. Es erfolgt kein Tarif
 - Kontrollierte Zwei-Stunden-Simulation, gleicher Zweiesekundentakt, eine Bauaktion je
   Spieler alle 20 Sekunden: bei zwei Spielern 720 Aktionen, 2.160 → 1.440 Blockwrites;
   bei drei Spielern 1.080 Aktionen, 3.240 → 2.160 Blockwrites. Zusätzliche Chunk-Abfragen
-  nach dem Ausgangsstand: **null**. Positionswrites sind dabei separat zu berücksichtigen;
+  nach dem Ausgangsstand: **null**. Zusätzlich bleiben in einminütigen Prüfungen mit
+  zwölf sofortigen Aktionen je Spieler und Abgleich alle Clients ohne Chunk-Abfrage synchron. Positionswrites sind dabei separat zu berücksichtigen;
   sie sinken nur durch bereits vorhandenes Piggybacking.
 - Normale Übersicht: eine empfangene Dokumentversion pro Gerät/Abgleich, ohne explizite
   abhängige Regeldokumente. Normale Position: ein Write ohne solche Zusatzdokumente.
@@ -94,3 +106,7 @@ aktualisiert. Löschen der Welt entfernt beide Strukturen. Es erfolgt kein Tarif
 
 Der bestehende PR bleibt Entwurf und ungemergt. Keine automatische Produktionsmigration,
 Regelveröffentlichung oder öffentliche App-Veröffentlichung durch CI.
+
+Primärreferenzen: [Firestore-Limits](https://firebase.google.com/docs/firestore/quotas),
+[Regel-Lesezugriffe](https://firebase.google.com/docs/firestore/pricing),
+[BatchGet-Masken und Snapshots](https://firebase.google.com/docs/firestore/reference/rest/v1/projects.databases.documents/batchGet).

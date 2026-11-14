@@ -10,7 +10,8 @@ service cloud.firestore {
     function member(world) {
       return signedIn() && !get(worldPath(world)).data.closed
         && exists(memberPath(world, request.auth.uid))
-        && get(memberPath(world, request.auth.uid)).data.banned == false;
+        && get(memberPath(world, request.auth.uid)).data.banned == false
+        && (get(worldPath(world)).data.protocol != 5 || get(v5Path(world)).data.access.get(request.auth.uid,true) == true);
     }
     function deleting(world) { return owner(world) && get(worldPath(world)).data.closed == true; }
     function name(value, limit) { return value is string && value.size() > 0 && value.size() <= limit; }
@@ -73,6 +74,7 @@ service cloud.firestore {
           owner(world) && uid != request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['banned'])
           && request.resource.data.banned == true
+          && (get(worldPath(world)).data.protocol != 5 || getAfter(v5Path(world)).data.access.get(uid,true) == false)
         );
         // A ban is a retained document, never a deletion that would permit joining again.
         allow delete: if deleting(world);
@@ -168,13 +170,13 @@ service cloud.firestore {
       function v5Text(last,seq) { return string(seq) + '/' + string(last.sector) + '/' + v5Cell(last) + '/' + string(last.type) + '/' + (last.renewable ? '1' : '0') + '/' + last.token + '/' + last.before; }
       function v5Build(next,old) {
         let last = next.last;
-        let slot = 'e' + string(next.seq % 8);
+        let slot = 'e' + string(next.seq % 16);
         let key = 's' + string(last.sector);
         let region = request.resource.data.regions[key];
         let path = v5ChunkPath(last);
         let cell = v5Cell(last);
         return next.seq == old.seq + 1 && next.rev == old.rev + 1 && last.token != last.before
-          && next.log.size() <= 8 && next.log.diff(old.log).affectedKeys().hasOnly([slot]) && next.log[slot] == v5Text(last,next.seq)
+          && next.log.size() <= 16 && next.log.diff(old.log).affectedKeys().hasOnly([slot]) && next.log[slot] == v5Text(last,next.seq)
           && request.resource.data.regions.diff(resource.data.regions).affectedKeys().hasOnly([key])
           && region.keys().hasAll(['revision','updatedAt']) && region.keys().hasOnly(['revision','updatedAt'])
           && region.revision is int && region.revision == resource.data.regions.get(key,{'revision':0}).revision + 1 && region.updatedAt == request.time

@@ -21,19 +21,19 @@ public final class OnlineDeltaTests {
         for(String invalid:new String[]{"",a.encode()+"/extra",a.encode().replace("1_30_1","1_0_1"),a.encode().replace("/7/","/17/"),a.encode().replace("/0/1_","/9/1_"),a.encode().replace("/0/000","/2/000")}){
             boolean failed=false;try{OnlineChange.decode(invalid,"a");}catch(java.io.IOException expected){failed=true;}check(failed,"Reject invalid event: "+invalid);
         }
-        for(int n:new int[]{2,3})simulate(n);
+        for(int n:new int[]{2,3}){simulate(n,3600,10,1);simulate(n,30,1,12);}
         System.out.println("PASS: "+checks+" causal event, reconnect, gap and two/three-builder contracts");
     }
-    static void simulate(int players){
+    static void simulate(int players,int cycles,int interval,int burst){
         @SuppressWarnings("unchecked") Map<String,String>[] local=new Map[players];
         @SuppressWarnings("unchecked") Map<String,Long>[] heads=new Map[players];
         @SuppressWarnings("unchecked") List<OnlineChange>[] own=new List[players];
         @SuppressWarnings("unchecked") Deque<OnlineChange>[] logs=new Deque[players];
         Map<String,String> server=new HashMap<>();long[] sequence=new long[players],seen=new long[players];long revision=0,nonce=100,actions=0,overviewReads=0,fallbacks=0;
         for(int p=0;p<players;p++){local[p]=new HashMap<>();heads[p]=new HashMap<>();own[p]=new ArrayList<>();logs[p]=new ArrayDeque<>();}
-        for(int cycle=0;cycle<3600;cycle++){
-            if(cycle%10==0)for(int p=0;p<players;p++){
-                int x=p*4+(cycle/10)%4,z=(cycle/40)%16;String key=x+"_30_"+z,before=local[p].getOrDefault(key,"");
+        for(int cycle=0;cycle<cycles;cycle++){
+            if(cycle%interval==0)for(int step=0;step<burst;step++)for(int p=0;p<players;p++){
+                int action=cycle/interval*burst+step;int x=p*4+action%4,z=action/4%16;String key=x+"_30_"+z,before=local[p].getOrDefault(key,"");
                 check(before.equals(server.getOrDefault(key,"")),"Independent cells in one shared chunk do not cause contention");
                 OnlineChange c=new OnlineChange(++sequence[p],0,x,30,z,7,false,token(++nonce),before,"p"+p);server.put(key,c.token);local[p].put(key,c.token);own[p].add(c);logs[p].add(c);if(logs[p].size()>OnlineChange.TAIL)logs[p].removeFirst();revision++;actions++;
             }
@@ -45,7 +45,7 @@ public final class OnlineDeltaTests {
             }
         }
         check(fallbacks==0,"Typical collaborative building needs no block/chunk query after the initial base");
-        check(actions==360L*players&&overviewReads==3600L*players,"Two-hour scenario keeps the same two-second position loop");
-        System.out.println("V5 BUDGET "+players+" builders / 2 h: "+overviewReads+" overviews, "+actions+" immediate block commits; block writes "+(actions*3)+" -> "+(actions*2)+"; additional chunk queries "+fallbacks);
+        check(actions==(long)((cycles+interval-1)/interval)*burst*players&&overviewReads==(long)cycles*players,"Two-hour scenario keeps the same two-second position loop");
+        System.out.println("V5 BUDGET "+players+" builders / "+(cycles*2)+" s, burst="+burst+": "+overviewReads+" overviews, "+actions+" immediate block commits; block writes "+(actions*3)+" -> "+(actions*2)+"; additional chunk queries "+fallbacks);
     }
 }
