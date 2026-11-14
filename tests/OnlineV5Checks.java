@@ -14,6 +14,7 @@ final class OnlineV5Checks {
     void check(boolean ok,String text){test.check(ok,text);}
     static final class Store implements FirebaseRest.ConnectionFactory {
         final Map<String,JSONObject> docs=new LinkedHashMap<>();Map<String,JSONObject> snapshot=new LinkedHashMap<>();
+        final List<String> gets=new ArrayList<>();
         final List<JSONObject> commits=new ArrayList<>(),batchGets=new ArrayList<>();
         int tick,reads,chunkQueries,chunkDocuments,legacyDocuments,writes,failMigrationAt=-1;boolean lostReply;
         final Instant base=Instant.now().minusSeconds(2);String readTime="";
@@ -75,7 +76,7 @@ final class OnlineV5Checks {
                 if("GET".equals(getRequestMethod())&&url.getQuery()!=null&&url.getQuery().contains("pageSize=")){
                     JSONArray list=new JSONArray();String prefix=relative+"/";for(Map.Entry<String,JSONObject> e:docs.entrySet())if(e.getKey().startsWith(prefix)&&e.getKey().substring(prefix.length()).indexOf('/')<0)list.put(copy(e.getValue()));response=new JSONObject().put("documents",list).toString();return;
                 }
-                reads++;JSONObject doc=docs.get(relative);if(doc==null){status=404;response="{}";}else response=doc.toString();
+                reads++;gets.add(relative);JSONObject doc=docs.get(relative);if(doc==null){status=404;response="{}";}else response=doc.toString();
             }catch(FirebaseRest.Failure e){status=e.status;response="{\"error\":{\"status\":\"RESOURCE_EXHAUSTED\",\"message\":\"fixture quota\"}}";}catch(IOException e){throw e;}catch(Exception e){throw new IOException(e);}}
             @Override public int getResponseCode()throws IOException{evaluate();return status;}
             @Override public InputStream getInputStream()throws IOException{evaluate();return new ByteArrayInputStream(response.getBytes(java.nio.charset.StandardCharsets.UTF_8));}
@@ -112,6 +113,7 @@ final class OnlineV5Checks {
             check(store.chunkQueries>before&&b.world.get(29,44,10)==2&&b.world.get(10,44,10)==2,"tail gap downloads changed chunks and preserves old constructions");
         }finally{finish(a);finish(b);}
         migration(activity,game);
+        legacyLifecycle(activity);
     }
     void migration(MainActivity activity,GameView game)throws Exception{
         Store store=new Store();OnlineWorld invitation=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession first=session(activity,store,invitation,"parent");String base=first.base();
@@ -134,6 +136,22 @@ final class OnlineV5Checks {
             int documents=0;for(String key:store.docs.keySet())if(key.contains("/chunks/"))documents++;check(documents==12,"3000 legacy documents compact to twelve spatial chunks");
         }finally{finish(resumed);}
         int queries=store.chunkQueries;OnlineSession warm=session(activity,store,invitation,"parent");try{warm.modern.start(false,"",2);check(store.chunkQueries==queries&&warm.world.get(10,30,10)==(970%17),"migrated world reopens from cache with zero chunk queries");}finally{finish(warm);}
+        check(!store.gets.contains(base+"/members/child/inventory/main")&&!store.gets.contains(base+"/members/banned/inventory/main"),"owner migration never reads another private inventory");
+        OnlineSession child=session(activity,store,invitation,"child");try{child.modern.start(false,"",2);check(child.inventory.inventory[9]==23&&child.inventory.iron==17&&child.inventory.sword,"child independently adopts its preserved private inventory");check(store.chunkQueries==queries,"child can reuse the same authorized world cache");}finally{finish(child);}
+        OnlineSession banned=session(activity,store,invitation,"banned");boolean denied=false;try{banned.modern.start(false,"",2);}catch(IOException expected){denied=true;}finally{finish(banned);}check(denied,"migrated banned identity cannot rejoin");
         System.out.println("V5 MIGRATION: 3000 legacy documents -> 12 chunks; quota-resume, inventory, bans, water and warm cache verified");
     }
+    void legacyLifecycle(MainActivity activity)throws Exception{
+        Store store=new Store();OnlineWorld invitation=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession first=session(activity,store,invitation,"parent");String base=first.base();
+        store.put(base,FirebaseRest.fields("owner","parent","name","Protokoll 3","seed",123,"side",2,"protocol",3,"invite",invitation.invitation,"closed",false));store.put(base+"/members/parent",FirebaseRest.fields("name","parent","banned",false));Story original=new Story();original.inventory[9]=7;store.put(base+"/members/parent/inventory/main",first.inventoryFields(original,""));
+        try{first.modern.start(false,"",2);check(FirebaseRest.integer(store.docs.get(base).getJSONObject("fields"),"protocol")==5&&first.inventory.inventory[9]==7,"protocol 3 upgrades through 4 and preserves the private inventory before v5 play");}finally{finish(first);}
+        store.docs.get(base).getJSONObject("fields").put("closed",FirebaseRest.value(true));store.docs.get(base+"/sync/v5").getJSONObject("fields").put("open",FirebaseRest.value(false));store.docs.remove(base+"/members/parent");store.docs.remove(base+"/members/parent/inventory/main");
+        OnlineSession resume=session(activity,store,invitation,"parent");boolean closed=false;try{resume.modern.start(false,"",2);}catch(IOException expected){closed=true;}
+        try{
+            check(closed&&resume.deletionOnly&&resume.owner(),"owner can reopen deletion controls after its own membership was already removed");
+            java.util.concurrent.CountDownLatch finished=new java.util.concurrent.CountDownLatch(1);String[] error={""};resume.modern.deleteWorld(finished::countDown,message->{error[0]=message;finished.countDown();});
+            check(finished.await(30,TimeUnit.SECONDS)&&error[0].isEmpty()&&!store.docs.containsKey(base)&&!store.docs.containsKey(base+"/sync/v5"),"interrupted v5 world deletion removes remaining old and new structures");
+        }finally{finish(resume);}
+    }
+
 }

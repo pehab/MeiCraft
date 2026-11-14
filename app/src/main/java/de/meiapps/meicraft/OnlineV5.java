@@ -40,12 +40,20 @@ final class OnlineV5 {
             state=initial(new JSONObject().put(f.uid,FirebaseRest.value(true)),new JSONObject().put(f.uid,map(player(new Story()))),true);
             f.commit(new JSONArray().put(f.write(s.base(),root,null,new JSONObject().put("exists",false),false)).put(s.memberWrite()).put(f.write(path(),state,null,new JSONObject().put("exists",false),false)));
         }else{
-            JSONObject member=f.get(s.member(f.uid));
-            if(member==null)f.commit(new JSONArray().put(s.memberWrite()));
+            JSONObject member=f.get(s.member(f.uid)),owned=null;
+            if(member==null){
+                try{owned=f.get(s.base());}catch(FirebaseRest.Failure error){if(error.status!=403)throw error;}
+                if(owned==null||!f.uid.equals(FirebaseRest.string(owned.getJSONObject("fields"),"owner")))f.commit(new JSONArray().put(s.memberWrite()));
+            }
             else if(member.getJSONObject("fields").getJSONObject("banned").getBoolean("booleanValue"))throw new IOException("Du wurdest aus dieser Welt entfernt.");
-            JSONObject document=f.get(s.base());if(document==null)throw new IOException("Diese Welt existiert nicht.");JSONObject root=document.getJSONObject("fields");
+            JSONObject document=owned==null?f.get(s.base()):owned;if(document==null)throw new IOException("Diese Welt existiert nicht.");JSONObject root=document.getJSONObject("fields");
             s.owner=FirebaseRest.string(root,"owner");s.name=FirebaseRest.string(root,"name");s.side=FirebaseRest.integer(root,"side");s.seed=integer(root,"seed");s.invitation=new OnlineWorld(s.invitation.id,FirebaseRest.string(root,"invite"));
             int protocol=FirebaseRest.integer(root,"protocol");boolean closed=root.getJSONObject("closed").getBoolean("booleanValue");
+            if(protocol==3&&!closed){
+                if(!s.owner())throw new IOException("Bitte zuerst den Weltbesitzer mit der neuen Version verbinden lassen.");
+                f.commit(new JSONArray().put(f.write(s.base(),FirebaseRest.fields("protocol",4),new String[]{"protocol"},new JSONObject().put("updateTime",document.getString("updateTime")),false)).put(s.createSync()));
+                document=f.get(s.base());root=document.getJSONObject("fields");protocol=4;
+            }
             boolean migrating=root.has("migration")&&FirebaseRest.string(root,"migration").equals("v5");
             s.deletionOnly=closed&&!migrating||protocol<4;
             if(s.deletionOnly)throw new IOException(closed?"Diese Welt wurde geschlossen.":"Diese Welt nutzt eine alte Landschaft. Bitte mit 0.8.3 eine neue Welt anlegen.");
