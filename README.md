@@ -118,7 +118,7 @@ bash scripts/build-upgrade-fixture.sh
 
 Die APK liegt unter `build/meiCraft-0.6.0.apk`. Der direkte SDK-Build benötigt keine Spielbibliotheken. `.signing/` enthält den privaten, lokal wiederverwendeten Schlüssel und ist aus Git ausgeschlossen. Updates veröffentlichter APKs brauchen den ursprünglichen Projektschlüssel. Das private Secret `MEICRAFT_SIGNING_JSON` hat die Felder `keystore` (Base64-PKCS12), `password` und `alias` (`meicraft`); `scripts/restore-signing.py` stellt daraus den lokalen Schlüssel wieder her. CI-Testschlüssel werden nie veröffentlicht.
 
-Alternativ Android Studio oder `./gradlew --warning-mode=fail assembleDebug lintDebug`. Versionen stehen in `version.properties`. Compiler-, Lint- und Gradle-Warnungen führen zu Fehlern. Der Gradle-Prüfpfad verwendet AGP 9.5.0-rc01 mit Kotlin-Build-Komponente 2.4.21, um deren dokumentierte Configuration.setVisible-Probleme mit Gradle 9.8.2 zu beheben. Die veröffentlichte APK entsteht direkt mit den stabilen SDK-Werkzeugen.
+Alternativ Android Studio oder `./gradlew --warning-mode=fail assembleDebug lintDebug`. Versionen stehen in `version.properties`. Compiler-, Lint- und Gradle-Warnungen führen zu Fehlern. Der Gradle-Prüfpfad verwendet AGP 9.5.0-rc01 mit Kotlin-Build-Komponente 2.4.21, um deren dokumentierte Configuration.setVisible-Probleme mit Gradle 9 zu beheben. Der Wrapper verwendet Gradle 9.9.1 mit offizieller SHA-256-Prüfsumme. Die veröffentlichte APK entsteht direkt mit den stabilen SDK-Werkzeugen.
 
 Auf einem Emulator ohne wertvollen Spielstand:
 
