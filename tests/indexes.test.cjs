@@ -23,3 +23,7 @@ test('protocol 5 chunks retain only the delta timestamp index and suppress cell 
  assert.deepEqual(override('chunks','updatedAt').indexes,[{order:'ASCENDING',queryScope:'COLLECTION'}]);
  for(const field of ['players','regions','access','migration'])assert.deepEqual(override('sync',field).indexes,[]);
 });
+test('journal checkpoints do not index cell maps, private ciphers or large manifests',()=>{
+ for(const [group,field] of [['saved','*'],['uploads','*'],...['chunks','inventories','counters','actors','garbage','oldUploads'].map(f=>['sync',f])])assert.deepEqual(override(group,field).indexes,[]);
+ assert.deepEqual(override('uploads','at').indexes,[{order:'ASCENDING',queryScope:'COLLECTION'}]);
+});

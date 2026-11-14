@@ -1,0 +1,77 @@
+const {readFileSync}=require('node:fs');const assert=require('node:assert/strict');const {before,after,beforeEach,test}=require('node:test');
+const {initializeTestEnvironment,assertFails,assertSucceeds}=require('@firebase/rules-unit-testing');
+const {ref,get,set,update,increment}=require('firebase/database');
+const {doc,getDoc,setDoc,updateDoc,deleteDoc,writeBatch,serverTimestamp}=require('firebase/firestore');
+let env;const world='d'.repeat(32),invite='b'.repeat(32),epoch='e'.repeat(32),root=`onlineWorlds/${world}`,base=`worlds/parent/${world}`,storage=base+'/storage';
+const cipher='1.'+'a'.repeat(16)+'.'+'b'.repeat(146),member={active:true,proof:invite};
+const db=uid=>env.authenticatedContext(uid).database(),fs=uid=>env.authenticatedContext(uid).firestore(),r=(uid,path)=>ref(db(uid),path);
+const actor=()=>({rev:1,seq:0,inventory:cipher,op:'a'.repeat(32)});
+async function seed(){await set(r('parent',base),{meta:{invite,side:2,closed:false},members:{parent:member,child:member,sibling:member}});await set(r('parent',storage),{control:{phase:'ready',epoch,source:'fixture'},head:{g:0,actors:{parent:actor(),child:actor(),sibling:actor()}}});}
+function action(uid,seq=1,rev=2,before='',x=1,token='c'.repeat(32)){
+ const key=`${x}_44_1`,chunk=`0_${Math.floor(x/16)}_2_0`,event=`${seq}/0/${key}/2/0/${token}/${before}`,last={region:0,chunk,key,x,y:44,z:1,type:2,water:false,token,before},a=`head/actors/${uid}/`;
+ return {'head/g':increment(1),[a+'rev']:rev,[a+'seq']:seq,[a+'inventory']:cipher,[a+'op']:token,[a+'eventKey']:String(rev),[a+'last']:last,[a+`tail/e${seq%16}`]:event,'head/regions/s0':increment(1),['head/chunks/'+chunk]:increment(1),['chunks/'+chunk+'/cells/'+key]:{type:2,water:false,token},[`journal/${uid}/${rev}`]:{rev,seq,inventory:cipher,op:token,event}};
+}
+before(async()=>{env=await initializeTestEnvironment({projectId:'demo-meicraft-journal',database:{rules:readFileSync('database.rules.json','utf8')},firestore:{rules:readFileSync('firestore.rules','utf8')}});});
+beforeEach(async()=>{await env.clearDatabase();await env.clearFirestore();});after(async()=>{if(env)await env.cleanup();});
+test('cell, resource revision, durable journal and counters commit together',async()=>{await seed();await assertSucceeds(update(r('child',storage),action('child')));const data=(await get(r('child',storage))).val();assert.equal(data.head.g,1);assert.equal(data.head.actors.child.rev,2);assert.equal(data.journal.child[2].seq,1);assert.equal(data.chunks['0_0_2_0'].cells['1_44_1'].token,'c'.repeat(32));});
+test('partial cell, inventory-only, missing journal and forged counters are rejected',async()=>{
+ await seed();const a=action('child');await assertFails(set(r('child',storage+'/chunks/0_0_2_0/cells/1_44_1'),a['chunks/0_0_2_0/cells/1_44_1']));
+ for(const missing of ['journal/child/2','chunks/0_0_2_0/cells/1_44_1','head/g','head/regions/s0','head/chunks/0_0_2_0']){const p={...a};delete p[missing];await assertFails(update(r('child',storage),p));}
+ const p={...a,'head/regions/s0':5};await assertFails(update(r('child',storage),p));assert.equal((await get(r('child',storage+'/head/actors/child/rev'))).val(),1);
+});
+test('same-cell concurrency accepts one winner and charges one inventory',async()=>{
+ await seed();const results=await Promise.allSettled([update(r('child',storage),action('child')),update(r('sibling',storage),action('sibling',1,2,'',1,'f'.repeat(32)))]);assert.equal(results.filter(r=>r.status==='fulfilled').length,1);const h=(await get(r('child',storage+'/head'))).val();assert.equal(h.g,1);assert.equal(h.actors.child.rev+h.actors.sibling.rev,3);
+});
+test('different cells in one chunk commit concurrently without global CAS conflicts',async()=>{
+ await seed();await Promise.all([update(r('child',storage),action('child')),update(r('sibling',storage),action('sibling',1,2,'',2,'f'.repeat(32)))]);const h=(await get(r('child',storage+'/head'))).val();assert.equal(h.g,2);assert.equal(h.chunks['0_0_2_0'],2);
+});
+test('stale resources, forged author, duplicate action and wrong previous nonce cannot change state',async()=>{
+ await seed();await update(r('child',storage),action('child'));await assertFails(update(r('child',storage),action('child')));await assertFails(update(r('sibling',storage),action('child',2,3,'c'.repeat(32),1,'f'.repeat(32))));await assertFails(update(r('child',storage),action('child',2,3,'',1,'f'.repeat(32))));
+ const h=(await get(r('child',storage+'/head'))).val();assert.equal(h.actors.child.rev,2);assert.equal(h.g,1);
+});
+test('craft-only resource changes have a journal entry and no block mutation',async()=>{
+ await seed();const uid='child',a=`head/actors/${uid}/`,op='f'.repeat(32);await assertSucceeds(update(r(uid,storage),{'head/g':increment(1),[a+'rev']:2,[a+'inventory']:cipher,[a+'seq']:0,[a+'op']:op,[a+'eventKey']:'2','journal/child/2':{rev:2,seq:0,inventory:cipher,op,event:''}}));assert.equal((await get(r(uid,storage+'/head/g'))).val(),1);
+});
+test('members cannot overwrite durable state, change epoch or delete history without acknowledged backup',async()=>{
+ await seed();await update(r('child',storage),action('child'));await assertFails(set(r('child',storage),{}));await assertFails(set(r('parent',storage+'/control/epoch'),'f'.repeat(32)));await assertFails(set(r('child',storage+'/journal/child/2'),null));await assertFails(set(r('child',storage+'/head/actors/parent/rev'),2));
+});
+test('host lease rejects parallel claim, permits release and another member takeover',async()=>{
+ await seed();const a={uid:'child',token:'a'.repeat(32),until:Date.now()+15000};await assertSucceeds(set(r('child',storage+'/lease'),a));await assertFails(set(r('sibling',storage+'/lease'),{...a,uid:'sibling'}));await assertFails(set(r('child',storage+'/lease'),{...a,until:Date.now()+100000}));await assertSucceeds(set(r('child',storage+'/lease'),{...a,until:0}));await assertSucceeds(set(r('sibling',storage+'/lease'),{...a,uid:'sibling',until:Date.now()+15000}));
+});
+async function seedFs(){await env.withSecurityRulesDisabled(async c=>{const f=c.firestore();await setDoc(doc(f,root),{owner:'parent',name:'World',seed:123,side:2,protocol:6,invite,closed:false});for(const uid of ['parent','child'])await setDoc(doc(f,root+'/members/'+uid),{banned:false});await setDoc(doc(f,root+'/sync/v5'),{owner:'parent',phase:'ready',open:false,access:{parent:true,child:true}});});}
+const upload='a'.repeat(32);const stage=(g=1)=>({writer:'child',epoch,g,state:'staging',ids:[upload+'_c_0_0_2_0'],at:serverTimestamp()});
+const saved=(g=1)=>({upload,epoch,g,kind:'chunk',chunk:'0_0_2_0',cells:{'1_44_1':'2:0:'+'c'.repeat(32)}});
+const manifest=(g=1)=>({epoch,g,upload,chunks:{'0_0_2_0':upload+'_c_0_0_2_0'},inventories:{},counters:{'0_0_2_0':1},regions:{s0:1},actors:{child:2},garbage:[],oldUploads:[],at:serverTimestamp()});
+test('immutable backup pages require a staging upload and cannot be overwritten',async()=>{
+ await seedFs();const f=fs('child'),path=root+'/saved/'+upload+'_c_0_0_2_0';await assertFails(setDoc(doc(f,path),saved()));await setDoc(doc(f,root+'/uploads/'+upload),stage());await assertSucceeds(setDoc(doc(f,path),saved()));await assertFails(setDoc(doc(f,path),saved()));
+});
+test('manifest and committed upload publish atomically; partial upload cannot replace current backup',async()=>{
+ await seedFs();const f=fs('child');await setDoc(doc(f,root+'/uploads/'+upload),stage());await setDoc(doc(f,root+'/saved/'+upload+'_c_0_0_2_0'),saved());await assertFails(setDoc(doc(f,root+'/sync/checkpoint'),manifest()));await assertFails(updateDoc(doc(f,root+'/uploads/'+upload),{state:'committed'}));
+ const b=writeBatch(f);b.set(doc(f,root+'/sync/checkpoint'),manifest());b.update(doc(f,root+'/uploads/'+upload),{state:'committed'});await assertSucceeds(b.commit());await assertFails(deleteDoc(doc(f,root+'/saved/'+upload+'_c_0_0_2_0')));
+});
+test('banned and unrelated players cannot read or publish checkpoints',async()=>{
+ await seedFs();await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),root+'/members/child'),{banned:true}));await assertFails(setDoc(doc(fs('child'),root+'/uploads/'+upload),stage()));await assertFails(getDoc(doc(fs('stranger'),root+'/sync/checkpoint')));
+});
+test('protocol-6 freeze is atomic, resumable and prevents reopening old writers',async()=>{
+ await seedFs();await env.withSecurityRulesDisabled(async c=>{await updateDoc(doc(c.firestore(),root),{protocol:5});await updateDoc(doc(c.firestore(),root+'/sync/v5'),{open:true});});
+ const f=fs('parent'),b=writeBatch(f);b.update(doc(f,root),{protocol:6,migration:'rtdb6'});b.update(doc(f,root+'/sync/v5'),{open:false});await assertSucceeds(b.commit());
+ await assertFails(updateDoc(doc(f,root+'/sync/v5'),{open:true}));const {deleteField}=require('firebase/firestore');await assertSucceeds(updateDoc(doc(f,root),{migration:deleteField()}));
+});
+test('abandoning an expired upload fences late writes without affecting the current manifest',async()=>{
+ await seedFs();const f=fs('child');await setDoc(doc(f,root+'/uploads/'+upload),stage());await assertFails(updateDoc(doc(f,root+'/uploads/'+upload),{state:'abandoned'}));
+ await env.withSecurityRulesDisabled(c=>updateDoc(doc(c.firestore(),root+'/uploads/'+upload),{at:new Date(Date.now()-180000)}));await assertSucceeds(updateDoc(doc(f,root+'/uploads/'+upload),{state:'abandoned'}));await assertFails(setDoc(doc(f,root+'/saved/'+upload+'_c_0_0_2_0'),saved()));
+ const b=writeBatch(f);b.set(doc(f,root+'/sync/checkpoint'),manifest());b.update(doc(f,root+'/uploads/'+upload),{state:'committed'});await assertFails(b.commit());assert.equal((await getDoc(doc(f,root+'/sync/checkpoint'))).exists(),false);
+});
+test('older and duplicate manifest generations cannot replace a newer coherent checkpoint',async()=>{
+ await seedFs();const f=fs('child');await setDoc(doc(f,root+'/uploads/'+upload),stage(3));await setDoc(doc(f,root+'/saved/'+upload+'_c_0_0_2_0'),saved(3));const b=writeBatch(f);b.set(doc(f,root+'/sync/checkpoint'),manifest(3));b.update(doc(f,root+'/uploads/'+upload),{state:'committed'});await b.commit();
+ await assertFails(setDoc(doc(f,root+'/sync/checkpoint'),manifest(2)));await assertFails(setDoc(doc(f,root+'/sync/checkpoint'),manifest(3)));assert.equal((await getDoc(doc(f,root+'/sync/checkpoint'))).data().g,3);
+});
+test('REST stream receives an atomic head frame with resource and block revisions together',async()=>{
+ await seed();const {createMockUserToken}=require('@firebase/util');const token=createMockUserToken({sub:'child',user_id:'child'},'demo-meicraft-journal');
+ const endpoint=`http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}/${storage}/head.json?ns=demo-meicraft-journal&auth=${encodeURIComponent(token)}`;
+ const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),10000);try{
+  const response=await fetch(endpoint,{headers:{Accept:'text/event-stream'},signal:abort.signal});assert.equal(response.status,200);const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
+  async function frame(){for(;;){const cut=buffer.indexOf('\n\n');if(cut>=0){const f=buffer.slice(0,cut);buffer=buffer.slice(cut+2);if(f.includes('event: put')||f.includes('event: patch'))return JSON.parse(f.split('\n').find(l=>l.startsWith('data:')).slice(5));}const {value,done}=await reader.read();if(done)throw Error('stream closed');buffer+=decoder.decode(value,{stream:true});}}
+  const initial=await frame();await update(r('child',storage),action('child'));const next=await frame();assert.equal(next.path,'/');const state=initial.data;for(const [key,value] of Object.entries(next.data)){const parts=key.split('/');let node=state;for(const part of parts.slice(0,-1))node=node[part]??={};node[parts.at(-1)]=value;}assert.equal(state.g,1);assert.equal(state.actors.child.rev,2);assert.equal(state.regions.s0,1);
+ }finally{clearTimeout(timer);abort.abort();}
+});

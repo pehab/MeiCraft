@@ -6,7 +6,7 @@ import java.time.Instant;
 import java.util.*;
 
 /** Protocol 5: one authorized overview, bounded causal tails, two-document cell commits. */
-final class OnlineV5 {
+class OnlineV5 {
     final OnlineSession s;final FirebaseRest f;
     JSONObject state=new JSONObject();long revision,sequence;OnlineInventoryCipher inventoryCipher;
     final Map<String,Long> heads=new HashMap<>();final List<OnlineChange> tail=new ArrayList<>();

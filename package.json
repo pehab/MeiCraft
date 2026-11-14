@@ -2,7 +2,7 @@
   "name": "meicraft-firestore-tests",
   "private": true,
   "scripts": {
-    "test:rules": "firebase emulators:exec --only firestore,database --project demo-meicraft 'node --test tests/firestore.test.cjs tests/indexes.test.cjs tests/realtime.test.cjs'"
+    "test:rules": "firebase emulators:exec --only firestore,database --project demo-meicraft 'node --test tests/firestore.test.cjs tests/indexes.test.cjs tests/realtime.test.cjs tests/journal.test.cjs'"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "6.0.0",

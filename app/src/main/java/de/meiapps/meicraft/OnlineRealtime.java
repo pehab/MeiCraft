@@ -15,7 +15,7 @@ final class OnlineRealtime implements AutoCloseable {
     final AtomicLong outgoing=new AtomicLong();final RealtimeTree tree=new RealtimeTree();
     final Map<String,Long> revisions=new HashMap<>();final Map<String,OnlineSession.Player> poses=new HashMap<>();
     volatile Exception lastFailure;volatile String access;volatile boolean connected,closed,legacyPeers;volatile List<OnlineSession.Player> legacyPlayers=Collections.emptyList();boolean hadPosition;long lastSend;float x,y,z,yaw;long retryAt;
-    OnlineRealtime(OnlineSession s)throws Exception{this.s=s;db=new RtdbRest(s.firebase);base="worlds/"+s.owner+"/"+s.invitation.id;access=s.modern.state.has("access")?OnlineV5.fields(s.modern.state,"access").toString():"{}";if(s.modern.sequence>0)outgoing.set(s.modern.revision);}
+    OnlineRealtime(OnlineSession s)throws Exception{this.s=s;db=new RtdbRest(s.firebase);base="worlds/"+s.owner+"/"+s.invitation.id;access=s.modern.state.has("access")?OnlineV5.fields(s.modern.state,"access").toString():"{}";if(!(s.modern instanceof OnlineV6)&&s.modern.sequence>0)outgoing.set(s.modern.revision);}
     void start(){reader.execute(this::run);sender.scheduleWithFixedDelay(this::tick,0,100,TimeUnit.MILLISECONDS);}
     void status(boolean active){if(connected==active)return;connected=active;FirebaseRest.DIAGNOSTICS.realtime(active);s.realtimeStatus();}
     JSONObject timestamp()throws JSONException{return new JSONObject().put(".sv","timestamp");}
@@ -71,7 +71,7 @@ final class OnlineRealtime implements AutoCloseable {
             if(old==null||old.serverTime!=time)poses.put(uid,new OnlineSession.Player(uid,p.optString("name","Spieler"),sector,px,py,pz,a,time,System.nanoTime()));
         }
         poses.keySet().retainAll(present);publish();
-        JSONObject signals=tree.root.optJSONObject("signals");if(signals!=null)for(String uid:OnlineV5.keys(signals)){
+        JSONObject signals=s.modern instanceof OnlineV6?null:tree.root.optJSONObject("signals");if(signals!=null)for(String uid:OnlineV5.keys(signals)){
             JSONObject signal=signals.optJSONObject(uid);if(signal==null||uid.equals(s.firebase.uid))continue;long rev=signal.optLong("rev");Long seen=revisions.put(uid,rev);if(seen==null||rev>seen)s.requestRealtimeSync();
         }
     }

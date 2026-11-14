@@ -9,7 +9,7 @@ public final class OnlineDiagnostics {
     private final long started=System.currentTimeMillis();
     private long requests,failures,documents,writes,deletes,receivedBytes,sentBytes,mergedPositions,ownRegionSkips;
     private final long[] actionTimes=new long[256];
-    private long actionCount,maxAction,cachedRegions,cachedBlocks,tailBlocks,liveEvents,liveWrites;private boolean live;
+    private long actionCount,maxAction,cachedRegions,cachedBlocks,tailBlocks,liveEvents,liveWrites,checkpointCount,checkpointGeneration,checkpointDocuments;private boolean live;
     private final Map<String,Long> operations=new LinkedHashMap<>();
     private final ArrayDeque<String> errors=new ArrayDeque<>();
     public static String clean(String text,String... secrets){
@@ -27,6 +27,7 @@ public final class OnlineDiagnostics {
         int n=(int)Math.min(actionCount,actionTimes.length);if(n==0)return 0;
         long[] sorted=java.util.Arrays.copyOf(actionTimes,n);java.util.Arrays.sort(sorted);return sorted[Math.min(n-1,(int)Math.ceil(n*p/100.0)-1)]/1e6;
     }
+    public synchronized void checkpoint(long generation,long documents){checkpointCount++;checkpointGeneration=generation;checkpointDocuments+=documents;}
     public synchronized void realtime(boolean connected){live=connected;}
     public synchronized void realtimeEvent(){liveEvents++;}
     public synchronized void realtimeWrite(){liveWrites++;}
@@ -45,6 +46,7 @@ public final class OnlineDiagnostics {
     }
     public synchronized String report(){
         StringBuilder out=new StringBuilder("meiCraft Online-Diagnose\n");
+        out.append("Kohärente Firestore-Checkpoints: ").append(checkpointCount).append(" · letzter Journal-Stand: ").append(checkpointGeneration).append(" · gesicherte Dokumente: ").append(checkpointDocuments).append("\n");
         out.append("RTDB-Livekanal: ").append(live?"verbunden":"Firestore-Fallback").append(" · Ereignisse: ").append(liveEvents).append(" · bestätigte RTDB-Writes: ").append(liveWrites).append("\nFirestore-Dokumentzähler enthalten keine RTDB-Operationen.\n");
         out.append("Laufzeit seit App-Start: ").append((System.currentTimeMillis()-started)/60000).append(" min\n")
            .append("HTTP-Anfragen: ").append(requests).append(" · Fehler: ").append(failures)

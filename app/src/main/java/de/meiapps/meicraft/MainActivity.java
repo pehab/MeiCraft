@@ -199,7 +199,7 @@ public final class MainActivity extends Activity {
  }
  void toast(String text){Toast.makeText(this,text,Toast.LENGTH_SHORT).show();}
  @Override protected void onResume(){super.onResume();if(updates!=null)updates.onResume();if(online!=null&&online.session!=null)online.session.foreground=true;if(game!=null)game.gl.onResume();handler.removeCallbacks(autosave);handler.postDelayed(autosave,30000);immersive();}
- @Override protected void onPause(){if(updates!=null)updates.onPause();if(online!=null&&online.session!=null){online.session.foreground=false;online.session.healthy=false;}if(game!=null){game.clearInput();game.gl.onPause();}save();handler.removeCallbacks(autosave);super.onPause();}
+ @Override protected void onPause(){if(updates!=null)updates.onPause();if(online!=null&&online.session!=null){online.session.foreground=false;online.session.healthy=false;if(online.session.modern instanceof OnlineV6)((OnlineV6)online.session.modern).pause();}if(game!=null){game.clearInput();game.gl.onPause();}save();handler.removeCallbacks(autosave);super.onPause();}
  @Override protected void onDestroy(){if(updates!=null)updates.onDestroy();if(online!=null&&online.session!=null)online.session.close();handler.removeCallbacks(autosave);disk.shutdown();super.onDestroy();}
  @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(!focused&&game!=null)game.clearInput();}
  @Override public boolean onKeyUp(int code,KeyEvent event){if(Build.VERSION.SDK_INT<33&&code==KeyEvent.KEYCODE_BACK){menu();return true;}return super.onKeyUp(code,event);}

@@ -11,7 +11,7 @@ service cloud.firestore {
       return signedIn() && !get(worldPath(world)).data.closed
         && exists(memberPath(world, request.auth.uid))
         && get(memberPath(world, request.auth.uid)).data.banned == false
-        && (get(worldPath(world)).data.protocol != 5 || get(v5Path(world)).data.access.get(request.auth.uid,true) == true);
+        && (!(get(worldPath(world)).data.protocol in [5,6]) || get(v5Path(world)).data.access.get(request.auth.uid,true) == true);
     }
     function deleting(world) { return owner(world) && get(worldPath(world)).data.closed == true; }
     function name(value, limit) { return value is string && value.size() > 0 && value.size() <= limit; }
@@ -41,14 +41,18 @@ service cloud.firestore {
       allow update: if owner(world)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','invite','closed','protocol','migration'])
         && (request.resource.data.protocol == resource.data.protocol || resource.data.protocol == 1 && request.resource.data.protocol == 2
+          || resource.data.protocol == 5 && request.resource.data.protocol == 6 && !request.resource.data.closed && !getAfter(v5Path(world)).data.open
           || resource.data.protocol == 3 && request.resource.data.protocol == 4
           && getAfter(syncPath(world)).data.regions == {} && getAfter(syncPath(world)).data.players == {}
           || resource.data.protocol == 4 && request.resource.data.protocol == 5 && resource.data.closed && request.resource.data.get('migration','') == 'v5' && getAfter(v5Path(world)).data.phase == 'importing')
         && name(request.resource.data.name,48) && token(request.resource.data.invite)
         && request.resource.data.closed is bool
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['migration'])
+          || request.resource.data.get('migration','') == 'rtdb6' && resource.data.protocol == 5 && request.resource.data.protocol == 6 && !request.resource.data.closed
+          || !request.resource.data.keys().hasAny(['migration']) && resource.data.protocol == 6 && !request.resource.data.closed
           || request.resource.data.get('migration','') == 'v5' && resource.data.protocol == 4 && request.resource.data.closed
           || !request.resource.data.keys().hasAny(['migration']) && resource.data.protocol == 5 && !request.resource.data.closed && getAfter(v5Path(world)).data.phase == 'ready')
+        && (request.resource.data.protocol != 6 || !getAfter(v5Path(world)).data.open)
         && (request.resource.data.protocol != 5 || request.resource.data.closed && !getAfter(v5Path(world)).data.open || !request.resource.data.closed && getAfter(v5Path(world)).data.phase == 'ready' && getAfter(v5Path(world)).data.open);
       allow delete: if deleting(world);
 
@@ -122,6 +126,7 @@ service cloud.firestore {
         return signedIn() && (resource != null && (resource.data.owner == request.auth.uid || resource.data.phase == 'ready' && resource.data.open
           && (resource.data.access.get(request.auth.uid,false) == true
             || !resource.data.access.keys().hasAny([request.auth.uid]) && member(world)))
+          || resource != null && get(worldPath(world)).data.protocol == 6 && member(world)
           || resource == null && deleting(world));
       }
       function v5Inventory(data) {
@@ -200,13 +205,72 @@ service cloud.firestore {
       }
       function v5Update() {
         return signedIn() && (v5Own() || v5Join() || resource.data.owner == request.auth.uid
+          && (!request.resource.data.open || getAfter(worldPath(world)).data.protocol == 5)
           && (resource.data.phase == 'importing' && get(worldPath(world)).data.closed && get(worldPath(world)).data.get('migration','') == 'v5'
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['migration','phase','open'])
             && (request.resource.data.phase == 'importing' && !request.resource.data.open || request.resource.data.phase == 'ready' && request.resource.data.open && !getAfter(worldPath(world)).data.closed)
             || resource.data.phase == 'ready' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['access','open'])
             && request.resource.data.access.diff(resource.data.access).addedKeys().size() == 0 && request.resource.data.access.diff(resource.data.access).removedKeys().size() == 0
             && request.resource.data.access[request.auth.uid] == true && request.resource.data.access.values().hasOnly([true,false])
-            && (request.resource.data.open == resource.data.open || request.resource.data.open == !getAfter(worldPath(world)).data.closed)));
+            && (request.resource.data.open == resource.data.open || request.resource.data.open == !getAfter(worldPath(world)).data.closed || !request.resource.data.open && getAfter(worldPath(world)).data.protocol == 6)));
+      }
+
+      // Protocol 6: immutable pages plus a CAS-published, coherent manifest.
+      function backupMember() { return member(world) && get(worldPath(world)).data.protocol == 6; }
+      function checkpointPath() { return /databases/$(database)/documents/onlineWorlds/$(world)/sync/checkpoint; }
+      function uploadPath(id) { return /databases/$(database)/documents/onlineWorlds/$(world)/uploads/$(id); }
+      function currentManifest() { return get(checkpointPath()).data; }
+      function referenced(id) { return exists(checkpointPath()) && (currentManifest().chunks.values().hasAny([id]) || currentManifest().inventories.values().hasAny([id])); }
+      match /saved/{id} {
+        allow read: if backupMember() || deleting(world);
+        allow create: if backupMember() && token(request.resource.data.upload)
+          && get(uploadPath(request.resource.data.upload)).data.state == 'staging'
+          && get(uploadPath(request.resource.data.upload)).data.writer == request.auth.uid
+          && request.resource.data.g == get(uploadPath(request.resource.data.upload)).data.g
+          && request.resource.data.epoch == get(uploadPath(request.resource.data.upload)).data.epoch
+          && (request.resource.data.kind == 'chunk' && request.resource.data.keys().hasOnly(['upload','epoch','g','kind','chunk','cells'])
+            && request.resource.data.chunk.matches('^[0-8]_[0-5]_[0-2]_[0-5]$') && id == request.resource.data.upload + '_c_' + request.resource.data.chunk
+            && request.resource.data.cells is map && request.resource.data.cells.size() <= 4096
+            || request.resource.data.kind == 'inventory' && request.resource.data.keys().hasOnly(['upload','epoch','g','kind','uid','rev','seq','cipher','log'])
+            && request.resource.data.uid is string && id == request.resource.data.upload + '_u_' + request.resource.data.uid
+            && request.resource.data.rev is int && request.resource.data.rev >= 0 && request.resource.data.seq is int && request.resource.data.seq >= 0
+            && request.resource.data.log is map && request.resource.data.log.size() <= 16 && (request.resource.data.cipher == '' || v5Inventory(request.resource.data.cipher)));
+        allow update: if false;
+        allow delete: if deleting(world) || backupMember() && resource == null || backupMember() && !referenced(id)
+          && (exists(checkpointPath()) && currentManifest().garbage.hasAny([id])
+            || exists(uploadPath(resource.data.upload)) && get(uploadPath(resource.data.upload)).data.state == 'abandoned');
+      }
+      match /uploads/{upload} {
+        allow read: if backupMember() || deleting(world);
+        allow create: if backupMember() && token(upload)
+          && request.resource.data.keys().hasAll(['writer','epoch','g','state','ids','at']) && request.resource.data.keys().hasOnly(['writer','epoch','g','state','ids','at'])
+          && request.resource.data.writer == request.auth.uid && token(request.resource.data.epoch)
+          && request.resource.data.g is int && request.resource.data.g >= 0 && request.resource.data.g < 9000000000000
+          && request.resource.data.state == 'staging' && request.resource.data.ids is list && request.resource.data.ids.size() <= 1300 && request.resource.data.at == request.time;
+        allow update: if backupMember() && resource.data.state == 'staging' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state'])
+          && (request.resource.data.state == 'committed' && resource.data.writer == request.auth.uid
+            && getAfter(checkpointPath()).data.upload == upload && getAfter(checkpointPath()).data.g == resource.data.g
+            || request.resource.data.state == 'abandoned' && request.time > resource.data.at + duration.value(120,'s'));
+        allow delete: if deleting(world) || backupMember() && resource == null || backupMember() && (!exists(checkpointPath()) || currentManifest().upload != upload)
+          && (resource.data.state == 'abandoned' || resource.data.state == 'committed');
+      }
+      match /sync/checkpoint {
+        allow read: if backupMember() || deleting(world);
+        allow create, update: if backupMember()
+          && request.resource.data.keys().hasAll(['epoch','g','upload','chunks','inventories','counters','regions','actors','garbage','oldUploads','at'])
+          && request.resource.data.keys().hasOnly(['epoch','g','upload','chunks','inventories','counters','regions','actors','garbage','oldUploads','at'])
+          && token(request.resource.data.epoch) && token(request.resource.data.upload) && request.resource.data.g is int && request.resource.data.g >= 0
+          && (resource == null || request.resource.data.epoch == resource.data.epoch && request.resource.data.g > resource.data.g)
+          && request.resource.data.chunks is map && request.resource.data.chunks.size() <= 972
+          && request.resource.data.inventories is map && request.resource.data.inventories.size() <= 256
+          && request.resource.data.counters is map && request.resource.data.counters.size() <= 972
+          && request.resource.data.regions is map && request.resource.data.regions.size() <= 9
+          && request.resource.data.actors is map && request.resource.data.actors.size() <= 256
+          && request.resource.data.garbage is list && request.resource.data.garbage.size() <= 1300 && request.resource.data.oldUploads is list && request.resource.data.oldUploads.size() <= 2
+          && getAfter(uploadPath(request.resource.data.upload)).data.state == 'committed'
+          && getAfter(uploadPath(request.resource.data.upload)).data.g == request.resource.data.g
+          && getAfter(uploadPath(request.resource.data.upload)).data.epoch == request.resource.data.epoch && request.resource.data.at == request.time;
+        allow delete: if deleting(world);
       }
       match /sectors/{sector}/chunks/{chunk} {
         function importing() { return signedIn() && get(v5Path(world)).data.owner == request.auth.uid && get(v5Path(world)).data.phase == 'importing' && !get(v5Path(world)).data.open; }
@@ -223,7 +287,7 @@ service cloud.firestore {
             && request.resource.data.cells[v5Cell(last)] == v5Value(last) && (cells.keys().hasAny([v5Cell(last)]) ? cells[v5Cell(last)].split(':')[2] : '') == last.before
             && request.resource.data.updatedAt == request.time;
         }
-        allow read: if signedIn() && (get(v5Path(world)).data.open && get(v5Path(world)).data.access.get(request.auth.uid,false) == true || importing() || deleting(world));
+        allow read: if signedIn() && (get(v5Path(world)).data.open && get(v5Path(world)).data.access.get(request.auth.uid,false) == true || importing() || deleting(world) || owner(world) && get(worldPath(world)).data.protocol == 6);
         allow create: if importing() || chunkWrite({});
         allow update: if importing() || chunkWrite(resource.data.cells);
         allow delete: if deleting(world);

@@ -277,3 +277,7 @@ in [RELEASE-1.0.0-rc.4.md](RELEASE-1.0.0-rc.4.md). Die Weltkarte benötigt keine
 ## RTDB-Teststand rc.5
 
 Positionen und Änderungsbenachrichtigungen verwenden RTDB; die atomare Firestore-Buchung von Block und Inventar bleibt bestehen. Einrichtung, Regeln, Grenzen und Tablet-Test: [RELEASE-1.0.0-rc.5.md](RELEASE-1.0.0-rc.5.md). Dieser Stand verwendet noch keine verzögerten Host-Checkpoints.
+
+## Dauerhaftes RTDB-Journal und Host-Checkpoints (rc.6)
+
+Protokoll 6 bestätigt Bauten und den zugehörigen verschlüsselten Vorrat atomar in RTDB. Firestore speichert gebündelte, zusammengehörige Chunks und Inventare über unveränderliche Versionen und ein abschließendes Manifest. Einrichtung und fortsetzbare Migration: [RELEASE-1.0.0-rc.6.md](RELEASE-1.0.0-rc.6.md). Nach der Migration ist RTDB die Spielautorität; Firestore ist das Backup. Alte Clients können diese Welt nicht mehr beschreiben.

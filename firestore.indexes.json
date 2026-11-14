@@ -60,6 +60,56 @@
       "collectionGroup": "sync",
       "fieldPath": "migration",
       "indexes": []
+    },
+    {
+      "collectionGroup": "saved",
+      "fieldPath": "*",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "uploads",
+      "fieldPath": "*",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sync",
+      "fieldPath": "chunks",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sync",
+      "fieldPath": "inventories",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sync",
+      "fieldPath": "counters",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sync",
+      "fieldPath": "actors",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sync",
+      "fieldPath": "garbage",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sync",
+      "fieldPath": "oldUploads",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "uploads",
+      "fieldPath": "at",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        }
+      ]
     }
   ]
 }

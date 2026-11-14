@@ -58,7 +58,7 @@ final class OnlineSession implements AutoCloseable {
     }
     void start(boolean create,String worldName,int size){
         worker.execute(()->{try{
-            firebase.authenticate();modern=new OnlineV5(this);modern.start(create,worldName,size);
+            firebase.authenticate();modern=firebase.realtimeEligible?new OnlineV6(this):new OnlineV5(this);modern.start(create,worldName,size);
             if(closed)return;healthy=true;loading=false;
             activity.runOnUiThread(()->{if(!closed)listener.loaded(world,name);});
             if(firebase.realtimeEligible){realtime=new OnlineRealtime(this);realtime.start();}scheduleNextPoll();
@@ -137,7 +137,7 @@ final class OnlineSession implements AutoCloseable {
     boolean hasPeers(){for(Player player:players)if(!player.uid.equals(firebase.uid))return true;return false;}
     synchronized void scheduleNextPoll(){
         if(closed)return;if(pollTask!=null)pollTask.cancel(false);
-        long interval=realtime!=null&&realtime.live()?30000:OnlineSyncPolicy.pollInterval(hasPeers());
+        long interval=realtime!=null&&realtime.live()&&(!(modern instanceof OnlineV6)||((OnlineV6)modern).journalConnected)?30000:OnlineSyncPolicy.pollInterval(hasPeers());
         if(nextAttempt>System.currentTimeMillis())interval=Math.min(interval,Math.max(100,nextAttempt-System.currentTimeMillis()));
         try{pollTask=worker.schedule(()->{poll();scheduleNextPoll();},interval,TimeUnit.MILLISECONDS);}
         catch(RejectedExecutionException e){if(!closed)throw e;}
@@ -250,7 +250,7 @@ final class OnlineSession implements AutoCloseable {
     void mutationFailed(Exception error){
         healthy=false;inventoryUncertain=true;
         if(error instanceof FirebaseRest.Failure&&((FirebaseRest.Failure)error).status==429){failures=Math.min(6,failures+1);nextAttempt=System.currentTimeMillis()+OnlineSyncPolicy.retryDelay(failures,true);}
-        problem(error,false);if(realtime!=null)requestRealtimeSync();
+        problem(error,false);if(realtime!=null||modern instanceof OnlineV6)requestRealtimeSync();
     }
     boolean beginAction(){
         if(closed)return false;if(!healthy||loading||!foreground){activity.game.message("Verbindung wird hergestellt …");return false;}
@@ -343,5 +343,5 @@ final class OnlineSession implements AutoCloseable {
         String message=e instanceof FirebaseRest.Failure?e.getMessage():e instanceof IOException&&e.getMessage()!=null&&!e.getMessage().startsWith("Unable")?e.getMessage():"Verbindung unterbrochen. Bauen pausiert; erneuter Versuch folgt.";
         activity.runOnUiThread(()->{if(!closed)listener.problem(message,fatal);});
     }
-    @Override public void close(){closed=true;healthy=false;OnlineRealtime live=realtime;if(live!=null)live.close();players=Collections.emptyList();worker.shutdownNow();OnlineRegionCache cache=regionCache;if(cache!=null)cache.close();}
+    @Override public void close(){closed=true;healthy=false;if(modern instanceof OnlineV6)((OnlineV6)modern).close();OnlineRealtime live=realtime;if(live!=null)live.close();players=Collections.emptyList();worker.shutdownNow();OnlineRegionCache cache=regionCache;if(cache!=null)cache.close();}
 }

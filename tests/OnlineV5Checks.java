@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit;
 final class OnlineV5Checks {
     final SmokeInstrumentation test;OnlineV5Checks(SmokeInstrumentation test){this.test=test;}
     void check(boolean ok,String text){test.check(ok,text);}
-    static final class Store implements FirebaseRest.ConnectionFactory {
+    static class Store implements FirebaseRest.ConnectionFactory {
         final Map<String,JSONObject> docs=new LinkedHashMap<>();Map<String,JSONObject> snapshot=new LinkedHashMap<>();
         final List<String> gets=new ArrayList<>();
         final List<JSONObject> commits=new ArrayList<>(),batchGets=new ArrayList<>();

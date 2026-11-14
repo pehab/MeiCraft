@@ -15,7 +15,8 @@ final class RtdbRest implements AutoCloseable {
         if(!config.getString("project").equals(f.project)||!url.getProtocol().equals("https")||!url.getHost().equals(f.project+"-default-rtdb.europe-west1.firebasedatabase.app")||!url.getPath().isEmpty()||url.getPort()!=-1||url.getQuery()!=null||url.getRef()!=null)throw new IOException("RTDB-Konfiguration passt nicht zum Firebase-Projekt.");
     }
     HttpURLConnection open(String path,String accept)throws Exception{
-        String token=f.idToken();URL url=new URL(endpoint+"/"+path+".json?auth="+URLEncoder.encode(token,"UTF-8"));
+        int queryAt=path.indexOf('?');String query=queryAt<0?"":"&"+path.substring(queryAt+1),resource=queryAt<0?path:path.substring(0,queryAt);
+        String token=f.idToken();URL url=new URL(endpoint+"/"+resource+".json?auth="+URLEncoder.encode(token,"UTF-8")+query);
         for(int redirect=0;redirect<4;redirect++){
             if(closed)throw new IOException("RTDB beendet.");HttpURLConnection c=f.connections.open(url);
             c.setConnectTimeout(5000);c.setReadTimeout(accept==null?5000:65000);c.setInstanceFollowRedirects(false);if(accept!=null)c.setRequestProperty("Accept",accept);
@@ -32,14 +33,19 @@ final class RtdbRest implements AutoCloseable {
         if(status==401)f.invalidateToken(token);throw f.failure(status,"RTDB","Livekanal", "{}");
     }
     Object request(String method,String path,Object value)throws Exception{return request(method,path,value,false);}
-    Object request(String method,String path,Object value,boolean create)throws Exception{
+    Object request(String method,String path,Object value,boolean create)throws Exception{return exchange(method,path,value,create?"null_etag":null,false).value;}
+    static final class Version {final Object value;final String etag;Version(Object value,String etag){this.value=value;this.etag=etag;}}
+    Version version(String path)throws Exception{return exchange("GET",path,null,null,true);}
+    void compare(String path,Object value,String etag)throws Exception{exchange("PUT",path,value,etag,false);}
+    private Version exchange(String method,String path,Object value,String etag,boolean version)throws Exception{
         HttpURLConnection c;try{c=open(path,null);}catch(FirebaseRest.Failure e){throw e;}catch(IOException e){throw new IOException("RTDB-Verbindung unterbrochen. Erneuter Versuch folgt.",e);}boolean success=false;FirebaseRest.DIAGNOSTICS.request("RTDB · "+method);
         try{
-            c.setRequestMethod(method);if(create)c.setRequestProperty("if-match","null_etag");
+            c.setRequestMethod(method);if(etag!=null)c.setRequestProperty("if-match",etag);if(version)c.setRequestProperty("X-Firebase-ETag","true");
             if(value!=null){byte[] body=value.toString().getBytes(StandardCharsets.UTF_8);c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json; charset=UTF-8");c.setFixedLengthStreamingMode(body.length);FirebaseRest.DIAGNOSTICS.sent(body.length);try(OutputStream out=c.getOutputStream()){out.write(body);}}
-            check(c,c.getResponseCode(),URLDecoder.decode(c.getURL().getQuery().substring(5),"UTF-8"));Object result;
+            check(c,c.getResponseCode(),URLDecoder.decode(c.getURL().getQuery().substring(5).split("&",2)[0],"UTF-8"));Object result;
             try(InputStream in=c.getInputStream()){byte[] body=FirebaseRest.read(in);FirebaseRest.DIAGNOSTICS.received(body.length);result=body.length==0?JSONObject.NULL:new JSONTokener(new String(body,StandardCharsets.UTF_8)).nextValue();}
-            success=true;if(!method.equals("GET"))FirebaseRest.DIAGNOSTICS.realtimeWrite();return result;
+            long date=c.getHeaderFieldDate("Date",0);if(date>0)serverOffset=date-System.currentTimeMillis();
+            success=true;if(!method.equals("GET"))FirebaseRest.DIAGNOSTICS.realtimeWrite();return new Version(result,c.getHeaderField("ETag"));
         }catch(FirebaseRest.Failure e){throw e;}catch(IOException e){throw new IOException("RTDB-Verbindung unterbrochen. Erneuter Versuch folgt.",e);}finally{if(!success)c.disconnect();} // Consumed successful responses retain the HTTP keep-alive pool.
     }
     void listen(String path,RealtimeStream.Events events)throws Exception{
