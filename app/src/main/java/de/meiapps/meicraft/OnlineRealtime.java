@@ -21,7 +21,7 @@ final class OnlineRealtime implements AutoCloseable {
     JSONObject timestamp()throws JSONException{return new JSONObject().put(".sv","timestamp");}
     void initialize()throws Exception{
         if(s.owner()){
-            Object current=db.request("GET",base,null);
+            Object current=db.request("GET",base+"/meta",null);
             if(current==JSONObject.NULL){
                 JSONObject members=new JSONObject();JSONObject rights=new JSONObject(access);for(String uid:OnlineV5.keys(rights))members.put(uid,new JSONObject().put("active",rights.getJSONObject(uid).getBoolean("booleanValue")).put("proof",s.invitation.invitation));
                 JSONObject root=new JSONObject().put("meta",new JSONObject().put("invite",s.invitation.invitation).put("side",s.side).put("closed",false)).put("members",members);
@@ -103,7 +103,7 @@ final class OnlineRealtime implements AutoCloseable {
         if(patch.length()>0)db.request("PATCH",base+"/members",patch);
     }
     void revoke(String uid)throws Exception{db.request("PUT",base+"/members/"+uid+"/active",Boolean.FALSE);}
-    void closeWorld()throws Exception{if(db.request("GET",base,null)!=JSONObject.NULL)db.request("PUT",base+"/meta/closed",Boolean.TRUE);}
+    void closeWorld()throws Exception{if(db.request("GET",base+"/meta",null)!=JSONObject.NULL)db.request("PUT",base+"/meta/closed",Boolean.TRUE);}
     @Override public void close(){
         if(closed)return;closed=true;status(false);db.interrupt();reader.shutdownNow();
         try{sender.execute(()->{try{if(hadPosition)db.request("DELETE",base+"/live/players/"+s.firebase.uid,null);}catch(Exception ignored){/* Server-time TTL is the crash/offline fallback. */}finally{db.close();}});}catch(RejectedExecutionException ignored){db.close();}sender.shutdown();

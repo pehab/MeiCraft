@@ -75,3 +75,11 @@ test('REST stream receives an atomic head frame with resource and block revision
   const initial=await frame();await update(r('child',storage),action('child'));const next=await frame();assert.equal(next.path,'/');const state=initial.data;for(const [key,value] of Object.entries(next.data)){const parts=key.split('/');let node=state;for(const part of parts.slice(0,-1))node=node[part]??={};node[parts.at(-1)]=value;}assert.equal(state.g,1);assert.equal(state.actors.child.rev,2);assert.equal(state.regions.s0,1);
  }finally{clearTimeout(timer);abort.abort();}
 });
+test('world deletion clears durable data only after owner closure and retains the tombstone',async()=>{
+ await seed();await update(r('child',storage),action('child'));await assertFails(set(r('parent',storage),null));await set(r('parent',base+'/meta/closed'),true);await assertFails(set(r('child',storage),null));await assertSucceeds(set(r('parent',storage),null));assert.equal((await get(r('parent',storage))).exists(),false);assert.equal((await get(r('parent',base+'/meta/closed'))).val(),true);
+});
+test('Android POST method override commits the identical atomic journal mutation',async()=>{
+ await seed();const {createMockUserToken}=require('@firebase/util');const token=createMockUserToken({sub:'child',user_id:'child'},'demo-meicraft-journal');
+ const endpoint=`http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}/${storage}.json?ns=demo-meicraft-journal&auth=${encodeURIComponent(token)}`;
+ const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-HTTP-Method-Override':'PATCH'},body:JSON.stringify(action('child'))});assert.equal(response.status,200,await response.text());const h=(await get(r('child',storage+'/head'))).val();assert.equal(h.g,1);assert.equal(h.actors.child.rev,2);assert.equal((await get(r('child',storage+'/journal/child/2'))).val().seq,1);
+});

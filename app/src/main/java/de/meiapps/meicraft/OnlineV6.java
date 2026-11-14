@@ -117,6 +117,16 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
     }
     @Override void progressAction(int recipe){if(!activated){super.progressAction(recipe);return;}if(!s.beginAction())return;long started=s.actionStarted;s.worker.execute(()->{try{Story next=OnlineInventory.copy(s.inventory);String message=recipe<0?(next.claim()?"Werkzeug / Auftrag freigeschaltet":next.goal()):next.craft(recipe);if(!OnlineInventory.same(next,s.inventory)){commit(next,null);revision++;s.inventory=next;s.inventoryVersion=Long.toString(revision);s.applyInventory(next,started);}String text=message;s.activity.runOnUiThread(()->{if(!s.closed){s.activity.toast(text);s.activity.online.refreshWorkbench();}});}catch(Exception e){s.mutationFailed(e);}finally{s.pending=false;}});}
     void pause(){if(db!=null)db.interrupt();if(checkpoints!=null)checkpoints.pause();}
-    @Override void deleteWorld(Runnable success,java.util.function.Consumer<String> failure){if(!activated){super.deleteWorld(success,failure);return;}if(!s.owner()||s.closed)return;s.worker.execute(()->{try{if(checkpoints!=null)checkpoints.stop();if(s.realtime!=null)s.realtime.closeWorld();f.commit(new JSONArray().put(f.write(s.base(),FirebaseRest.fields("closed",true),new String[]{"closed"},new JSONObject().put("exists",true),false)));s.deleteCollection(s.base()+"/saved",false);s.deleteCollection(s.base()+"/uploads",false);f.commit(new JSONArray().put(new JSONObject().put("delete",f.documentName(s.base()+"/sync/checkpoint"))));super.deleteWorld(success,failure);}catch(Exception e){s.activity.runOnUiThread(()->failure.accept("Löschen unterbrochen. Bitte erneut versuchen."));}});}
+    @Override void deleteWorld(Runnable success,java.util.function.Consumer<String> failure){
+        if(!s.owner()||s.closed)return;s.loading=true;s.healthy=false;s.worker.execute(()->{try{
+            JSONObject root=f.get(s.base());if(root!=null&&FirebaseRest.integer(root.getJSONObject("fields"),"protocol")==6){
+                if(checkpoints!=null)checkpoints.stop();if(db==null)db=new RtdbRest(f);if(base==null)base="worlds/"+s.owner+"/"+s.invitation.id;
+                if(s.realtime==null)s.realtime=new OnlineRealtime(s);s.realtime.closeWorld();
+                f.commit(new JSONArray().put(f.write(s.base(),FirebaseRest.fields("closed",true),new String[]{"closed"},new JSONObject().put("exists",true),false)));
+                db.request("DELETE",storage(),null);db.request("DELETE",base+"/live",null);
+                s.deleteCollection(s.base()+"/saved",false);s.deleteCollection(s.base()+"/uploads",false);f.commit(new JSONArray().put(new JSONObject().put("delete",f.documentName(s.base()+"/sync/checkpoint"))));
+            }super.deleteWorld(success,failure);
+        }catch(Exception e){s.activity.runOnUiThread(()->failure.accept("Löschen unterbrochen. Bitte erneut versuchen."));}});
+    }
     @Override public void close(){stopped=true;journalConnected=false;if(db!=null)db.close();journalReader.shutdownNow();if(checkpoints!=null)checkpoints.close();}
 }

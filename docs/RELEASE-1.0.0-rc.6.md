@@ -36,6 +36,7 @@ PR, CI und APK veröffentlichen Firebase-Regeln nicht automatisch.
 - Ein alter Host kann durch monotone Generationen und die Manifest-Vorbedingung keinen neueren Stand zurücksetzen. Abgebrochene Uploads ersetzen kein gültiges Backup. Nach Ablauf werden sie markiert; dann können sie auch von einem verspäteten Schreiber nicht mehr abgeschlossen werden. Nicht mehr referenzierte Versionen werden aufgeräumt.
 - Erst nach bestätigtem Manifest wird der Journal-Stand quittiert. Verarbeitete Einträge können danach entfernt werden; die letzten 16 Revisionen je Spieler bleiben bestehen. Dauerhafte Zellen und Inventare werden bei dieser Bereinigung **nicht** entfernt.
 - Ist Firestore vorübergehend gestört oder sein Kontingent verbraucht, bleiben Journal und Spielstand in RTDB erhalten. Das Backup wird später erneut versucht. Die Diagnose zeigt bestätigte Checkpoints und deren Generation.
+- Beim Löschen einer Welt werden zuerst die Zugriffe geschlossen und danach RTDB-Spielstand, Journal und Firestore-Backups entfernt. Ein geschlossener Metadateneintrag verhindert die Wiederverwendung alter Einladungen. Auch eine unterbrochene Löschung einer bereits geschlossenen Welt lässt sich fortsetzen.
 - Fehlt nach abgeschlossener Migration der gesamte RTDB-Spielstand, erfolgt kein stiller Rückgriff auf die alten eingefrorenen Dokumente. Ein administratives Löschen/Zurücksetzen der RTDB ist kein normaler Host-Ausfall; ein älteres Backup darf dabei nicht unbemerkt aktuelle Bauten ersetzen.
 
 ## Datenmodell

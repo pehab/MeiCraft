@@ -40,7 +40,7 @@ final class RtdbRest implements AutoCloseable {
     private Version exchange(String method,String path,Object value,String etag,boolean version)throws Exception{
         HttpURLConnection c;try{c=open(path,null);}catch(FirebaseRest.Failure e){throw e;}catch(IOException e){throw new IOException("RTDB-Verbindung unterbrochen. Erneuter Versuch folgt.",e);}boolean success=false;FirebaseRest.DIAGNOSTICS.request("RTDB · "+method);
         try{
-            c.setRequestMethod(method);if(etag!=null)c.setRequestProperty("if-match",etag);if(version)c.setRequestProperty("X-Firebase-ETag","true");
+            if(method.equals("PATCH")){c.setRequestMethod("POST");c.setRequestProperty("X-HTTP-Method-Override","PATCH");}else c.setRequestMethod(method);if(etag!=null)c.setRequestProperty("if-match",etag);if(version)c.setRequestProperty("X-Firebase-ETag","true");
             if(value!=null){byte[] body=value.toString().getBytes(StandardCharsets.UTF_8);c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json; charset=UTF-8");c.setFixedLengthStreamingMode(body.length);FirebaseRest.DIAGNOSTICS.sent(body.length);try(OutputStream out=c.getOutputStream()){out.write(body);}}
             check(c,c.getResponseCode(),URLDecoder.decode(c.getURL().getQuery().substring(5).split("&",2)[0],"UTF-8"));Object result;
             try(InputStream in=c.getInputStream()){byte[] body=FirebaseRest.read(in);FirebaseRest.DIAGNOSTICS.received(body.length);result=body.length==0?JSONObject.NULL:new JSONTokener(new String(body,StandardCharsets.UTF_8)).nextValue();}

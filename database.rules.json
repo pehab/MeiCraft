@@ -89,13 +89,14 @@
             },
             "$other": {
               ".validate": false
-            }
+            },
+            ".write": "auth != null && auth.uid == $owner && root.child('worlds').child($owner).child($world).child('meta/closed').val() == true && !newData.exists()"
           },
           "$other": {
             ".validate": false
           },
           "storage": {
-            ".write": "auth != null && auth.uid == $owner && root.child('worlds').child($owner).child($world).child('storage').child('control/phase').val() != 'ready'",
+            ".write": "(auth != null && auth.uid == $owner && root.child('worlds').child($owner).child($world).child('storage').child('control/phase').val() != 'ready') || (auth != null && auth.uid == $owner && root.child('worlds').child($owner).child($world).child('meta/closed').val() == true && !newData.exists())",
             "control": {
               ".validate": "newData.hasChildren(['phase','epoch','source']) && (newData.child('phase').val() == 'importing' || newData.child('phase').val() == 'ready') && newData.child('epoch').val().matches(/^[a-f0-9]{32}$/)"
             },

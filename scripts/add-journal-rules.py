@@ -41,12 +41,13 @@ a=newactor(3)
 journal={'.write':f"({active} && {ready} && auth.uid == $uid && !data.exists() && newData.exists()) || ({host} && data.exists() && !newData.exists() && data.child('rev').val() <= {st}.child('checkpoint/actors').child($uid).val() - 16)",'.validate':f"({importing}) || (newData.hasChildren(['rev','seq','inventory','op','event']) && $key == {a}.child('eventKey').val() && newData.child('rev').val() == {a}.child('rev').val() && newData.child('seq').val() == {a}.child('seq').val() && newData.child('inventory').val() == {a}.child('inventory').val() && newData.child('op').val() == {a}.child('op').val() && newData.child('event').val() == ({a}.child('seq').val() > ({old}.exists() ? {old}.child('seq').val() : 0) ? {text(a)} : ''))"}
 for k in ['rev','seq','inventory','op','event']:journal[k]={'.validate':True}
 journal['$other']={'.validate':False}
-storage={'.write':importing,
+storage={'.write':f"({importing}) || (auth != null && auth.uid == $owner && {base}.child('meta/closed').val() == true && !newData.exists())",
  'control':{'.validate':"newData.hasChildren(['phase','epoch','source']) && (newData.child('phase').val() == 'importing' || newData.child('phase').val() == 'ready') && newData.child('epoch').val().matches(/^[a-f0-9]{32}$/)"},
  'head':head,'chunks':{'$chunk':{'cells':{'$cell':cell},'$other':{'.validate':False}}},'journal':{'$uid':{'.indexOn':['rev'],'$key':journal}},
  'lease':{'.write':f"{active} && {ready} && newData.exists() && newData.child('uid').val() == auth.uid && (!data.exists() || data.child('until').val() <= now || data.child('uid').val() == auth.uid)",'.validate':"newData.hasChildren(['uid','token','until']) && newData.child('token').val().matches(/^[a-f0-9]{32}$/) && (newData.child('until').val() == 0 || newData.child('until').val() >= now + 3000 && newData.child('until').val() <= now + 20000)"},
  'checkpoint':{'.write':host,'.validate':f"newData.hasChildren(['g','actors','token']) && newData.child('g').val() <= {st}.child('head/g').val() && (!data.exists() || newData.child('g').val() >= data.child('g').val())",'g':{'.validate':num('newData')},'token':{'.validate':"newData.val().matches(/^[a-f0-9]{32}$/)"},'actors':{'$uid':{'.validate':f"{num('newData')} && newData.val() <= {st}.child('head/actors').child($uid).child('rev').val()"}},'$other':{'.validate':False}},'$other':{'.validate':False}}
 for k in ['uid','token','until']:storage['lease'][k]={'.validate':True}
 storage['lease']['$other']={'.validate':False}
+w['live']['.write']=f"auth != null && auth.uid == $owner && {base}.child('meta/closed').val() == true && !newData.exists()"
 w['storage']=storage
 json.dump(d,open(p,'w'),indent=2);open(p,'a').write('\n')

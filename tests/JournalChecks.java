@@ -42,7 +42,7 @@ final class JournalChecks {
             if(!url.getHost().endsWith("firebasedatabase.app"))return firestore.open(url);
             return new HttpURLConnection(url){final ByteArrayOutputStream body=new ByteArrayOutputStream();final Holder result=new Holder();String response;boolean evaluated;
                 @Override public void connect(){}@Override public void disconnect(){}@Override public boolean usingProxy(){return false;}@Override public OutputStream getOutputStream(){return body;}
-                void evaluate()throws IOException{if(evaluated)return;evaluated=true;try{response=request(url,getRequestMethod(),body.toString("UTF-8"),getRequestProperty("if-match"),result);}catch(IOException e){throw e;}catch(Exception e){throw new IOException(e);}}
+                void evaluate()throws IOException{if(evaluated)return;evaluated=true;try{String effective=getRequestProperty("X-HTTP-Method-Override");response=request(url,effective==null?getRequestMethod():effective,body.toString("UTF-8"),getRequestProperty("if-match"),result);}catch(IOException e){throw e;}catch(Exception e){throw new IOException(e);}}
                 @Override public int getResponseCode()throws IOException{evaluate();return result.status;}@Override public InputStream getInputStream()throws IOException{evaluate();return new ByteArrayInputStream(response.getBytes(StandardCharsets.UTF_8));}@Override public InputStream getErrorStream(){return new ByteArrayInputStream("{}".getBytes(StandardCharsets.UTF_8));}
                 @Override public String getHeaderField(String key){if(key.equalsIgnoreCase("ETag"))return result.etag;return null;}
             };
@@ -77,8 +77,19 @@ final class JournalChecks {
             check(backend.firestore.commits.size()>fsCommits&&backend.firestore.writes<40,"Many builds are coalesced into a small number of checkpoint writes");
         }finally{finish(a);finish(b);}
         OnlineSession warm=session(activity,backend,invite,"parent");try{v(warm).start(false,"",2);ready(warm);check(warm.world.get(45,44,10)==2&&warm.inventory.inventory[2]==78,"Restart restores durable peer builds and the private inventory after a host change");}finally{finish(warm);}
-        largeUpload(activity);resumeMigration(activity,game);
+        deleteRecovery(activity,backend,invite);largeUpload(activity);resumeMigration(activity,game);
         System.out.println("JOURNAL CHECKS: migration, zero-write builds, lost replies, ring gaps, coherent checkpoints, host takeover and warm restart verified");
+    }
+    void deleteRecovery(MainActivity activity,Backend backend,OnlineWorld invite)throws Exception{
+        backend.firestore.docs.get("onlineWorlds/"+invite.id).getJSONObject("fields").put("closed",FirebaseRest.value(true));OnlineSession resumed=session(activity,backend,invite,"parent");boolean closed=false;
+        try{v(resumed).start(false,"",2);}catch(IOException expected){closed=true;}
+        try{
+            check(closed&&resumed.deletionOnly&&resumed.owner(),"Owner can resume deletion of a closed protocol-6 world");
+            java.util.concurrent.CountDownLatch done=new java.util.concurrent.CountDownLatch(1);String[] error={""};v(resumed).deleteWorld(done::countDown,text->{error[0]=text;done.countDown();});
+            check(done.await(30,TimeUnit.SECONDS)&&error[0].isEmpty()&&!backend.firestore.docs.containsKey(resumed.base()),"Resumed world deletion completes the old and checkpoint collections");
+            check(Backend.get(backend.root,"worlds/parent/"+invite.id+"/storage")==JSONObject.NULL&&Boolean.TRUE.equals(Backend.get(backend.root,"worlds/parent/"+invite.id+"/meta/closed")),"Deletion erases durable RTDB storage while retaining the closed tombstone");
+            for(String path:backend.firestore.docs.keySet())check(!path.startsWith(resumed.base()+"/saved/")&&!path.startsWith(resumed.base()+"/uploads/"),"World deletion leaves no orphan backup documents");
+        }finally{finish(resumed);}
     }
     void largeUpload(MainActivity activity)throws Exception{
         Backend backend=new Backend();OnlineSession s=session(activity,backend,new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId()),"parent");
