@@ -265,3 +265,11 @@ Mit einem weiteren aktiven Spieler laufen Übersicht und bewegte Positionsupdate
 im Zweiesekundentakt, allein weiterhin alle fünf Sekunden. Stillstand bleibt bei 30 Sekunden;
 Quotenfehler behalten ihren längeren Backoff. Häufigere Positionsupdates benötigen zusätzliche
 Lese- und Schreibvorgänge, während der lokale Bereichscache erneute Blockdownloads spart.
+
+## Protokoll 5 ab 1.0.0-rc.4
+
+Neue Welten und durch den Besitzer migrierte Welten verwenden `sync/v5` und räumliche
+`chunks`. Die früheren Kapitel beschreiben das bisherige Protokoll bis rc.3. Für Protokoll 5
+sind die neuen Regeln erforderlich; der APK-Workflow veröffentlicht sie nicht automatisch.
+Der Ablauf, die fortsetzbare Migration, private Inventarübernahme und Messgrenzen stehen
+in [RELEASE-1.0.0-rc.4.md](RELEASE-1.0.0-rc.4.md). Die Weltkarte benötigt keine eigene Abfrage.

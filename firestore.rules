@@ -3,6 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
     function worldPath(world) { return /databases/$(database)/documents/onlineWorlds/$(world); }
+    function v5Path(world) { return /databases/$(database)/documents/onlineWorlds/$(world)/sync/v5; }
     function syncPath(world) { return /databases/$(database)/documents/onlineWorlds/$(world)/sync/state; }
     function memberPath(world, uid) { return /databases/$(database)/documents/onlineWorlds/$(world)/members/$(uid); }
     function owner(world) { return signedIn() && get(worldPath(world)).data.owner == request.auth.uid; }
@@ -31,17 +32,23 @@ service cloud.firestore {
         && name(request.resource.data.name,48)
         && request.resource.data.seed is int && request.resource.data.seed >= 0 && request.resource.data.seed < 1000000000
         && request.resource.data.side is int && request.resource.data.side in [2,3]
-        && request.resource.data.protocol is int && request.resource.data.protocol in [1,2,3,4]
+        && request.resource.data.protocol is int && request.resource.data.protocol in [1,2,3,4,5]
         && token(request.resource.data.invite) && request.resource.data.closed == false
         && getAfter(memberPath(world,request.auth.uid)).data.banned == false
-        && (request.resource.data.protocol != 4 || getAfter(syncPath(world)).data.regions == {} && getAfter(syncPath(world)).data.players == {});
+        && (request.resource.data.protocol != 4 || getAfter(syncPath(world)).data.regions == {} && getAfter(syncPath(world)).data.players == {})
+        && (request.resource.data.protocol != 5 || getAfter(v5Path(world)).data.phase == 'ready' && getAfter(v5Path(world)).data.owner == request.auth.uid);
       allow update: if owner(world)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','invite','closed','protocol'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','invite','closed','protocol','migration'])
         && (request.resource.data.protocol == resource.data.protocol || resource.data.protocol == 1 && request.resource.data.protocol == 2
           || resource.data.protocol == 3 && request.resource.data.protocol == 4
-          && getAfter(syncPath(world)).data.regions == {} && getAfter(syncPath(world)).data.players == {})
+          && getAfter(syncPath(world)).data.regions == {} && getAfter(syncPath(world)).data.players == {}
+          || resource.data.protocol == 4 && request.resource.data.protocol == 5 && resource.data.closed && request.resource.data.get('migration','') == 'v5' && getAfter(v5Path(world)).data.phase == 'importing')
         && name(request.resource.data.name,48) && token(request.resource.data.invite)
-        && request.resource.data.closed is bool;
+        && request.resource.data.closed is bool
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['migration'])
+          || request.resource.data.get('migration','') == 'v5' && resource.data.protocol == 4 && request.resource.data.closed
+          || !request.resource.data.keys().hasAny(['migration']) && resource.data.protocol == 5 && !request.resource.data.closed && getAfter(v5Path(world)).data.phase == 'ready')
+        && (request.resource.data.protocol != 5 || request.resource.data.closed && !getAfter(v5Path(world)).data.open || !request.resource.data.closed && getAfter(v5Path(world)).data.phase == 'ready' && getAfter(v5Path(world)).data.open);
       allow delete: if deleting(world);
 
       match /members/{uid} {
@@ -109,6 +116,120 @@ service cloud.firestore {
         allow delete: if deleting(world);
         allow list: if false;
       }
+      function v5Read() {
+        return signedIn() && (resource.data.owner == request.auth.uid || resource.data.phase == 'ready' && resource.data.open
+          && (resource.data.access.get(request.auth.uid,false) == true
+            || !resource.data.access.keys().hasAny([request.auth.uid]) && member(world)));
+      }
+      function v5Inventory(data) {
+        return data is string && data.matches('^1[.][A-Za-z0-9_-]{16}[.][A-Za-z0-9_-]{146}$');
+      }
+      function v5Empty(data) {
+        return data.keys().hasAll(['inventory','rev','seq','log','last','position']) && data.keys().hasOnly(['inventory','rev','seq','log','last','position'])
+          && (data.inventory == '' || v5Inventory(data.inventory))
+          && data.rev == 0 && data.seq == 0 && data.log == {} && data.last == {} && data.position == {};
+      }
+      function v5Create() {
+        let root = getAfter(worldPath(world)).data;
+        return signedIn() && root.owner == request.auth.uid && root.protocol == 5
+          && request.resource.data.keys().hasAll(['schema','owner','seed','side','name','invite','open','phase','access','players','regions','migration'])
+          && request.resource.data.keys().hasOnly(['schema','owner','seed','side','name','invite','open','phase','access','players','regions','migration'])
+          && request.resource.data.schema == 5 && request.resource.data.owner == root.owner
+          && request.resource.data.seed == root.seed && request.resource.data.side == root.side
+          && request.resource.data.name == root.name && request.resource.data.invite == root.invite
+          && (root.closed && root.get('migration','') == 'v5' && request.resource.data.phase == 'importing' && !request.resource.data.open
+            || !exists(worldPath(world)) && request.resource.data.phase == 'ready' && request.resource.data.open
+            && request.resource.data.access == {request.auth.uid:true} && request.resource.data.players.keys().hasOnly([request.auth.uid])
+            && v5Empty(request.resource.data.players[request.auth.uid]) && request.resource.data.regions == {});
+      }
+      function v5Join() {
+        let uid = request.auth.uid;
+        return resource.data.open && resource.data.phase == 'ready' && !resource.data.access.keys().hasAny([uid]) && member(world)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players','access'])
+          && request.resource.data.access.diff(resource.data.access).affectedKeys().hasOnly([uid]) && request.resource.data.access[uid] == true
+          && request.resource.data.players.diff(resource.data.players).affectedKeys().hasOnly([uid]) && v5Empty(request.resource.data.players[uid])
+          && request.resource.data.players.size() <= 256 && request.resource.data.access.size() <= 256;
+      }
+      function v5Position(next,old) {
+        return next == old || next.keys().hasAll(['name','sector','x','y','z','yaw','updatedAt']) && next.keys().hasOnly(['name','sector','x','y','z','yaw','updatedAt'])
+          && name(next.name,24) && position(next,resource.data.side) && next.updatedAt == request.time;
+      }
+      function v5Last(last) {
+        return last.keys().hasAll(['sector','x','y','z','type','renewable','token','before']) && last.keys().hasOnly(['sector','x','y','z','type','renewable','token','before'])
+          && last.sector is int && last.sector >= 0 && last.sector < resource.data.side * resource.data.side
+          && last.x is int && last.x >= 0 && last.x < 96 && last.y is int && last.y > 0 && last.y < 48 && last.z is int && last.z >= 0 && last.z < 96
+          && last.type is int && last.type >= 0 && last.type < 17 && last.renewable is bool
+          && last.token is string && token(last.token) && last.before is string && last.before.matches('^([a-f0-9]{32})?$') && last.token != last.before;
+      }
+      function v5Cell(last) { return string(last.x) + '_' + string(last.y) + '_' + string(last.z); }
+      function v5Chunk(last) { return string(int(last.x / 16)) + '_' + string(int(last.y / 16)) + '_' + string(int(last.z / 16)); }
+      function v5ChunkPath(last) { return /databases/$(database)/documents/onlineWorlds/$(world)/sectors/$(string(last.sector))/chunks/$(v5Chunk(last)); }
+      function v5Value(last) { return string(last.type) + ':' + (last.renewable ? '1' : '0') + ':' + last.token; }
+      function v5Text(last,seq) { return string(seq) + '/' + string(last.sector) + '/' + v5Cell(last) + '/' + string(last.type) + '/' + (last.renewable ? '1' : '0') + '/' + last.token + '/' + last.before; }
+      function v5Build(next,old) {
+        let last = next.last;
+        let slot = 'e' + string(next.seq % 8);
+        let key = 's' + string(last.sector);
+        let region = request.resource.data.regions[key];
+        let path = v5ChunkPath(last);
+        let cell = v5Cell(last);
+        return next.seq == old.seq + 1 && next.rev == old.rev + 1 && last.token != last.before
+          && next.log.size() <= 8 && next.log.diff(old.log).affectedKeys().hasOnly([slot]) && next.log[slot] == v5Text(last,next.seq)
+          && request.resource.data.regions.diff(resource.data.regions).affectedKeys().hasOnly([key])
+          && region.keys().hasAll(['revision','updatedAt']) && region.keys().hasOnly(['revision','updatedAt'])
+          && region.revision is int && region.revision == resource.data.regions.get(key,{'revision':0}).revision + 1 && region.updatedAt == request.time
+          && getAfter(path).data.cells[cell] == v5Value(last) && getAfter(path).data.updatedAt == request.time
+          && (exists(path) && get(path).data.cells.keys().hasAny([cell]) ? get(path).data.cells[cell].split(':')[2] : '') == last.before;
+      }
+      function v5Own() {
+        let uid = request.auth.uid;
+        let old = resource.data.players[uid];
+        let next = request.resource.data.players[uid];
+        return resource.data.access.get(uid,false) == true && resource.data.open && resource.data.phase == 'ready'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['players','regions'])
+          && request.resource.data.players.diff(resource.data.players).affectedKeys().hasOnly([uid])
+          && next.keys().hasAll(['inventory','rev','seq','log','last','position']) && next.keys().hasOnly(['inventory','rev','seq','log','last','position'])
+          && next.rev is int && next.rev >= 0 && next.rev < 9000000000000 && next.seq is int && next.seq >= 0 && next.seq < 9000000000000
+          && (v5Inventory(next.inventory) || next.inventory == '' && old.inventory == '' && next.rev == old.rev && next.seq == old.seq) && v5Position(next.position,old.position)
+          && (next.seq == old.seq && next.log == old.log && next.last == old.last && request.resource.data.regions == resource.data.regions
+            && (next.rev == old.rev && next.inventory == old.inventory || next.rev == old.rev + 1)
+            || v5Build(next,old));
+      }
+      function v5Update() {
+        return signedIn() && (v5Own() || v5Join() || resource.data.owner == request.auth.uid
+          && (resource.data.phase == 'importing' && get(worldPath(world)).data.closed && get(worldPath(world)).data.get('migration','') == 'v5'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['migration','phase','open'])
+            && (request.resource.data.phase == 'importing' && !request.resource.data.open || request.resource.data.phase == 'ready' && request.resource.data.open && !getAfter(worldPath(world)).data.closed)
+            || resource.data.phase == 'ready' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['access','open'])
+            && request.resource.data.access.diff(resource.data.access).addedKeys().size() == 0 && request.resource.data.access.diff(resource.data.access).removedKeys().size() == 0
+            && request.resource.data.access[request.auth.uid] == true && request.resource.data.access.values().hasOnly([true,false])
+            && (request.resource.data.open == resource.data.open || request.resource.data.open == !getAfter(worldPath(world)).data.closed)));
+      }
+      match /sectors/{sector}/chunks/{chunk} {
+        function importing() { return signedIn() && get(v5Path(world)).data.owner == request.auth.uid && get(v5Path(world)).data.phase == 'importing' && !get(v5Path(world)).data.open; }
+        function chunkWrite(cells) {
+          let old = get(v5Path(world)).data;
+          let after = getAfter(v5Path(world)).data;
+          let player = after.players[request.auth.uid];
+          let last = player.last;
+          return signedIn() && old.open && old.phase == 'ready' && old.access.get(request.auth.uid,false) == true && after.open && after.access.get(request.auth.uid,false) == true
+            && player.seq == old.players[request.auth.uid].seq + 1 && v5LastForChunk(last,old.side)
+            && sector == string(last.sector) && chunk == v5Chunk(last)
+            && request.resource.data.keys().hasAll(['cells','updatedAt']) && request.resource.data.keys().hasOnly(['cells','updatedAt'])
+            && request.resource.data.cells.diff(cells).affectedKeys().hasOnly([v5Cell(last)])
+            && request.resource.data.cells[v5Cell(last)] == v5Value(last) && (cells.keys().hasAny([v5Cell(last)]) ? cells[v5Cell(last)].split(':')[2] : '') == last.before
+            && request.resource.data.updatedAt == request.time;
+        }
+        allow read: if signedIn() && (get(v5Path(world)).data.open && get(v5Path(world)).data.access.get(request.auth.uid,false) == true || importing() || deleting(world));
+        allow create: if importing() || chunkWrite({});
+        allow update: if importing() || chunkWrite(resource.data.cells);
+        allow delete: if deleting(world);
+      }
+      function v5LastForChunk(last,side) {
+        return last.sector is int && last.sector >= 0 && last.sector < side * side
+          && last.x is int && last.x >= 0 && last.x < 96 && last.y is int && last.y > 0 && last.y < 48 && last.z is int && last.z >= 0 && last.z < 96
+          && last.type is int && last.type >= 0 && last.type < 17 && last.renewable is bool && token(last.token) && last.before.matches('^([a-f0-9]{32})?$') && last.token != last.before;
+      }
       match /sync/{slot} {
         function ownPresence() {
           let data = request.resource.data.players[request.auth.uid];
@@ -134,24 +255,24 @@ service cloud.firestore {
             && data.revision is int && data.revision == resource.data.regions.get(key,{'revision':0}).revision + 1
             && data.updatedAt == request.time;
         }
-        allow get: if slot == 'state' && member(world);
-        allow create: if slot == 'state' && signedIn() && getAfter(worldPath(world)).data.owner == request.auth.uid
+        allow get: if slot == 'state' && member(world) || slot == 'v5' && v5Read();
+        allow create: if slot == 'v5' && v5Create() || slot == 'state' && signedIn() && getAfter(worldPath(world)).data.owner == request.auth.uid
           && getAfter(worldPath(world)).data.protocol == 4
           && request.resource.data.keys().hasAll(['regions','players']) && request.resource.data.keys().hasOnly(['regions','players'])
           && request.resource.data.regions == {} && request.resource.data.players == {};
-        allow update: if slot == 'state' && member(world) && get(worldPath(world)).data.protocol == 4
+        allow update: if slot == 'v5' && v5Update() || slot == 'state' && member(world) && get(worldPath(world)).data.protocol == 4
           && request.resource.data.keys().hasAll(['regions','players']) && request.resource.data.keys().hasOnly(['regions','players'])
           && request.resource.data.regions is map && request.resource.data.players is map
           && (presence() || revision() || owner(world)
             && request.resource.data.regions == resource.data.regions
             && request.resource.data.players.diff(resource.data.players).addedKeys().size() == 0
             && request.resource.data.players.diff(resource.data.players).changedKeys().size() == 0);
-        allow delete: if slot == 'state' && deleting(world);
+        allow delete: if slot in ['state','v5'] && deleting(world);
         allow list: if false;
       }
       match /sectors/{sector}/blocks/{block} {
         allow read: if member(world) || deleting(world);
-        allow create, update: if member(world)
+        allow create, update: if member(world) && get(worldPath(world)).data.protocol in [1,2,3,4]
           && sector.matches('^[0-8]$') && int(sector) < get(worldPath(world)).data.side * get(worldPath(world)).data.side
           && request.resource.data.keys().hasAll(['x','y','z','type','by','updatedAt'])
           && request.resource.data.keys().hasOnly(['x','y','z','type','by','updatedAt','renewable'])

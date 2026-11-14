@@ -17,3 +17,9 @@ test('delta query retains its collection-scope updatedAt and implicit document-n
 test('whole-document maps, inventories and members have no unused field indexes',()=>{
   for(const [group,field] of [['sync','players'],['sync','regions'],['inventory','*'],['members','*']])assert.deepEqual(override(group,field).indexes,[]);
 });
+
+test('protocol 5 chunks retain only the delta timestamp index and suppress cell maps',()=>{
+ assert.deepEqual(override('chunks','*').indexes,[]);
+ assert.deepEqual(override('chunks','updatedAt').indexes,[{order:'ASCENDING',queryScope:'COLLECTION'}]);
+ for(const field of ['players','regions','access','migration'])assert.deepEqual(override('sync',field).indexes,[]);
+});

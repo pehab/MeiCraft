@@ -11,7 +11,7 @@ public final class OnlineRegionCacheTests {
     static OnlineRegionCache.Snapshot snapshot(int count,long revision){
         Map<String,String> versions=new HashMap<>();Map<String,Integer> types=new HashMap<>();Map<String,Boolean> water=new HashMap<>();
         for(int i=0;i<count;i++){String key=i%96+"_"+(1+i/9216)+"_"+(i/96%96);versions.put(key,"2026-11-14T10:00:00Z");types.put(key,i%World.NAMES.length);water.put(key,i%7==0);}
-        return new OnlineRegionCache.Snapshot(revision,"2026-11-14T10:00:01.123456789Z",versions,types,water);
+        return new OnlineRegionCache.Snapshot(revision,"2026-11-14T10:00:01.123456789Z",versions,types,water,Map.of("peer",100L));
     }
     public static void main(String[] args)throws Exception{
         Path root=Files.createTempDirectory("meicraft-cache-test");String id="a".repeat(32);
@@ -19,7 +19,7 @@ public final class OnlineRegionCacheTests {
             check(cache.load(0)==null,"Missing cache is a normal cold join");
             OnlineRegionCache.Snapshot source=snapshot(3000,3200);cache.save(0,source);OnlineRegionCache.Snapshot restored=cache.load(0);
             check(restored!=null&&restored.types.equals(source.types)&&restored.versions.equals(source.versions)&&restored.renewable.equals(source.renewable),"3000 complete deltas, air and renewable water survive restart");
-            check(restored.watermark.equals(source.watermark)&&restored.revision==3200,"Server snapshot nanoseconds and revision are exact");
+            check(restored.watermark.equals(source.watermark)&&restored.revision==3200&&restored.heads.equals(source.heads),"Server snapshot nanoseconds and revision are exact");
             check(!OnlineSyncPolicy.reload(true,restored.revision,3200),"Unchanged warm join needs no block query");
             check(OnlineSyncPolicy.reload(true,restored.revision,3201),"Single offline peer revision requires delta query");
             try(OnlineRegionCache differentSeed=new OnlineRegionCache(root.toFile(),id,124,2);OnlineRegionCache differentSide=new OnlineRegionCache(root.toFile(),id,123,3);OnlineRegionCache differentWorld=new OnlineRegionCache(root.toFile(),"b".repeat(32),123,2)){

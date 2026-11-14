@@ -713,6 +713,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   testSyncRequests(activity,game);
   testActiveSyncBudget(activity,game);
   testPersistentRegionCache(activity);
+  new OnlineV5Checks(this).run(activity,game);
   testOnlineStreaming(activity,game);
   testHomeAndDeletion(activity,game);
   android.graphics.Bitmap portrait=smallScreenshot();if(portrait!=null){emitScreenshot(portrait,"landscapeScreenshot");portrait.recycle();}

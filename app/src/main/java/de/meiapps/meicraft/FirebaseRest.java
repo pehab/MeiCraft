@@ -6,6 +6,7 @@ import org.json.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /** Firebase user-token REST client. No service account or administrator credentials. */
 final class FirebaseRest {
@@ -62,9 +63,11 @@ final class FirebaseRest {
         Snapshot(JSONObject document,String readTime){this.document=document;this.readTime=readTime;}
     }
     /** One overview document, with a server snapshot shared by every delta-query page. */
-    Snapshot snapshot(String path)throws IOException,JSONException{
-        authenticate();
-        JSONArray response=new JSONArray(request(root+":batchGet","POST",new JSONObject().put("documents",new JSONArray().put(documentName(path))).toString(),true,false));
+    Snapshot snapshot(String path)throws IOException,JSONException{return snapshot(path,null);}
+    Snapshot snapshot(String path,List<String> fields)throws IOException,JSONException{
+        authenticate();JSONObject body=new JSONObject().put("documents",new JSONArray().put(documentName(path)));
+        if(fields!=null)body.put("mask",new JSONObject().put("fieldPaths",new JSONArray(fields)));
+        JSONArray response=new JSONArray(request(root+":batchGet","POST",body.toString(),true,false));
         for(int i=0;i<response.length();i++){
             JSONObject row=response.getJSONObject(i);
             if(row.has("found")){DIAGNOSTICS.read(1);return new Snapshot(row.getJSONObject("found"),row.getString("readTime"));}
