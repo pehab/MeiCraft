@@ -167,6 +167,32 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
         }
         avatarPositions.keySet().retainAll(seen);playerLabels=java.util.Collections.unmodifiableList(labels);
     }
+    /** Visual-only mining debris; never persisted or synchronized over the network. */
+    static final class MiningBurst {
+        final float x,y,z;final int tile;final long started;
+        MiningBurst(int x,int y,int z,int tile,long started){this.x=x+.5f;this.y=y+.5f;this.z=z+.5f;this.tile=tile;this.started=started;}
+    }
+    final java.util.ArrayDeque<MiningBurst> miningBursts=new java.util.ArrayDeque<>();
+    void miningDebris(int x,int y,int z,int block){
+        if(block<=0||miningBursts.size()>=12)return;
+        miningBursts.addLast(new MiningBurst(x,y,z,block==13?16:block==15?18:Math.min(block,16),System.nanoTime()));
+    }
+    void drawMiningDebris(){
+        long now=System.nanoTime();
+        while(!miningBursts.isEmpty()&&(now-miningBursts.peekFirst().started)*1e-9f>.7f)miningBursts.removeFirst();
+        for(MiningBurst burst:miningBursts){
+            float age=(now-burst.started)*1e-9f;
+            if(age<0||age>.7f||Math.abs(burst.x-world.x)>16||Math.abs(burst.z-world.z)>16)continue;
+            for(int i=0;i<8;i++){
+                float a=i*2.3999632f+burst.x*1.37f+burst.z*.73f;
+                float speed=.5f+(i%3)*.2f;
+                float x=burst.x+(float)Math.cos(a)*speed*age;
+                float z=burst.z+(float)Math.sin(a)*speed*age;
+                float y=burst.y+.5f*age-2.8f*age*age+(i%4)*.08f;
+                cube(x,y,z,.07f,.07f,.07f,burst.tile);
+            }
+        }
+    }
     void drawMobs(){
         creatures.size=0;
         if(world.story)for(Survival.Mob m:world.survival.mobs){float feet=m.y-1.6f,swing=(float)Math.sin(world.survival.time*5+m.x)*.1f;
@@ -184,6 +210,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             cube(x+(float)Math.sin(i+phase*5)*.24f,y+phase*.7f,z+(float)Math.cos(i+phase*4)*.24f,.055f,.055f,.055f,24);
         }
         drawVegetation();
+        drawMiningDebris();
         drawPlayers();
         if(creatures.size==0)return;
         creatureBuffer.clear();creatureBuffer.put(creatures.values,0,creatures.size);creatureBuffer.position(0);GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,creatureBuffer);
