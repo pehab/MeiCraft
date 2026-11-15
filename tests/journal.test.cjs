@@ -142,3 +142,7 @@ test('shared decay cadence prevents several clients from deleting a whole crown 
  await seed();const wave=uid=>batch(uid,Array.from({length:4},(_,i)=>({x:i+10,y:30,z:20,type:0})));const first=wave('child');first['head/actors/child/decayRegion']=0;first['growth/decay/0']={at:{'.sv':'timestamp'}};await assertSucceeds(update(r('child',storage),first));
  const second=batch('sibling',Array.from({length:4},(_,i)=>({x:i+20,y:30,z:20,type:0})),{base:1});second['head/actors/sibling/decayRegion']=0;second['growth/decay/0']={at:{'.sv':'timestamp'}};await assertFails(update(r('sibling',storage),second));assert.equal((await get(r('child',storage+'/head/regions/s0'))).val(),4);
 });
+test('removing leaves remains valid while peers move, but shared cadence still applies',async()=>{
+ await seed();await update(r('sibling',base+'/live'),{'players/sibling':{name:'Sibling',sector:0,x:20,y:31,z:20,yaw:0,t:{'.sv':'timestamp'}},poseVersion:increment(1)});
+ const p=batch('child',[{x:20,y:30,z:20,type:0}],{presenceBase:0});p['head/actors/child/decayRegion']=0;p['growth/decay/0']={at:{'.sv':'timestamp'}};await assertSucceeds(update(r('child',storage),p));assert.equal((await get(r('child',storage+'/chunks/0_1_1_1/cells/20_30_20/type'))).val(),0);
+});

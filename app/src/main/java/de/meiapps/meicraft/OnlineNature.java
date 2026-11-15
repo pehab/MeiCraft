@@ -68,8 +68,9 @@ final class OnlineNature {
             counters.put(chunk,head.chunk(chunk));
         }
     }
-    Tile load(int region,JournalHead head)throws Exception{
-        loadTerrain(region,head);return new Tile(terrain.get(region),cellCache.get(region),v.remote(v.base+"/live"),region,s);
+    Tile load(int region,JournalHead head)throws Exception{return load(region,head,true);}
+    Tile load(int region,JournalHead head,boolean positions)throws Exception{
+        loadTerrain(region,head);return new Tile(terrain.get(region),cellCache.get(region),positions?v.remote(v.base+"/live"):new JSONObject(),region,s);
     }
     void grow(int region,String key,long day,String lease)throws Exception{
         for(int retry=0;retry<3;retry++){
@@ -108,7 +109,7 @@ final class OnlineNature {
         failure=null;queued=false;if(closed||s.closed||!s.foreground)return;Set<Integer> work=new HashSet<>(decayRegions);decayRegions.clear();
         for(int region:work)try{
             if(!candidate(region))continue;
-            v.readSync();JournalHead h=v.fetchHead();Tile tile=load(region,h);
+            v.readSync();JournalHead h=v.fetchHead();Tile tile=load(region,h,false);
             boolean border=false;for(int y=2;y<World.H&&!border;y++)for(int z=0;z<World.D&&!border;z++)for(int x=0;x<World.W;x++)if((x<4||x>=World.W-4||z<4||z>=World.D-4)&&tile.get(x,y,z)==6){border=true;break;}
             if(border)for(int rz=Math.max(0,region/s.side-1);rz<=Math.min(s.side-1,region/s.side+1);rz++)for(int rx=Math.max(0,region%s.side-1);rx<=Math.min(s.side-1,region%s.side+1);rx++)loadTerrain(rz*s.side+rx,h);
             List<OnlineChange> changes=new ArrayList<>();boolean more=false;

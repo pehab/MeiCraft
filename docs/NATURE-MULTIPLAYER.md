@@ -6,7 +6,7 @@ Ein vom Spieler einzeln auf Gras/Erde gesetzter Laubblock ist ein Setzling. Dire
 
 Der erste Beitritt pro UTC-Tag übernimmt eine serverseitig geprüfte 15-Sekunden-Lease mit ETag-CAS. Die Regeln vergleichen den Tag mit `now` auf dem Server. Jeder gewachsene Baum erhält im selben atomaren Write seinen neuen Tagescursor. Nach einem Abbruch kann der nächste Beitritt die abgelaufene Lease übernehmen; bereits gewachsene Bäume werden übersprungen. Ein abgeschlossener Tageslauf bleibt bis zum nächsten UTC-Tag geschlossen. Ein wegen Platzmangel blockierter Baum wartet auf einen späteren Tageslauf.
 
-Wachstum überschreibt nur die eigene Laubspitze, sonst ausschließlich Luft. Boden, Stamm und Platz werden vor jeder Stufe erneut geprüft. Aktuelle eigene und über RTDB registrierte fremde Körper blockieren Wachstum. Ein atomarer Positionszähler verwirft Pläne, wenn während der Prüfung jemand beitritt, sich bewegt oder die Welt verlässt. Auch beliebige konkurrierende Weltänderungen verwerfen den gesamten Plan. Die kompakte Krone bleibt innerhalb ihrer Region.
+Wachstum überschreibt nur die eigene Laubspitze, sonst ausschließlich Luft. Boden, Stamm und Platz werden vor jeder Stufe erneut geprüft. Aktuelle eigene und über RTDB registrierte fremde Körper blockieren Wachstum. Ein atomarer Positionszähler verwirft Wachstumspläne, wenn während der Prüfung jemand beitritt, sich bewegt oder die Welt verlässt. Reine Laubentfernung benötigt diese Sperre und Positionsabfrage nicht und bleibt beim Herumlaufen anderer Spieler aktiv. Auch beliebige konkurrierende Weltänderungen verwerfen den gesamten Plan. Die kompakte Krone bleibt innerhalb ihrer Region.
 
 ## Dauerhafter Zustand und Konflikte
 

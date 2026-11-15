@@ -75,7 +75,7 @@ player=w['live']['players']['$uid']
 player['.write']+=f" && ({oldst}.child('control/phase').val() != 'ready' || {parent(2)}.child('poseVersion').val() == ({live}.child('poseVersion').exists() ? {live}.child('poseVersion').val() : 0) + 1)"
 w['live']['poseVersion']={'.write':active,'.validate':"newData.isNumber() && newData.val() == (data.exists() ? data.val() : 0) + 1"}
 A['presenceBase']={'.validate':True}
-A['.validate']='('+A['.validate']+f") && (!newData.child('batch').exists() || newData.child('presenceBase').val() == ({live}.child('poseVersion').exists() ? {live}.child('poseVersion').val() : 0))"
+A['.validate']='('+A['.validate']+f") && (!newData.child('batch').exists() || newData.child('decayRegion').exists() || newData.child('presenceBase').val() == ({live}.child('poseVersion').exists() ? {live}.child('poseVersion').val() : 0))"
 # An actor with growth provenance must own today's live lease; day rollover invalidates stale clients.
 A['.validate']='('+A['.validate']+f") && (!newData.child('growthToken').exists() || ({run}.child('uid').val() == auth.uid && {run}.child('token').val() == newData.child('growthToken').val() && {run}.child('day').val() == {day} && {run}.child('until').val() > now && {run}.child('done').val() == false && newData.child('growthDay').val() == {day}))"
 # One shared server cadence per region prevents four clients from removing a crown in one instant.
