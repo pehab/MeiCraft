@@ -136,9 +136,10 @@ public final class Nature {
     /** Never replace an occupied block or the player's current space. */
     private static boolean saplingClearance(World w,int x,int y,int z){
         for(int yy=y+1;yy<=y+5;yy++)if(w.get(x,yy,z)!=0||w.overlapsPlayer(x,yy,z))return false;
-        for(int yy=y+3;yy<=y+5;yy++)for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++)
+        for(int yy=y+3;yy<=y+5;yy++)for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
             if(Math.abs(dx)+Math.abs(dz)>3||dx==0&&dz==0)continue;
             if(w.get(x+dx,yy,z+dz)!=0||w.overlapsPlayer(x+dx,yy,z+dz))return false;
+        }
         return !w.overlapsPlayer(x,y,z);
     }
     private static void growTree(World w,int x,int y,int z){
