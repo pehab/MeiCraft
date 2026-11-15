@@ -193,6 +193,30 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             }
         }
     }
+    /** Local-only lava embers and smoke. No world mutation or Firebase writes. */
+    void drawLavaAtmosphere(){
+        int px=(int)Math.floor(world.x),pz=(int)Math.floor(world.z),emitted=0;
+        float time=(System.nanoTime()*1e-9f)%10000f;
+        for(int x=Math.max(1,px-9);x<Math.min(world.width-1,px+10)&&emitted<32;x++)
+            for(int z=Math.max(1,pz-9);z<Math.min(world.depth-1,pz+10)&&emitted<32;z++){
+                long hash=(world.seed^(x*73856093L)^(z*19349663L))*0x9E3779B97F4A7C15L;
+                if((hash&3)!=0)continue;
+                int y=-1;
+                for(int yy=Math.min(World.H-2,(int)world.y+7);yy>=Math.max(1,(int)world.y-9);yy--)
+                    if(world.get(x,yy,z)==15&&world.get(x,yy+1,z)==0){y=yy;break;}
+                if(y<0)continue;
+                float phase=(time*.6f+((hash>>>8)&255)/255f)%1f;
+                float bx=x+.5f+(float)Math.sin(time*1.3f+x)*.2f;
+                float bz=z+.5f+(float)Math.cos(time*1.1f+z)*.2f;
+                // Rising ember and a larger, dimmer smoke puff above the lava.
+                cube(bx,y+1.02f+phase*.75f,bz,.065f,.065f,.065f,24);
+                if(phase>.22f){
+                    float drift=(phase-.22f)*.27f;
+                    cube(bx+drift,y+1.25f+phase*1.1f,bz-drift,.12f+phase*.09f,.10f+phase*.06f,.12f+phase*.09f,3);
+                }
+                emitted++;
+            }
+    }
     void drawMobs(){
         creatures.size=0;
         if(world.story)for(Survival.Mob m:world.survival.mobs){float feet=m.y-1.6f,swing=(float)Math.sin(world.survival.time*5+m.x)*.1f;
@@ -210,6 +234,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             cube(x+(float)Math.sin(i+phase*5)*.24f,y+phase*.7f,z+(float)Math.cos(i+phase*4)*.24f,.055f,.055f,.055f,24);
         }
         drawVegetation();
+        drawLavaAtmosphere();
         drawMiningDebris();
         drawPlayers();
         if(creatures.size==0)return;
