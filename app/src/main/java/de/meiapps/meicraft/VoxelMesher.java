@@ -21,7 +21,8 @@ final class VoxelMesher {
         if(size+6>values.length){values=Arrays.copyOf(values,values.length*2);growths++;}
         values[size++]=a;values[size++]=b;values[size++]=c;values[size++]=u;values[size++]=v;values[size++]=l;
     }
-    void build(World world,int cx,int cz){
+    void build(World world,int cx,int cz){build(world,cx,cz,false);}
+    void build(World world,int cx,int cz,boolean glassPass){
         if(cx<0||cz<0||(cx+1)*16>world.width||(cz+1)*16>world.depth)throw new IllegalArgumentException("Invalid mesh chunk");
         size=0;visited=0;neighborChecks=0;heatLookups=0;
         final byte[] blocks=world.blocks;final int width=world.width,depth=world.depth,layer=width*depth;
@@ -29,7 +30,7 @@ final class VoxelMesher {
         for(int y=0;y<World.H;y++)for(int z=z0;z<z0+16;z++){
             int index=(y*depth+z)*width+x0;
             for(int x=x0;x<x0+16;x++,index++){
-                visited++;int block=blocks[index]&255;if(block==0)continue;
+                visited++;int block=blocks[index]&255;if(block==0||(glassPass?block!=8:block==8))continue;
                 int exposed=0;
                 for(int face=0;face<6;face++){
                     if(y==0&&face==3)continue;
