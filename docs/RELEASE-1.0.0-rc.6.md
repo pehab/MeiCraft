@@ -1,6 +1,6 @@
 # MeiCraft 1.0.0-rc.6 — dauerhaftes RTDB-Journal und Host-Checkpoints
 
-Teststand auf PR #20. Kein Merge und kein öffentliches Release.
+Feature-Freeze am 15. November 2026. PR #20 wird nach grüner CI zur Stabilisierung nach `main` übernommen. Die Versionsnummer bleibt vorerst 1.0.0-rc.6; ein Merge veröffentlicht keine Version und installiert keine Firebase-Regeln.
 
 ## Vor dem ersten Start
 
@@ -13,6 +13,24 @@ Teststand auf PR #20. Kein Merge und kein öffentliches Release.
 Eine migrierte Welt kann mit alten APKs nicht mehr verändert werden. Das Zurückinstallieren von rc.5 oder 0.8.3 stellt keinen aktuellen Spielstand wieder her. Die eingefrorenen alten Dokumente bleiben als Migrationsquelle bestehen, bis die Welt gelöscht wird.
 
 PR, CI und APK veröffentlichen Firebase-Regeln nicht automatisch.
+
+## Was bei der Migration erhalten bleibt – und was Rückkehr bedeutet
+
+Die Migration kopiert Daten innerhalb derselben Welt-ID; sie erstellt keine zweite, unabhängig auswählbare Online-Welt. Der Welt-Seed und der bisherige Terrain-Generator bleiben erhalten. Übertragen werden gespeicherte Blockänderungen, Mitgliedschaften und Inventarzustände, nicht eine neu erzeugte Landschaft.
+
+1. Bei alten Protokollen werden die bisherigen Blockdokumente nach dem Sperren der Quelle in Firestore-Chunks kopiert. Anzahl und Inhaltsprüfsumme sowie Mitgliedschaften werden vor der Aktivierung geprüft. Die ursprünglichen Blockdokumente bleiben erhalten.
+2. Für Protokoll 6 werden die alten v5-Schreiber atomar eingefroren und die Weltmetadaten auf das neue Protokoll gesetzt. Firestore-Chunks und verschlüsselte Spielerzustände werden nach RTDB kopiert. Jeder kopierte Chunk wird vor Freigabe mit der eingefrorenen Quelle verglichen. Noch nicht übernommene private Altinventare werden beim Beitritt ihres jeweiligen Geräts gelesen; ihre Originaldokumente werden nicht gelöscht.
+3. Nach erfolgreicher Migration ist RTDB der fortgeschriebene Spielstand. Firestore-Quelldaten bleiben auf dem eingefrorenen alten Stand, neue Firestore-Checkpoints sichern den neuen Betrieb. Die Migration selbst löscht die alten Block-/Inventardokumente nicht. Ein ausdrückliches Löschen der gesamten Welt entfernt auch ihre alten Daten und Backups.
+
+Die Migration verändert also Weltmetadaten und Schreibrechte, obwohl sie die Quelldaten erhält. Eine alte APK, das Zurücksetzen eines Protokollfeldes oder alte Firebase-Regeln sind **kein unterstützter Rollback**. Neue Bauten und Materialien werden nicht zurück in das alte Format gespiegelt. Ein Rückwechsel wäre eine administrative Wiederherstellung aus einer passenden Sicherung; spätere Aktionen müssten separat gerettet werden. Ein automatischer Rückmigrationsknopf ist nicht implementiert.
+
+Vor der ersten Migration eine unabhängige Sicherung des vollständigen Firestore-Weltpfads einschließlich Unterkollektionen und vorhandener RTDB-Weltdaten sowie der Regel-/Indexkonfiguration anlegen. Das Beibehalten alter Dokumente innerhalb derselben Datenbank ersetzt diese Sicherung nicht. Geräte-App-Daten, anonyme UID und private Inventarschlüssel erhalten; eine reine Datenbankkopie ersetzt die Geräteschlüssel nicht. Eine solche unabhängige Produktivsicherung wurde durch PR/CI nicht erstellt.
+
+Abbrüche werden durch erneutes Öffnen als Besitzer fortgesetzt. Nach abgeschlossener Migration wird bei fehlendem RTDB-Zustand absichtlich kein alter Firestore-Stand still aktiviert, damit spätere Bauten und Ressourcen nicht unbemerkt zurückgesetzt werden.
+
+## Ergänzungen im eingefrorenen Funktionsumfang
+
+Nachwachsende Bäume, allmählicher Laubzerfall, neue Materialien/Kristallhöhlen, lokale Effekte, transparentes Kristallglas und Geheimreaktionen sind enthalten. Details: [Materialien](MATERIALS-1.0.md), [Natur](NATURE-MULTIPLAYER.md), [Featureliste](1.0-VISUAL-POLISH-IMPLEMENTATION.md). Offlineformat 7 liest weiterhin Formate 1–6; neue Ressourcen benötigen den aktualisierten Inventarcodec und aktuelle Regeln auf allen Geräten. Bestehende Landschaften bleiben unverändert.
 
 ## Spielbetrieb und dauerhafte Bestätigung
 

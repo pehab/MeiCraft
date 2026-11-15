@@ -4,11 +4,11 @@ Eigenständiges Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigene
 
 **[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.8.3
 
-## Vorschau 1.0 · bestehender PR #20
+## 1.0 · Feature-Freeze und Stabilisierung
 
 Die [vereinbarte Featureliste](docs/1.0-VISUAL-POLISH-IMPLEMENTATION.md) ist softwareseitig umgesetzt: neue Materialien und Kristallhöhlen in neuen Welten, begrenztes Kohlefeuer, Geheimreaktionen, Kristallglas, nachwachsende Bäume und gemeinsamer Laubzerfall. Nebel, Vegetation, Flüssigkeitsanimation und Partikel bleiben lokal. Alte Welten behalten ihre Landschaft.
 
-[Verhalten, Kompatibilität und Einführung](docs/MATERIALS-1.0.md): neue Apps auf allen Geräten und aktualisierte RTDB- **und** Firestore-Regeln erforderlich. Noch keine Veröffentlichung oder Regelbereitstellung; echte Tablet-/Altweltsicherungs-Abnahme steht aus. Die folgenden Versionsabschnitte dokumentieren die bisher veröffentlichten Versionen.
+[Verhalten, Kompatibilität und Einführung](docs/MATERIALS-1.0.md): neue Apps auf allen Geräten und aktualisierte RTDB- **und** Firestore-Regeln erforderlich. Die Übernahme von PR #20 nach `main` ist zur Stabilisierung freigegeben. Keine Veröffentlichung oder automatische Regelbereitstellung; echte Tablet-/Altweltsicherungs-Abnahme steht aus. [Prüfplan](docs/1.0-VALIDATION.md) und [Migration mit Sicherungs-/Rollbackhinweisen](docs/RELEASE-1.0.0-rc.6.md). Die folgenden Versionsabschnitte dokumentieren die bisher veröffentlichten Versionen.
 
 ## Gemeinsam bauen · 0.8.3
 
@@ -44,7 +44,7 @@ Im Hauptmenü liegen außerdem neue Welten, QR-Empfang, Update-Suche, Steuerung 
 
 Lava kann mehr als leuchten: Manche Materialien verändern sich, wenn man sie längere Zeit direkt über einer Quelle platziert. Glühen, Funken und die Anzeige beim Anvisieren zeigen eine begonnene Reaktion. In neuen Storywelten kann eine verfallene Glutstätte einen Hinweis liefern. Diese Möglichkeiten stehen nicht in der Rezeptliste der Werkbank.
 
-Die Reaktionen funktionieren auch in bestehenden Welten, deren Landschaft beim Laden unverändert bleibt. Neu gespeicherte Welten verwenden Format 5 und erhalten laufende Reaktionen über Laden, App-Neustart und QR-Übertragung. Alte Formate 1–4 bleiben lesbar. Zum Empfangen von Welten aus 0.6.0 muss das andere Gerät ebenfalls aktualisiert sein.
+Die Reaktionen funktionieren auch in bestehenden Welten, deren Landschaft beim Laden unverändert bleibt. Seit 0.6.0 erhält Format 5 laufende Reaktionen über Laden, App-Neustart und QR-Übertragung. Der 1.0-Kandidat verwendet inzwischen Format 7 und liest weiterhin Formate 1–6. Zum Empfangen von Welten aus 0.6.0 muss das andere Gerät ebenfalls aktualisiert sein.
 
 ## Kreativ und Story
 
