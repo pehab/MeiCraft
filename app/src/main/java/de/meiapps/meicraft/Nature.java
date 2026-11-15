@@ -86,6 +86,7 @@ public final class Nature {
         }
         grassColumn%=World.W*World.D;
         for(int i=grass.nextSetBit(0);i>=0;i=grass.nextSetBit(i+1))w.set(i%World.W,i/(World.W*World.D),i/World.W%World.D,1);
+        decayUnsupportedLeaves(w,columns);
         // A single leaf block placed directly on soil is a sapling. Reuse the
         // existing leaf ID: older saves and inventories need no migration.
         // Each column is visited every ~36 seconds; most visits do not grow.
@@ -103,6 +104,34 @@ public final class Nature {
                 break;
             }
         }
+    }
+    /** Unsupported leaf clusters slowly disappear after their trunks are mined.
+     * A leaf planted on grass or dirt is reserved as a sapling.
+     * Only offline nature ticks call this method; player-built leaves next to
+     * a wood support are retained.
+     */
+    private void decayUnsupportedLeaves(World w,int columns){
+        for(int n=0;n<columns;n++){
+            int column=(grassColumn+World.W*World.D-columns+n)%(World.W*World.D);
+            int x=column%World.W,z=column/World.W;
+            if(x<3||z<3||x>=w.width-3||z>=w.depth-3)continue;
+            for(int y=2;y<World.H-4;y++){
+                if(w.get(x,y,z)!=6)continue;
+                if(w.get(x,y-1,z)==1||w.get(x,y-1,z)==2)continue;
+                long hash=w.seed^(x*73856093L)^(z*19349663L)^(y*83492791L)^(step*2654435761L);
+                hash^=hash>>>33;hash*=0xff51afd7ed558ccdL;hash^=hash>>>33;
+                if((hash&7L)!=0||hasWoodSupport(w,x,y,z))continue;
+                w.set(x,y,z,0);
+            }
+        }
+    }
+    private static boolean hasWoodSupport(World w,int x,int y,int z){
+        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
+            for(int dy=-4;dy<=4;dy++){
+                if(Math.abs(dx)+Math.abs(dz)>4)continue;
+                if(w.get(x+dx,y+dy,z+dz)==5)return true;
+            }
+        return false;
     }
     /** Never replace an occupied block or the player's current space. */
     private static boolean saplingClearance(World w,int x,int y,int z){
