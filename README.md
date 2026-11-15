@@ -2,9 +2,9 @@
 
 Eigenständiges Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Offline ohne Anmeldung, Werbung oder Käufe. Optional gemeinsam online bauen: Firebase speichert dafür eine anonyme Geräte-ID, Weltänderungen und Mitspielerpositionen.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 1.0.1
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 1.0.2
 
-[1.0.1 behebt die falsche Texturzuordnung](docs/RELEASE-1.0.1.md); Weltdaten bleiben unverändert.
+[1.0.2 macht Glas besser sichtbar und ergänzt Glanz](docs/RELEASE-1.0.2.md). Die Texturkorrektur aus 1.0.1 bleibt enthalten; Weltdaten bleiben unverändert.
 
 ## 1.0 · Feature-Freeze und Stabilisierung
 

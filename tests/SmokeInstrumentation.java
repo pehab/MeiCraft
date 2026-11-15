@@ -304,7 +304,7 @@ public final class SmokeInstrumentation extends Instrumentation {
  void testLightingEquivalence(GameView game)throws Exception{
   onGlAfterFrame(game,()->{
    checkGl("renderer before lighting comparison");
-   String vertex="attribute vec2 aPos;uniform float uLight;varying vec2 vUv;varying float vLight;varying float vDistance;varying vec3 vWorld;void main(){gl_Position=vec4(aPos,0.0,1.0);vWorld=vec3(144.0+aPos.x*3.0,30.0,144.0+aPos.y*3.0);vUv=vec2(0.5);vLight=uLight;vDistance=30.0+(aPos.x+1.0)*20.0;}";
+   String vertex="attribute vec2 aPos;uniform float uLight;uniform float uGlassTest;varying vec2 vUv;varying float vLight;varying float vDistance;varying vec3 vWorld;void main(){gl_Position=vec4(aPos,0.0,1.0);vWorld=vec3(144.0+aPos.x*3.0,30.0,144.0+aPos.y*3.0);vUv=vec2(0.5);vLight=uLight;vDistance=(30.0+(aPos.x+1.0)*20.0)*(1.0-uGlassTest);}";
    int[] programs=new int[2],textures=new int[2],framebuffer=new int[1];
    GLES20.glGenTextures(2,textures,0);GLES20.glGenFramebuffers(1,framebuffer,0);
    try{
@@ -333,6 +333,12 @@ public final class SmokeInstrumentation extends Instrumentation {
      }
      check(java.util.Arrays.equals(captured[0],captured[1]),"lighting pixels match 0.8.3 at ambient "+ambient+" and face/emission "+light);
     }
+    int glassProgram=programs[1];GLES20.glUseProgram(glassProgram);GLES20.glDisable(GLES20.GL_BLEND);GLES20.glUniform1f(GLES20.glGetUniformLocation(glassProgram,"uGlassTest"),1);GLES20.glUniform1f(GLES20.glGetUniformLocation(glassProgram,"uGlassPass"),1);GLES20.glUniform1f(GLES20.glGetUniformLocation(glassProgram,"uLight"),1);GLES20.glUniform4fv(GLES20.glGetUniformLocation(glassProgram,"uLamps[0]"),8,new float[32],0);
+    int position=GLES20.glGetAttribLocation(glassProgram,"aPos");GLES20.glEnableVertexAttribArray(position);vertices.position(0);GLES20.glVertexAttribPointer(position,2,GLES20.GL_FLOAT,false,0,vertices);int[][] samples=new int[3][4];
+    for(int sample=0;sample<3;sample++){
+     GLES20.glUniform1f(GLES20.glGetUniformLocation(glassProgram,"uAmbient"),sample==2?.12f:1);GLES20.glUniform3f(GLES20.glGetUniformLocation(glassProgram,"uGlassEye"),sample==1?160:144,sample==1?30.3f:40,144);GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP,0,4);pixels.clear();GLES20.glReadPixels(0,0,64,64,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,pixels);for(int channel=0;channel<4;channel++)samples[sample][channel]=pixels.get((32*64+32)*4+channel)&255;
+    }
+    check(samples[0][3]>=84&&samples[0][3]<=90,"glass has clearly visible base opacity around 34 percent");check(samples[1][3]>samples[0][3]+25&&samples[1][3]<=140,"glass becomes more reflective and opaque at grazing angles");check(Math.abs(samples[0][0]-samples[1][0])+Math.abs(samples[0][1]-samples[1][1])+Math.abs(samples[0][2]-samples[1][2])>4,"glass reflection color changes with the viewing direction");check(samples[2][0]+samples[2][1]+samples[2][2]<samples[0][0]+samples[0][1]+samples[0][2],"night glass reflections respect available light instead of glowing");GLES20.glDisableVertexAttribArray(position);
     check(GLES20.glGetError()==GLES20.GL_NO_ERROR,"lighting equivalence has no OpenGL errors");
    }finally{
     GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,0);GLES20.glDeleteFramebuffers(1,framebuffer,0);GLES20.glDeleteTextures(2,textures,0);for(int program:programs)if(program!=0)GLES20.glDeleteProgram(program);
