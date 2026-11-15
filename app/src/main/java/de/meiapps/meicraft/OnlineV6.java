@@ -104,6 +104,18 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
         JSONObject patch=new JSONObject().put("head/g",increment()).put(prefix+"rev",rev).put(prefix+"seq",sequence+(c==null?0:1)).put(prefix+"inventory",encrypted).put(prefix+"op",op).put(prefix+"eventKey",eventKey);
         if(c!=null){JSONObject last=new JSONObject().put("region",c.region).put("chunk",OnlineJournal.chunk(c)).put("key",c.key()).put("x",c.x).put("y",c.y).put("z",c.z).put("type",c.type).put("water",c.renewable).put("token",c.token).put("before",c.before);
             patch.put(prefix+"last",last).put(prefix+"tail/e"+(c.sequence%16),c.encode()).put("head/regions/s"+c.region,increment()).put("head/chunks/"+OnlineJournal.chunk(c),increment()).put("chunks/"+OnlineJournal.chunk(c)+"/cells/"+c.key(),new JSONObject().put("type",c.type).put("water",c.renewable).put("token",c.token));}
+        if(c!=null){
+            // Persist the sapling designation in the same atomic RTDB patch
+            // as the block edit; never infer it from naturally generated leaves.
+            String saplingPath="growth/saplings/"+c.region+"/"+c.key();
+            if(c.type==6){
+                int gx=c.region%s.side*World.W+c.x,gz=c.region/s.side*World.D+c.z;
+                World current=s.world;
+                if(current!=null&&(current.get(gx,c.y-1,gz)==1||current.get(gx,c.y-1,gz)==2))
+                    patch.put(saplingPath,new JSONObject().put("stage",0).put("plantedAt",System.currentTimeMillis()));
+                else patch.put(saplingPath,JSONObject.NULL);
+            }else patch.put(saplingPath,JSONObject.NULL);
+        }
         patch.put("journal/"+uid+"/"+eventKey,new JSONObject().put("rev",rev).put("seq",sequence+(c==null?0:1)).put("inventory",encrypted).put("op",op).put("event",c==null?"":c.encode()));
         db.request("PATCH",storage(),patch);
     }
