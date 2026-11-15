@@ -72,7 +72,9 @@ journal['slot']={'.validate':"newData.val().matches(/^b([0-9]|1[0-5])$/)"}
 # Batch preconditions therefore include joining/moving/leaving players, not just blocks.
 live=f"{base}.child('live')"
 player=w['live']['players']['$uid']
-player['.write']+=f" && ({oldst}.child('control/phase').val() != 'ready' || {parent(2)}.child('poseVersion').val() == ({live}.child('poseVersion').exists() ? {live}.child('poseVersion').val() : 0) + 1)"
+player['.write']=f"auth != null && {base}.child('members').child(auth.uid).child('active').val() == true && {base}.child('meta/closed').val() == false && auth.uid == $uid"
+stationary="data.exists() && newData.exists()" + ''.join(f" && newData.child('{key}').val() == data.child('{key}').val()" for key in ['sector','x','y','z'])
+player['.write']+=f" && ({oldst}.child('control/phase').val() != 'ready' || ({stationary}) || {parent(2)}.child('poseVersion').val() == ({live}.child('poseVersion').exists() ? {live}.child('poseVersion').val() : 0) + 1)"
 w['live']['poseVersion']={'.write':active,'.validate':"newData.isNumber() && newData.val() == (data.exists() ? data.val() : 0) + 1"}
 A['presenceBase']={'.validate':True}
 A['.validate']='('+A['.validate']+f") && (!newData.child('batch').exists() || newData.child('decayRegion').exists() || newData.child('presenceBase').val() == ({live}.child('poseVersion').exists() ? {live}.child('poseVersion').val() : 0))"

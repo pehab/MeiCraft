@@ -26,7 +26,7 @@ Offline behalten Bäume ihre bisherige zeitgesteuerte vollständige Wachstumsmec
 
 ## Traffic
 
-Keine zusätzliche Stream-Verbindung und kein permanentes Naturpolling. Der vorhandene Positionswrite enthält zusätzlich einen skalaren Inkrementwert, ohne weitere HTTP-Anfrage. Jeder Beitritt liest den kleinen Tageslauf; der Gewinner liest den Setzlingsindex und prüft die betroffenen Regionen. Er lädt nur veränderte Chunks nach, vorhandene Natur-Snapshots werden zwischen Bäumen/Zerfallswellen wiederverwendet. Beim erstmaligen Aufbau/Wiederherstellen des Index werden einmal die vorhandenen veränderten Chunks untersucht.
+Keine zusätzliche Stream-Verbindung und kein permanentes Naturpolling. Nur tatsächliche Ortsänderungen, Beitritt und Verlassen ergänzen im vorhandenen Positionswrite einen skalaren Inkrementwert, ohne weitere HTTP-Anfrage. Stationäre Keepalives und reine Blickdrehungen verändern diesen Zähler nicht; im Leerlauf entstehen keine zusätzlichen Natur-Nutzdaten. Jeder Beitritt liest den kleinen Tageslauf; der Gewinner liest den Setzlingsindex und prüft die betroffenen Regionen. Er lädt nur veränderte Chunks nach, vorhandene Natur-Snapshots werden zwischen Bäumen/Zerfallswellen wiederverwendet. Beim erstmaligen Aufbau/Wiederherstellen des Index werden einmal die vorhandenen veränderten Chunks untersucht.
 
 Ein Wachstumsschritt braucht einen atomaren RTDB-Write plus Prüfreads; die aktive Tageslease wird je geprüftem Baum erneuert und einmal abgeschlossen. Eine Zerfallswelle schreibt bis zu vier Zelländerungen gemeinsam. Jeder Zelländerung entspricht weiterhin eine verschlüsselte Inventarrevision, damit die bestehenden Wiederherstellungs-/Checkpointverträge vollständig gelten. Firestore erhält ausschließlich die vorhandenen gebündelten Checkpoints; unveränderte Regionen werden nicht erneut hochgeladen. Große Bestände und Konfliktwiederholungen verursachen entsprechend mehr Nutzdaten. Es gibt kein pauschales Quota-/Latenzversprechen.
 
@@ -36,3 +36,10 @@ Ein Wachstumsschritt braucht einen atomaren RTDB-Write plus Prüfreads; die akti
 - `npm run test:rules`: echte Firestore-/RTDB-Emulatoren; einschließlich atomarer Zwei-/13-Zell-Batches, Teilwrite-Ablehnung, Counterprüfung, Konkurrenz, Positionskonflikten, täglicher Lease, Übernahme und Tagescursor.
 - Android `JournalChecks`: echte `OnlineV6`-/Natur-/Checkpointpfade mit Offline-Transporten; Pflanzen, drei Tagesstufen, wiederholter Login, Peerabgleich, Checkpointmetadaten, Zerfall und Neustart.
 - Bestehende Android-/Lint-/Update-Verträge bleiben Teil der CI.
+
+RTDB-Regeln werden in dieser Reihenfolge erzeugt; die wiederholte Erzeugung muss identische Dateien liefern (automatisiert in einem temporären Verzeichnis geprüft):
+
+```sh
+python3 scripts/add-journal-rules.py
+python3 scripts/nature-rules.py
+```

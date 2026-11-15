@@ -90,13 +90,17 @@ final class OnlineRealtime implements AutoCloseable {
             long now=System.nanoTime();float px=s.px,py=s.py,pz=s.pz,a=s.angle;
             if(OnlinePose.send(now,lastSend,px,py,pz,a,x,y,z,yaw)){
                 int cell=OnlineWorld.sectorAt(px,pz,s.side);JSONObject position=new JSONObject().put("name",s.playerName).put("sector",cell).put("x",px-cell%s.side*World.W).put("y",py).put("z",pz-cell/s.side*World.D).put("yaw",a).put("t",timestamp());
-                position(position);lastSend=now;x=px;y=py;z=pz;yaw=a;hadPosition=true;
+                position(position,!hadPosition||px!=x||py!=y||pz!=z);lastSend=now;x=px;y=py;z=pz;yaw=a;hadPosition=true;
             }
             synchronized(tree){consume();}
         }catch(Exception e){lastFailure=e;FirebaseRest.DIAGNOSTICS.failed("RTDB · Live-Versand · "+e.getClass().getSimpleName());status(false);db.interrupt();}
     }
-    void position(Object value)throws Exception{
-        db.request("PATCH",base+"/live",new JSONObject().put("players/"+s.firebase.uid,value).put("poseVersion",new JSONObject().put(".sv",new JSONObject().put("increment",1))));
+    void position(Object value)throws Exception{position(value,true);}
+    void position(Object value,boolean moved)throws Exception{
+        if(!moved){db.request("PUT",base+"/live/players/"+s.firebase.uid,value);return;}
+        JSONObject patch=new JSONObject().put("players/"+s.firebase.uid,value);
+        if(moved)patch.put("poseVersion",new JSONObject().put(".sv",new JSONObject().put("increment",1)));
+        db.request("PATCH",base+"/live",patch);
     }
     void reconcileAccess(JSONObject access)throws Exception{
         if(!s.owner())return;

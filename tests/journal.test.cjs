@@ -114,7 +114,7 @@ test('simultaneous builder and nature batch have one winner; stale plans cannot 
 });
 test('presence changes invalidate a previously planned batch with no new block traffic',async()=>{
  await seed();await assertSucceeds(update(r('sibling',base+'/live'),{'players/sibling':{name:'Sibling',sector:0,x:20,y:31,z:20,yaw:0,t:{'.sv':'timestamp'}},poseVersion:increment(1)}));await assertFails(update(r('child',storage),batch('child',growthBlocks())));
- await assertFails(set(r('sibling',base+'/live/players/sibling'),{name:'Sibling',sector:0,x:20,y:31,z:20,yaw:0,t:{'.sv':'timestamp'}}));
+ await assertFails(set(r('sibling',base+'/live/players/sibling'),{name:'Sibling',sector:0,x:21,y:31,z:20,yaw:0,t:{'.sv':'timestamp'}}));
 });
 const utcDay=()=>Math.floor(Date.now()/86400000),run=(uid,token='a'.repeat(32))=>({uid,token,day:utcDay(),until:Date.now()+15000,done:false});
 test('first daily login wins and completed day cannot be claimed again or forged',async()=>{
@@ -145,4 +145,13 @@ test('shared decay cadence prevents several clients from deleting a whole crown 
 test('removing leaves remains valid while peers move, but shared cadence still applies',async()=>{
  await seed();await update(r('sibling',base+'/live'),{'players/sibling':{name:'Sibling',sector:0,x:20,y:31,z:20,yaw:0,t:{'.sv':'timestamp'}},poseVersion:increment(1)});
  const p=batch('child',[{x:20,y:30,z:20,type:0}],{presenceBase:0});p['head/actors/child/decayRegion']=0;p['growth/decay/0']={at:{'.sv':'timestamp'}};await assertSucceeds(update(r('child',storage),p));assert.equal((await get(r('child',storage+'/chunks/0_1_1_1/cells/20_30_20/type'))).val(),0);
+});
+test('stationary keepalive needs no nature counter write; moving without increment is rejected',async()=>{
+ await seed();const pose={name:'Sibling',sector:0,x:20,y:31,z:20,yaw:0,t:{'.sv':'timestamp'}};await update(r('sibling',base+'/live'),{'players/sibling':pose,poseVersion:increment(1)});
+ await assertSucceeds(set(r('sibling',base+'/live/players/sibling'),{...pose,yaw:1}));assert.equal((await get(r('child',base+'/live/poseVersion'))).val(),1);
+ await assertFails(set(r('sibling',base+'/live/players/sibling'),{...pose,x:21}));await assertFails(set(r('sibling',base+'/live/players/sibling'),null));
+});
+test('database rule generation is repeatable and retains the stationary keepalive exemption',()=>{
+ const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{execFileSync}=require('node:child_process');const folder=fs.mkdtempSync(path.join(os.tmpdir(),'meicraft-rules-')),file=path.join(folder,'database.rules.json'),source=fs.readFileSync('database.rules.json','utf8');
+ try{fs.writeFileSync(file,source);for(let n=0;n<2;n++){for(const script of ['add-journal-rules.py','nature-rules.py'])execFileSync('python3',[path.resolve('scripts',script)],{cwd:folder});assert.equal(fs.readFileSync(file,'utf8'),source);}}finally{fs.rmSync(folder,{recursive:true,force:true});}
 });
