@@ -2,13 +2,15 @@
 
 Eigenständiges Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Offline ohne Anmeldung, Werbung oder Käufe. Optional gemeinsam online bauen: Firebase speichert dafür eine anonyme Geräte-ID, Weltänderungen und Mitspielerpositionen.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.8.3
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 1.0.0
 
 ## 1.0 · Feature-Freeze und Stabilisierung
 
 Die [vereinbarte Featureliste](docs/1.0-VISUAL-POLISH-IMPLEMENTATION.md) ist softwareseitig umgesetzt: neue Materialien und Kristallhöhlen in neuen Welten, begrenztes Kohlefeuer, Geheimreaktionen, Kristallglas, nachwachsende Bäume und gemeinsamer Laubzerfall. Nebel, Vegetation, Flüssigkeitsanimation und Partikel bleiben lokal. Alte Welten behalten ihre Landschaft.
 
-[Verhalten, Kompatibilität und Einführung](docs/MATERIALS-1.0.md): neue Apps auf allen Geräten und aktualisierte RTDB- **und** Firestore-Regeln erforderlich. Die Übernahme von PR #20 nach `main` ist zur Stabilisierung freigegeben. Keine Veröffentlichung oder automatische Regelbereitstellung; echte Tablet-/Altweltsicherungs-Abnahme steht aus. [Prüfplan](docs/1.0-VALIDATION.md) und [Migration mit Sicherungs-/Rollbackhinweisen](docs/RELEASE-1.0.0-rc.6.md). Die folgenden Versionsabschnitte dokumentieren die bisher veröffentlichten Versionen.
+[Verhalten, Kompatibilität und Einführung](docs/MATERIALS-1.0.md): neue Apps auf allen Geräten und aktualisierte RTDB- **und** Firestore-Regeln erforderlich. Die Übernahme von PR #20 nach `main` und Veröffentlichung als 1.0.0 sind zur Stabilisierung freigegeben. Keine automatische Regelbereitstellung; echte Tablet-/Altweltsicherungs-Abnahme steht aus. [Prüfplan](docs/1.0-VALIDATION.md) und [Migration mit Sicherungs-/Rollbackhinweisen](docs/RELEASE-1.0.0-rc.6.md). Die folgenden Versionsabschnitte dokumentieren die bisher veröffentlichten Versionen.
+
+[Änderungen und Updatehinweise für 1.0.0](docs/RELEASE-1.0.0.md). Über die bestehende Installation aktualisieren; nicht deinstallieren oder App-Daten löschen.
 
 ## Gemeinsam bauen · 0.8.3
 

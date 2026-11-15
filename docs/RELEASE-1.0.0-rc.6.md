@@ -1,6 +1,6 @@
 # MeiCraft 1.0.0-rc.6 — dauerhaftes RTDB-Journal und Host-Checkpoints
 
-Feature-Freeze am 15. November 2026. PR #20 wird nach grüner CI zur Stabilisierung nach `main` übernommen. Die Versionsnummer bleibt vorerst 1.0.0-rc.6; ein Merge veröffentlicht keine Version und installiert keine Firebase-Regeln.
+Feature-Freeze am 15. November 2026. PR #20 wird nach grüner CI zur Stabilisierung nach `main` übernommen. Dieses Dokument beschreibt den rc.6-Migrationspfad. Die anschließende Veröffentlichung als [1.0.0](RELEASE-1.0.0.md) ist inzwischen zusätzlich freigegeben; Firebase-Regeln werden weiterhin nicht automatisch installiert.
 
 ## Vor dem ersten Start
 
