@@ -83,3 +83,50 @@ test('Android POST method override commits the identical atomic journal mutation
  const endpoint=`http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}/${storage}.json?ns=demo-meicraft-journal&auth=${encodeURIComponent(token)}`;
  const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-HTTP-Method-Override':'PATCH'},body:JSON.stringify(action('child'))});assert.equal(response.status,200,await response.text());const h=(await get(r('child',storage+'/head'))).val();assert.equal(h.g,1);assert.equal(h.actors.child.rev,2);assert.equal((await get(r('child',storage+'/journal/child/2'))).val().seq,1);
 });
+
+// Same compact batch contract as JournalBatch.patch: ordinary per-cell revisions,
+// one atomic transport, one head generation, exact per-region/chunk counters.
+function batch(uid,blocks,{base=0,seq=0,rev=1,presenceBase=0,growthToken,growthDay}={}){
+ const a=`head/actors/${uid}/`,patch={'head/g':increment(1),[a+'count']:blocks.length,[a+'base']:base,[a+'presenceBase']:presenceBase,[a+'op']:'f'.repeat(32)},items={};
+ blocks.forEach((b,i)=>{
+  const slot='b'+i,key=`${b.x}_${b.y}_${b.z}`,chunk=`${b.region??0}_${Math.floor(b.x/16)}_${Math.floor(b.y/16)}_${Math.floor(b.z/16)}`,token=b.token??(i+1).toString(16).padStart(32,'0'),nature=b.nature??'',last={region:b.region??0,chunk,key,x:b.x,y:b.y,z:b.z,type:b.type,water:false,token,before:b.before??'',nature},r=rev+i+1,q=seq+i+1,event=`${q}/${last.region}/${key}/${b.type}/0/${token}/${last.before}`+(nature?'/'+nature:'');
+  items[slot]={last,rev:r,seq:q,inventory:cipher};patch[`journal/${uid}/${r}`]={rev:r,seq:q,inventory:cipher,op:'f'.repeat(32),event,slot};patch[a+`tail/e${q%16}`]=event;patch[`chunks/${chunk}/cells/${key}`]={type:b.type,water:false,token,nature,slot};
+  if(i===blocks.length-1)Object.assign(patch,{[a+'last']:last,[a+'rev']:r,[a+'seq']:q,[a+'inventory']:cipher,[a+'eventKey']:String(r)});
+ });
+ patch[a+'batch']=items;
+ for(const [name,field] of [['regions','region'],['chunks','chunk']]){
+  const counts={};for(const item of Object.values(items)){const key=name==='regions'?'s'+item.last.region:item.last.chunk;counts[key]=(counts[key]??0)+1;}for(const [key,n] of Object.entries(counts))patch[`head/${name}/${key}`]=increment(n);
+ }
+ if(growthToken)Object.assign(patch,{[a+'growthToken']:growthToken,[a+'growthDay']:growthDay});return patch;
+}
+const growthBlocks=()=>[{x:20,y:30,z:20,type:5,nature:'tree_1_20000_1234'},{x:20,y:31,z:20,type:6,nature:'leaf'}];
+test('nature multi-cell journal batch is atomic and retains every durable revision',async()=>{
+ await seed();await assertSucceeds(update(r('child',storage),batch('child',growthBlocks())));const s=(await get(r('child',storage))).val();assert.equal(s.head.g,1);assert.equal(s.head.actors.child.rev,3);assert.equal(s.head.regions.s0,2);assert.equal(s.head.chunks['0_1_1_1'],2);assert.equal(Object.keys(s.journal.child).length,2);
+});
+test('a 13-cell cross-chunk crown preserves counters, journal and final inventory',async()=>{
+ await seed();const blocks=Array.from({length:13},(_,i)=>({x:10+i,y:30,z:20,type:6,nature:'leaf'}));await assertSucceeds(update(r('child',storage),batch('child',blocks)));const s=(await get(r('child',storage))).val();assert.equal(s.head.regions.s0,13);assert.equal(s.head.chunks['0_0_1_1'],6);assert.equal(s.head.chunks['0_1_1_1'],7);assert.equal(s.head.actors.child.rev,14);
+});
+test('partial batch or wrong region/chunk counter cannot publish any tree block',async()=>{
+ await seed();const original=batch('child',growthBlocks());for(const missing of ['journal/child/2','chunks/0_1_1_1/cells/20_30_20','head/regions/s0','head/chunks/0_1_1_1']){const p={...original};delete p[missing];await assertFails(update(r('child',storage),p));}await assertFails(update(r('child',storage),{...original,'head/chunks/0_1_1_1':increment(1)}));assert.equal((await get(r('child',storage+'/head/g'))).val(),0);
+});
+test('simultaneous builder and nature batch have one winner; stale plans cannot overwrite buildings',async()=>{
+ await seed();const results=await Promise.allSettled([update(r('child',storage),batch('child',growthBlocks())),update(r('sibling',storage),action('sibling',1,2,'',20))]);assert.ok(results.some(x=>x.status==='fulfilled'));await assertFails(update(r('child',storage),batch('child',growthBlocks())));
+});
+test('presence changes invalidate a previously planned batch with no new block traffic',async()=>{
+ await seed();await assertSucceeds(update(r('sibling',base+'/live'),{'players/sibling':{name:'Sibling',sector:0,x:20,y:31,z:20,yaw:0,t:{'.sv':'timestamp'}},poseVersion:increment(1)}));await assertFails(update(r('child',storage),batch('child',growthBlocks())));
+ await assertFails(set(r('sibling',base+'/live/players/sibling'),{name:'Sibling',sector:0,x:20,y:31,z:20,yaw:0,t:{'.sv':'timestamp'}}));
+});
+const utcDay=()=>Math.floor(Date.now()/86400000),run=(uid,token='a'.repeat(32))=>({uid,token,day:utcDay(),until:Date.now()+15000,done:false});
+test('first daily login wins and completed day cannot be claimed again or forged',async()=>{
+ await seed();const results=await Promise.allSettled([set(r('child',storage+'/growth/run'),run('child')),set(r('sibling',storage+'/growth/run'),run('sibling'))]);assert.equal(results.filter(x=>x.status==='fulfilled').length,1);const winner=(await get(r('child',storage+'/growth/run'))).val();await set(r(winner.uid,storage+'/growth/run'),{...winner,until:0,done:true});await assertFails(set(r('child',storage+'/growth/run'),run('child')));await assertFails(set(r('child',storage+'/growth/run'),{...run('child'),day:utcDay()+1}));
+});
+test('expired daily worker is replaceable but old token is fenced',async()=>{
+ await seed();await env.withSecurityRulesDisabled(c=>set(ref(c.database(),storage+'/growth/run'),{...run('child'),until:Date.now()-1000}));await assertSucceeds(set(r('sibling',storage+'/growth/run'),run('sibling','b'.repeat(32))));await assertFails(update(r('child',storage),batch('child',growthBlocks(),{growthToken:'a'.repeat(32),growthDay:utcDay()})));
+});
+test('one sapling growth per UTC day is enforced by the database index',async()=>{
+ await seed();const key='20_30_20',token='c'.repeat(32),plantedAt=Date.now()-86400000;
+ await env.withSecurityRulesDisabled(c=>set(ref(c.database(),storage+'/growth/saplings/0/'+key),{stage:0,plantedAt,lastGrowthDay:utcDay()-1,token}));
+ await set(r('child',storage+'/growth/run'),run('child'));
+ const p=batch('child',growthBlocks(),{growthToken:'a'.repeat(32),growthDay:utcDay()});p['growth/saplings/0/'+key]={stage:1,plantedAt,lastGrowthDay:utcDay(),token:'1'.padStart(32,'0')};await assertSucceeds(update(r('child',storage),p));
+ const next=batch('child',[{x:20,y:30,z:20,type:5,token:'3'.padStart(32,'0'),before:'1'.padStart(32,'0'),nature:'tree_2_'+utcDay()+'_'+plantedAt},{x:20,y:31,z:20,type:5,token:'4'.padStart(32,'0'),before:'2'.padStart(32,'0')}],{base:1,seq:2,rev:3,growthToken:'a'.repeat(32),growthDay:utcDay()});next['growth/saplings/0/'+key]={stage:2,plantedAt,lastGrowthDay:utcDay(),token:'3'.padStart(32,'0')};await assertFails(update(r('child',storage),next));
+});

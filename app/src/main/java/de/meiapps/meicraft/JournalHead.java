@@ -22,11 +22,11 @@ final class JournalHead {
     long chunk(String key){return chunks.optLong(key,0);}
     static Map<String,String> cells(JSONObject chunk)throws Exception{
         Map<String,String> result=new HashMap<>();JSONObject cells=object(chunk,"cells");if(cells.length()>4096)throw new IOException("Chunk zu groß.");
-        for(String key:OnlineV5.keys(cells)){JSONObject c=cells.getJSONObject(key);int type=c.getInt("type");boolean water=c.getBoolean("water");String token=c.getString("token");OnlineJournal.validateCell(key,type,water,token);result.put(key,type+":"+(water?1:0)+":"+token);}
+        for(String key:OnlineV5.keys(cells)){JSONObject c=cells.getJSONObject(key);int type=c.getInt("type");boolean water=c.getBoolean("water");String token=c.getString("token");OnlineJournal.validateCell(key,type,water,token);result.put(key,type+":"+(water?1:0)+":"+token+(c.optString("nature").isEmpty()?"":":"+c.getString("nature")));}
         return result;
     }
     static JSONObject jsonCells(Map<String,String> cells)throws Exception{
-        JSONObject result=new JSONObject();for(String key:cells.keySet()){String[] v=cells.get(key).split(":");result.put(key,new JSONObject().put("type",Integer.parseInt(v[0])).put("water",v[1].equals("1")).put("token",v[2]));}return new JSONObject().put("cells",result);
+        JSONObject result=new JSONObject();for(String key:cells.keySet()){String[] v=cells.get(key).split(":");result.put(key,new JSONObject().put("type",Integer.parseInt(v[0])).put("water",v[1].equals("1")).put("token",v[2]).put("nature",v.length>3?v[3]:""));}return new JSONObject().put("cells",result);
     }
     static Map<String,String> versions(Map<String,String> cells){Map<String,String> result=new HashMap<>();for(String key:cells.keySet())result.put(key,cells.get(key).split(":")[2]);return result;}
 }

@@ -83,17 +83,20 @@ final class OnlineRealtime implements AutoCloseable {
     void signal(long rev){outgoing.accumulateAndGet(rev,Math::max);}
     void tick(){
         if(closed)return;
-        if(!s.foreground){status(false);db.interrupt();if(hadPosition){hadPosition=false;try{db.request("DELETE",base+"/live/players/"+s.firebase.uid,null);}catch(Exception ignored){/* Crashed or unreachable clients expire by server timestamp. */}}return;}
+        if(!s.foreground){status(false);db.interrupt();if(hadPosition){hadPosition=false;try{position(JSONObject.NULL);}catch(Exception ignored){/* Crashed or unreachable clients expire by server timestamp. */}}return;}
         if(!connected)return;
         try{
             long revision=outgoing.get();if(revision>0){db.request("PUT",base+"/live/signals/"+s.firebase.uid,new JSONObject().put("rev",revision).put("t",timestamp()));outgoing.compareAndSet(revision,0);}
             long now=System.nanoTime();float px=s.px,py=s.py,pz=s.pz,a=s.angle;
             if(OnlinePose.send(now,lastSend,px,py,pz,a,x,y,z,yaw)){
                 int cell=OnlineWorld.sectorAt(px,pz,s.side);JSONObject position=new JSONObject().put("name",s.playerName).put("sector",cell).put("x",px-cell%s.side*World.W).put("y",py).put("z",pz-cell/s.side*World.D).put("yaw",a).put("t",timestamp());
-                db.request("PUT",base+"/live/players/"+s.firebase.uid,position);lastSend=now;x=px;y=py;z=pz;yaw=a;hadPosition=true;
+                position(position);lastSend=now;x=px;y=py;z=pz;yaw=a;hadPosition=true;
             }
             synchronized(tree){consume();}
         }catch(Exception e){lastFailure=e;FirebaseRest.DIAGNOSTICS.failed("RTDB · Live-Versand · "+e.getClass().getSimpleName());status(false);db.interrupt();}
+    }
+    void position(Object value)throws Exception{
+        db.request("PATCH",base+"/live",new JSONObject().put("players/"+s.firebase.uid,value).put("poseVersion",new JSONObject().put(".sv",new JSONObject().put("increment",1))));
     }
     void reconcileAccess(JSONObject access)throws Exception{
         if(!s.owner())return;
@@ -106,6 +109,6 @@ final class OnlineRealtime implements AutoCloseable {
     void closeWorld()throws Exception{if(db.request("GET",base+"/meta",null)!=JSONObject.NULL)db.request("PUT",base+"/meta/closed",Boolean.TRUE);}
     @Override public void close(){
         if(closed)return;closed=true;status(false);db.interrupt();reader.shutdownNow();
-        try{sender.execute(()->{try{if(hadPosition)db.request("DELETE",base+"/live/players/"+s.firebase.uid,null);}catch(Exception ignored){/* Server-time TTL is the crash/offline fallback. */}finally{db.close();}});}catch(RejectedExecutionException ignored){db.close();}sender.shutdown();
+        try{sender.execute(()->{try{if(hadPosition)position(JSONObject.NULL);}catch(Exception ignored){/* Server-time TTL is the crash/offline fallback. */}finally{db.close();}});}catch(RejectedExecutionException ignored){db.close();}sender.shutdown();
     }
 }

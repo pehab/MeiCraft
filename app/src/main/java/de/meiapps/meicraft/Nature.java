@@ -14,10 +14,19 @@ public final class Nature {
     private float clock;
     private int step,grassColumn;
     private long dirtyChunks;
+    final BitSet naturalLeaves=new BitSet(levels.length),placedLeaves=new BitSet(levels.length);
+    void capture(World w){for(int i=0;i<w.blocks.length;i++)if(w.blocks[i]==6)naturalLeaves.set(i);}
+    void writeTrees(DataOutputStream out,World w)throws IOException{
+        for(BitSet source:new BitSet[]{naturalLeaves,placedLeaves}){BitSet bits=(BitSet)source.clone();for(int i=bits.nextSetBit(0);i>=0;i=bits.nextSetBit(i+1))if(w.blocks[i]!=6)bits.clear(i);byte[] data=bits.toByteArray();out.writeInt(data.length);out.write(data);}
+    }
+    void readTrees(DataInputStream in,World w)throws IOException{
+        for(BitSet bits:new BitSet[]{naturalLeaves,placedLeaves}){bits.clear();int n=in.readInt();if(n<0||n>(w.blocks.length+7)/8)throw new IOException("Ungültiges Laub");byte[] data=new byte[n];in.readFully(data);bits.or(BitSet.valueOf(data));for(int i=bits.nextSetBit(0);i>=0;i=bits.nextSetBit(i+1))if(i>=w.blocks.length||w.blocks[i]!=6)throw new IOException("Ungültiges Laub");}
+    }
+    void legacyTrees(World w){World origin=new World(w.seed,w.story,false);for(int i=0;i<w.blocks.length;i++)if(w.blocks[i]==6){if(origin.blocks[i]==6)naturalLeaves.set(i);else placedLeaves.set(i);}}
 
     public static boolean liquid(int block){return block==10||block==15;}
     void changed(int x,int y,int z){
-        int i=World.index(x,y,z);levels[i]=0;active.clear(i);springs.clear(i);
+        int i=World.index(x,y,z);naturalLeaves.clear(i);placedLeaves.clear(i);levels[i]=0;active.clear(i);springs.clear(i);
         dirty(x,z);
     }
     void dirty(int x,int z){
@@ -95,7 +104,7 @@ public final class Nature {
             int x=column%World.W,z=column/World.W;
             if(x<3||z<3||x>=w.width-3||z>=w.depth-3)continue;
             for(int y=World.H-8;y>=2;y--){
-                if(w.get(x,y,z)!=6||w.get(x,y-1,z)!=1&&w.get(x,y-1,z)!=2)continue;
+                if(!placedLeaves.get(World.index(x,y,z))||w.get(x,y,z)!=6||w.get(x,y-1,z)!=1&&w.get(x,y-1,z)!=2)continue;
                 if(!saplingClearance(w,x,y,z))continue;
                 long hash=w.seed^(x*73856093L)^(z*19349663L)^(step*83492791L);
                 hash^=hash>>>33;hash*=0xff51afd7ed558ccdL;hash^=hash>>>33;
@@ -116,7 +125,7 @@ public final class Nature {
             int x=column%World.W,z=column/World.W;
             if(x<3||z<3||x>=w.width-3||z>=w.depth-3)continue;
             for(int y=2;y<World.H-4;y++){
-                if(w.get(x,y,z)!=6)continue;
+                if(w.get(x,y,z)!=6||!naturalLeaves.get(World.index(x,y,z)))continue;
                 if(w.get(x,y-1,z)==1||w.get(x,y-1,z)==2)continue;
                 long hash=w.seed^(x*73856093L)^(z*19349663L)^(y*83492791L)^(step*2654435761L);
                 hash^=hash>>>33;hash*=0xff51afd7ed558ccdL;hash^=hash>>>33;
@@ -148,7 +157,7 @@ public final class Nature {
         for(int yy=y+3;yy<=y+5;yy++)for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
             if(Math.abs(dx)+Math.abs(dz)+(yy==y+5?1:0)>3)continue;
             if(dx==0&&dz==0&&yy<=y+3)continue;
-            w.set(x+dx,yy,z+dz,6);
+            w.set(x+dx,yy,z+dz,6);w.nature.naturalLeaves.set(World.index(x+dx,yy,z+dz));
         }
     }
     private void flow(World w,int type){

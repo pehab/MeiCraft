@@ -7,19 +7,22 @@ import java.util.*;
 final class OnlineChange {
     static final int TAIL=16;
     final long sequence;final int region,x,y,z,type;final boolean renewable;
-    final String token,before,actor;
+    final String token,before,actor,nature;
     OnlineChange(long sequence,int region,int x,int y,int z,int type,boolean renewable,String token,String before,String actor){
-        this.sequence=sequence;this.region=region;this.x=x;this.y=y;this.z=z;this.type=type;this.renewable=renewable;this.token=token;this.before=before;this.actor=actor;
+        this(sequence,region,x,y,z,type,renewable,token,before,actor,"");
+    }
+    OnlineChange(long sequence,int region,int x,int y,int z,int type,boolean renewable,String token,String before,String actor,String nature){
+        this.nature=nature;this.sequence=sequence;this.region=region;this.x=x;this.y=y;this.z=z;this.type=type;this.renewable=renewable;this.token=token;this.before=before;this.actor=actor;
     }
     String key(){return x+"_"+y+"_"+z;}
     String chunk(){return x/16+"_"+y/16+"_"+z/16;}
-    String value(){return type+":"+(renewable?1:0)+":"+token;}
-    String encode(){return sequence+"/"+region+"/"+key()+"/"+type+"/"+(renewable?1:0)+"/"+token+"/"+before;}
+    String value(){return type+":"+(renewable?1:0)+":"+token+(nature.isEmpty()?"":":"+nature);}
+    String encode(){return sequence+"/"+region+"/"+key()+"/"+type+"/"+(renewable?1:0)+"/"+token+"/"+before+(nature.isEmpty()?"":"/"+nature);}
     static OnlineChange decode(String text,String actor)throws IOException{
         try{
-            String[] p=text.split("/",-1),xyz=p[2].split("_");if(p.length!=7||xyz.length!=3)throw new IllegalArgumentException();
-            OnlineChange c=new OnlineChange(Long.parseLong(p[0]),Integer.parseInt(p[1]),Integer.parseInt(xyz[0]),Integer.parseInt(xyz[1]),Integer.parseInt(xyz[2]),Integer.parseInt(p[3]),p[4].equals("1"),p[5],p[6],actor);
-            if(c.sequence<1||c.region<0||c.region>8||!OnlineWorld.validBlock(c.x,c.y,c.z,c.type)||!p[4].matches("[01]")||!c.token.matches("[a-f0-9]{32}")||!c.before.matches("([a-f0-9]{32})?")||c.token.equals(c.before)||!text.equals(c.encode()))throw new IllegalArgumentException();
+            String[] p=text.split("/",-1),xyz=p[2].split("_");if((p.length!=7&&p.length!=8)||xyz.length!=3)throw new IllegalArgumentException();
+            OnlineChange c=new OnlineChange(Long.parseLong(p[0]),Integer.parseInt(p[1]),Integer.parseInt(xyz[0]),Integer.parseInt(xyz[1]),Integer.parseInt(xyz[2]),Integer.parseInt(p[3]),p[4].equals("1"),p[5],p[6],actor,p.length==8?p[7]:"");
+            if(!c.nature.matches("(leaf|decor|tree_[0-3]_[0-9]{1,8}_[0-9]{1,16})?")||c.sequence<1||c.region<0||c.region>8||!OnlineWorld.validBlock(c.x,c.y,c.z,c.type)||!p[4].matches("[01]")||!c.token.matches("[a-f0-9]{32}")||!c.before.matches("([a-f0-9]{32})?")||c.token.equals(c.before)||!text.equals(c.encode()))throw new IllegalArgumentException();
             return c;
         }catch(RuntimeException e){throw new IOException("Ungültige Änderungsfolge.",e);}
     }

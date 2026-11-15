@@ -10,7 +10,7 @@ import java.util.concurrent.locks.LockSupport;
 final class OnlineV6 extends OnlineV5 implements AutoCloseable {
     RtdbRest db;String base,epoch;volatile boolean activated,journalConnected,stopped;volatile String latest="";
     boolean cachePrimed=true;JournalHead head;final ExecutorService journalReader=Executors.newSingleThreadExecutor();OnlineCheckpoint checkpoints;
-    final boolean services;
+    final boolean services;OnlineNature nature;
     OnlineV6(OnlineSession s){this(s,true);}
     OnlineV6(OnlineSession s,boolean services){super(s);this.services=services;}
     String storage(){return base+"/storage";}
@@ -42,7 +42,7 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
         if(s.world!=null)cachePrimed=false;if(s.regionCache!=null)s.regionCache.close();s.regionCache=new OnlineRegionCache(new File(s.activity.getCacheDir(),"online-regions-v6-"+epoch),s.invitation.id,s.seed,s.side);
         boolean fresh=s.world==null;if(fresh){s.world=World.onlineSpace(s.seed,s.side);World origin=OnlineTerrain.region(s.seed,0,s.side);s.world.x=origin.x;s.world.y=origin.y;s.world.z=origin.z;s.px=origin.x;s.py=origin.y;s.pz=origin.z;}
         OnlineInventory.apply(s.world.progress,s.inventory);syncVisible(fresh);s.remember();
-        checkpoints=new OnlineCheckpoint(this);if(services){checkpoints.start();journalReader.execute(this::listen);}
+        nature=new OnlineNature(this);if(services)nature.join();checkpoints=new OnlineCheckpoint(this);if(services){checkpoints.start();journalReader.execute(this::listen);}
     }
     void listen(){java.util.concurrent.atomic.AtomicInteger failures=new java.util.concurrent.atomic.AtomicInteger();RealtimeTree tree=new RealtimeTree();
         while(!stopped&&!s.closed){
@@ -64,6 +64,11 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
     void accept(JournalHead next)throws Exception{
         if(head!=null&&next.generation<head.generation)return;JSONObject me=next.actors.optJSONObject(f.uid);
         if(me!=null&&me.getLong("rev")<revision)return;
+        if(nature!=null&&head!=null&&s.world!=null&&next.generation>head.generation)for(OnlineChange c:next.tail){
+            if(c.sequence<=head.heads.getOrDefault(c.actor,0L)||c.type!=0||!s.readyRegions.contains(c.region))continue;
+            int gx=c.region%s.side*World.W+c.x,gz=c.region/s.side*World.D+c.z;
+            if(s.world.get(gx,c.y,gz)==5)nature.changed(c.region);
+        }
         head=next;heads.clear();heads.putAll(next.heads);tail.clear();tail.addAll(next.tail);s.announcedReadTime=java.time.Instant.EPOCH.toString();
         if(me==null||me.optString("inventory").isEmpty()){
             Story initial=new Story();JSONObject legacy=f.get(s.inventoryPath());if(legacy!=null)initial=s.decodeInventory(legacy.getJSONObject("fields"));
@@ -83,6 +88,7 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
             long announced=head.region(id);if(r.revision>announced)throw new IOException("Weltstand zurückgesetzt. Bitte erneut beitreten.");World tile=r.generated?null:OnlineTerrain.region(s.seed,id,s.side);if(tile!=null){s.streaming=true;for(String key:r.types.keySet()){String[] xyz=key.split("_");tile.set(Integer.parseInt(xyz[0]),Integer.parseInt(xyz[1]),Integer.parseInt(xyz[2]),r.types.get(key));}}
             boolean changed=announced!=r.revision||!r.complete;List<OnlineChange> delta=r.complete?OnlineChange.reconcile(id,r.revision,announced,r.heads,r.versions,r.own,tail):null;
             if(delta==null)loadRegion(r,tile);else{for(OnlineChange c:delta)cell(r,tile,c.x,c.y,c.z,c.type,c.renewable,c.token);if(!delta.isEmpty())FirebaseRest.DIAGNOSTICS.tailApplied(delta.size());}
+            if(changed&&nature!=null)nature.changed(id);
             r.revision=head.region(id);r.ownChanges=0;r.own.clear();r.complete=true;r.heads.clear();r.heads.putAll(head.heads);
             if((changed||!cachePrimed)&&s.regionCache!=null)s.regionCache.offer(id,new OnlineRegionCache.Snapshot(r.revision,java.time.Instant.EPOCH.toString(),r.versions,r.types,r.renewable,r.heads));
             if(tile!=null){r.generated=true;if(initial){OnlineInventory.install(target,tile,id,s.side);s.markReady(id);}else s.activity.game.gl.queueEvent(()->{if(!s.closed&&s.world==target){synchronized(target){OnlineInventory.install(target,tile,id,s.side);}for(int x=id%s.side*World.W;x<(id%s.side+1)*World.W;x+=16)for(int z=id/s.side*World.D;z<(id/s.side+1)*World.D;z+=16)s.activity.game.renderer.dirty(x,z);s.markReady(id);}});}
@@ -101,30 +107,25 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
     JSONObject increment()throws JSONException{return new JSONObject().put(".sv",new JSONObject().put("increment",1));}
     void commit(Story inventory,OnlineChange c)throws Exception{
         long rev=revision+1;String uid=f.uid,eventKey=OnlineJournal.eventKey(rev),op=OnlineWorld.randomId(),prefix="head/actors/"+uid+"/",encrypted=encrypt(inventory,rev);
-        JSONObject patch=new JSONObject().put("head/g",increment()).put(prefix+"rev",rev).put(prefix+"seq",sequence+(c==null?0:1)).put(prefix+"inventory",encrypted).put(prefix+"op",op).put(prefix+"eventKey",eventKey);
-        if(c!=null){JSONObject last=new JSONObject().put("region",c.region).put("chunk",OnlineJournal.chunk(c)).put("key",c.key()).put("x",c.x).put("y",c.y).put("z",c.z).put("type",c.type).put("water",c.renewable).put("token",c.token).put("before",c.before);
-            patch.put(prefix+"last",last).put(prefix+"tail/e"+(c.sequence%16),c.encode()).put("head/regions/s"+c.region,increment()).put("head/chunks/"+OnlineJournal.chunk(c),increment()).put("chunks/"+OnlineJournal.chunk(c)+"/cells/"+c.key(),new JSONObject().put("type",c.type).put("water",c.renewable).put("token",c.token));}
+        JSONObject patch=new JSONObject().put(prefix+"batch",JSONObject.NULL).put(prefix+"count",JSONObject.NULL).put(prefix+"base",JSONObject.NULL).put(prefix+"presenceBase",JSONObject.NULL).put(prefix+"growthToken",JSONObject.NULL).put(prefix+"growthDay",JSONObject.NULL).put("head/g",increment()).put(prefix+"rev",rev).put(prefix+"seq",sequence+(c==null?0:1)).put(prefix+"inventory",encrypted).put(prefix+"op",op).put(prefix+"eventKey",eventKey);
+        if(c!=null){JSONObject last=JournalBatch.last(c);
+            patch.put(prefix+"last",last).put(prefix+"tail/e"+(c.sequence%16),c.encode()).put("head/regions/s"+c.region,increment()).put("head/chunks/"+OnlineJournal.chunk(c),increment()).put("chunks/"+OnlineJournal.chunk(c)+"/cells/"+c.key(),JournalBatch.cell(c,null));}
         if(c!=null){
-            // Persist the sapling designation in the same atomic RTDB patch
-            // as the block edit; never infer it from naturally generated leaves.
             String saplingPath="growth/saplings/"+c.region+"/"+c.key();
-            if(c.type==6){
-                int gx=c.region%s.side*World.W+c.x,gz=c.region/s.side*World.D+c.z;
-                World current=s.world;
-                if(current!=null&&(current.get(gx,c.y-1,gz)==1||current.get(gx,c.y-1,gz)==2))
-                    patch.put(saplingPath,new JSONObject().put("stage",0).put("plantedAt",System.currentTimeMillis()).put("lastGrowthDay",-1));
-                else patch.put(saplingPath,JSONObject.NULL);
-            }else patch.put(saplingPath,JSONObject.NULL);
+            if(c.nature.startsWith("tree_"))patch.put(saplingPath,new JSONObject().put("stage",0).put("plantedAt",new JSONObject().put(".sv","timestamp")).put("lastGrowthDay",day()).put("token",c.token));
+            else patch.put(saplingPath,JSONObject.NULL);
         }
         patch.put("journal/"+uid+"/"+eventKey,new JSONObject().put("rev",rev).put("seq",sequence+(c==null?0:1)).put("inventory",encrypted).put("op",op).put("event",c==null?"":c.encode()));
         db.request("PATCH",storage(),patch);
     }
+    long day(){return Math.floorDiv(System.currentTimeMillis()+db.serverOffset,TreeGrowth.DAY);}
+    String designation(int type,int x,int y,int z){if(type!=6)return "";World w=s.world;boolean single=w!=null&&w.get(x+1,y,z)!=6&&w.get(x-1,y,z)!=6&&w.get(x,y,z+1)!=6&&w.get(x,y,z-1)!=6&&w.get(x,y+1,z)!=6;return single&&(w.get(x,y-1,z)==1||w.get(x,y-1,z)==2)?"tree_0_"+day()+"_"+(System.currentTimeMillis()+db.serverOffset):"decor";}
     @Override void edit(int x,int y,int z,int type){
         if(!activated){super.edit(x,y,z,type);return;}World target=s.world;if(target==null||!target.contains(x,y,z)||y==0||type<0||type>=World.NAMES.length||!s.beginAction())return;int r=OnlineWorld.sectorAt(x,z,s.side),lx=x-r%s.side*World.W,lz=z-r/s.side*World.D,expected=target.get(x,y,z);long started=s.actionStarted;
         s.worker.execute(()->{try{OnlineSession.Region data=s.regions.get(r);if(data==null||!data.generated)return;String key=lx+"_"+y+"_"+lz;if(data.types.containsKey(key)&&data.types.get(key)!=expected||type!=0&&expected!=0){s.activity.game.message("Der Block wurde inzwischen geändert. Bitte erneut versuchen.");return;}
             Story next=OnlineInventory.copy(s.inventory);String problem=type==0?OnlineInventory.harvest(next,expected):OnlineInventory.place(next,type);if(!problem.isEmpty()){s.activity.game.message(problem);return;}
-            boolean water=type==0&&expected==10&&(data.renewable.getOrDefault(key,false)||!data.versions.containsKey(key));OnlineChange c=new OnlineChange(sequence+1,r,lx,y,lz,water?10:type,water,OnlineWorld.randomId(),OnlineChange.nonce(data.versions.getOrDefault(key,"")),f.uid);
-            commit(next,c);data.versions.put(key,c.token);data.types.put(key,c.type);data.renewable.put(key,water);data.own.add(c);data.ownChanges++;sequence++;revision++;s.inventory=next;s.inventoryVersion=Long.toString(revision);s.apply(target,r,lx,y,lz,c.type,false);s.applyInventory(next,started);
+            boolean water=type==0&&expected==10&&(data.renewable.getOrDefault(key,false)||!data.versions.containsKey(key));OnlineChange c=new OnlineChange(sequence+1,r,lx,y,lz,water?10:type,water,OnlineWorld.randomId(),OnlineChange.nonce(data.versions.getOrDefault(key,"")),f.uid,designation(type,x,y,z));
+            commit(next,c);if(expected==5&&type==0&&nature!=null)nature.changed(r);data.versions.put(key,c.token);data.types.put(key,c.type);data.renewable.put(key,water);data.own.add(c);data.ownChanges++;sequence++;revision++;s.inventory=next;s.inventoryVersion=Long.toString(revision);s.apply(target,r,lx,y,lz,c.type,false);s.applyInventory(next,started);
         }catch(Exception e){s.mutationFailed(e);}finally{s.pending=false;}});
     }
     @Override void progressAction(int recipe){if(!activated){super.progressAction(recipe);return;}if(!s.beginAction())return;long started=s.actionStarted;s.worker.execute(()->{try{Story next=OnlineInventory.copy(s.inventory);String message=recipe<0?(next.claim()?"Werkzeug / Auftrag freigeschaltet":next.goal()):next.craft(recipe);if(!OnlineInventory.same(next,s.inventory)){commit(next,null);revision++;s.inventory=next;s.inventoryVersion=Long.toString(revision);s.applyInventory(next,started);}String text=message;s.activity.runOnUiThread(()->{if(!s.closed){s.activity.toast(text);s.activity.online.refreshWorkbench();}});}catch(Exception e){s.mutationFailed(e);}finally{s.pending=false;}});}
@@ -140,5 +141,5 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
             }super.deleteWorld(success,failure);
         }catch(Exception e){s.activity.runOnUiThread(()->failure.accept("Löschen unterbrochen. Bitte erneut versuchen."));}});
     }
-    @Override public void close(){stopped=true;journalConnected=false;if(activated)FirebaseRest.DIAGNOSTICS.journal(false);if(db!=null)db.close();journalReader.shutdownNow();if(checkpoints!=null)checkpoints.close();}
+    @Override public void close(){stopped=true;if(nature!=null)nature.closed=true;journalConnected=false;if(activated)FirebaseRest.DIAGNOSTICS.journal(false);if(db!=null)db.close();journalReader.shutdownNow();if(checkpoints!=null)checkpoints.close();}
 }
