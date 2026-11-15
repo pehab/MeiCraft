@@ -6,7 +6,7 @@ import java.util.concurrent.*;
 
 /** Event-driven nature work on the session's serial worker; no idle timer or extra stream. */
 final class OnlineNature {
-    final OnlineV6 v;final OnlineSession s;boolean queued,closed;final Set<Integer> decayRegions=new HashSet<>();
+    final OnlineV6 v;final OnlineSession s;boolean queued,closed;Exception failure;final Set<Integer> decayRegions=new HashSet<>();
     final Map<Integer,World> terrain=new HashMap<>();final Map<Integer,Map<String,String>> cellCache=new HashMap<>();final Map<String,Long> counters=new HashMap<>();
     OnlineNature(OnlineV6 v){this.v=v;s=v.s;}
     void join(){s.worker.execute(()->{try{daily();}catch(Exception e){FirebaseRest.DIAGNOSTICS.failed("Baumprüfung · "+e.getClass().getSimpleName());}for(int id:s.readyRegions)decayRegions.add(id);schedule();});}
@@ -105,7 +105,7 @@ final class OnlineNature {
         }return false;
     }
     void decay(){
-        queued=false;if(closed||s.closed||!s.foreground)return;Set<Integer> work=new HashSet<>(decayRegions);decayRegions.clear();
+        failure=null;queued=false;if(closed||s.closed||!s.foreground)return;Set<Integer> work=new HashSet<>(decayRegions);decayRegions.clear();
         for(int region:work)try{
             if(!candidate(region))continue;
             v.readSync();JournalHead h=v.fetchHead();Tile tile=load(region,h);
@@ -125,7 +125,7 @@ final class OnlineNature {
                 patch.put("head/actors/"+v.f.uid+"/decayRegion",region).put("growth/decay/"+region,new JSONObject().put("at",new JSONObject().put(".sv","timestamp")));
                 publish(patch,changes);if(more)decayRegions.add(region);
             }
-        }catch(Exception e){FirebaseRest.DIAGNOSTICS.failed("Laubprüfung · "+e.getClass().getSimpleName());/* Next join / block change retries; no permanent failure polling. */}
+        }catch(Exception e){failure=e;FirebaseRest.DIAGNOSTICS.failed("Laubprüfung · "+e.getClass().getSimpleName());/* Next join / block change retries; no permanent failure polling. */}
         schedule();
     }
 }

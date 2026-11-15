@@ -94,9 +94,9 @@ final class JournalChecks {
             }
             v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});check(b.world.get(48,33,48)==5&&b.world.get(49,34,48)==6&&a.inventory.inventory[6]==inventory,"Whole grown tree reaches peer with unchanged inventory");
             engine.checkpoints.lease();engine.checkpoints.save(true);JSONObject checkpoint=backend.firestore.docs.get(a.base()+"/sync/checkpoint").getJSONObject("fields");boolean provenance=false;for(String id:OnlineV5.keys(OnlineV5.fields(checkpoint,"chunks"))){String path=a.base()+"/saved/"+FirebaseRest.string(OnlineV5.fields(checkpoint,"chunks"),id);JSONObject cells=OnlineV5.fields(backend.firestore.docs.get(path).getJSONObject("fields"),"cells");if(cells.has("48_30_48"))provenance=FirebaseRest.string(cells,"48_30_48").contains(":tree_3_");}check(provenance,"Checkpoint retains root stage and crown provenance");
-            for(int y=30;y<=33;y++){a.healthy=true;engine.edit(48,y,48,0);drain(a,game);}
-            for(int i=0;i<4;i++){engine.nature.changed(0);engine.nature.decay();test.onGl(game,()->{});}
-            v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});check(a.world.get(49,34,48)==0&&b.world.get(49,34,48)==0,"Progressive crown decay is durable and identical for peers");
+            for(int y=30;y<=33;y++){a.healthy=true;engine.edit(48,y,48,0);drain(a,game);check(a.world.get(48,y,48)==0,"Trunk harvest committed at height "+y+"; "+FirebaseRest.DIAGNOSTICS.report());}
+            for(int i=0;i<4;i++){engine.nature.changed(0);engine.nature.decay();if(engine.nature.failure!=null)throw engine.nature.failure;test.onGl(game,()->{});}
+            v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});check(a.world.get(49,34,48)==0&&b.world.get(49,34,48)==0,"Progressive crown decay is durable and identical for peers; local="+a.world.get(49,34,48)+", peer="+b.world.get(49,34,48)+"; "+FirebaseRest.DIAGNOSTICS.report());
         }finally{finish(a);finish(b);}
         OnlineSession restored=session(activity,backend,invite,"parent");try{v(restored).start(false,"",2);check(restored.world.get(49,34,48)==0,"Nature mutations survive warm restart");}finally{finish(restored);}
     }
