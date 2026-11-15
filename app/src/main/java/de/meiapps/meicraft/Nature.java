@@ -86,6 +86,40 @@ public final class Nature {
         }
         grassColumn%=World.W*World.D;
         for(int i=grass.nextSetBit(0);i>=0;i=grass.nextSetBit(i+1))w.set(i%World.W,i/(World.W*World.D),i/World.W%World.D,1);
+        // A single leaf block placed directly on soil is a sapling. Reuse the
+        // existing leaf ID: older saves and inventories need no migration.
+        // Each column is visited every ~36 seconds; most visits do not grow.
+        for(int n=0;n<columns;n++){
+            int column=(grassColumn+World.W*World.D-columns+n)%(World.W*World.D);
+            int x=column%World.W,z=column/World.W;
+            if(x<3||z<3||x>=w.width-3||z>=w.depth-3)continue;
+            for(int y=World.H-8;y>=2;y--){
+                if(w.get(x,y,z)!=6||w.get(x,y-1,z)!=1&&w.get(x,y-1,z)!=2)continue;
+                if(!saplingClearance(w,x,y,z))continue;
+                long hash=w.seed^(x*73856093L)^(z*19349663L)^(step*83492791L);
+                hash^=hash>>>33;hash*=0xff51afd7ed558ccdL;hash^=hash>>>33;
+                if((hash&15L)!=0)continue;
+                growTree(w,x,y,z);
+                break;
+            }
+        }
+    }
+    /** Never replace an occupied block or the player's current space. */
+    private static boolean saplingClearance(World w,int x,int y,int z){
+        for(int yy=y+1;yy<=y+5;yy++)if(w.get(x,yy,z)!=0)return false;
+        for(int yy=y+3;yy<=y+5;yy++)for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++)
+            if(Math.abs(dx)+Math.abs(dz)>3||dx==0&&dz==0)continue;
+            if(w.get(x+dx,yy,z+dz)!=0)return false;
+        return !w.overlapsPlayer(x,y,z);
+    }
+    private static void growTree(World w,int x,int y,int z){
+        // Remove the planted leaf first; no pre-existing world blocks are lost.
+        for(int yy=y;yy<=y+3;yy++)w.set(x,yy,z,5);
+        for(int yy=y+3;yy<=y+5;yy++)for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+            if(Math.abs(dx)+Math.abs(dz)+(yy==y+5?1:0)>3)continue;
+            if(dx==0&&dz==0&&yy<=y+3)continue;
+            w.set(x+dx,yy,z+dz,6);
+        }
     }
     private void flow(World w,int type){
         BitSet candidates=new BitSet(levels.length);
