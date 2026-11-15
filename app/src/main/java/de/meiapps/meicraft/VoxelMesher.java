@@ -43,7 +43,7 @@ final class VoxelMesher {
                         case 4:neighbor=z+1<depth?blocks[index+width]&255:0;break;
                         default:neighbor=z>0?blocks[index-width]&255:0;
                     }
-                    if(neighbor==0||((neighbor==10||neighbor==15)&&block!=neighbor))exposed|=1<<face;
+                    if(neighbor==0||((neighbor==10||neighbor==15||neighbor==8)&&block!=neighbor))exposed|=1<<face;
                 }
                 if(exposed==0)continue;
                 // Buried blocks have no visible heat or UVs, so do not consult Forge.
