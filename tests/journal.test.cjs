@@ -138,3 +138,7 @@ test('root provenance reconstructs a missing index without changing the saved da
  await seed();const day=utcDay()-1,at=Date.now()-86400000,token='a'.repeat(32),key='20_30_20',chunk='0_1_1_1';await env.withSecurityRulesDisabled(c=>set(ref(c.database(),storage+'/chunks/'+chunk+'/cells/'+key),{type:5,water:false,token,nature:`tree_2_${day}_${at}`}));
  await assertSucceeds(set(r('child',storage+'/growth/saplings/0/'+key),{chunk,stage:2,plantedAt:at,lastGrowthDay:day,token}));await assertFails(set(r('child',storage+'/growth/saplings/0/'+key),{chunk,stage:1,plantedAt:at,lastGrowthDay:day,token}));assert.equal((await get(r('child',storage+'/growth/saplings/0/'+key+'/stage'))).val(),2);
 });
+test('shared decay cadence prevents several clients from deleting a whole crown at once',async()=>{
+ await seed();const wave=uid=>batch(uid,Array.from({length:4},(_,i)=>({x:i+10,y:30,z:20,type:0})));const first=wave('child');first['head/actors/child/decayRegion']=0;first['growth/decay/0']={at:{'.sv':'timestamp'}};await assertSucceeds(update(r('child',storage),first));
+ const second=batch('sibling',Array.from({length:4},(_,i)=>({x:i+20,y:30,z:20,type:0})),{base:1});second['head/actors/sibling/decayRegion']=0;second['growth/decay/0']={at:{'.sv':'timestamp'}};await assertFails(update(r('sibling',storage),second));assert.equal((await get(r('child',storage+'/head/regions/s0'))).val(),4);
+});

@@ -120,6 +120,7 @@ final class OnlineNature {
             }
             if(!changes.isEmpty()){
                 JSONObject patch=JournalBatch.patch(v,changes).put("head/actors/"+v.f.uid+"/base",h.generation).put("head/actors/"+v.f.uid+"/presenceBase",tile.presenceVersion);
+                patch.put("head/actors/"+v.f.uid+"/decayRegion",region).put("growth/decay/"+region,new JSONObject().put("at",new JSONObject().put(".sv","timestamp")));
                 publish(patch,changes);if(more)decayRegions.add(region);
             }
         }catch(Exception e){FirebaseRest.DIAGNOSTICS.failed("Laubprüfung · "+e.getClass().getSimpleName());/* Next join / block change retries; no permanent failure polling. */}

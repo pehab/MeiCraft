@@ -18,7 +18,7 @@ Die vorhandenen Wege für Live-Head, Ringlücken, Chunk-Neuladen, Regionscache u
 
 ## Laubzerfall und Schutz
 
-Online wird nach Beitritt und nach erkanntem Stammabbau eine lokale, begrenzte Prüfung angestoßen. Nur bei tatsächlich vorhandenem ungestütztem Laub folgen Datenbankzugriffe. Maximal vier Blätter verschwinden je drei Sekunden als ein atomarer Batch. Ein neuer Beitritt setzt unterbrochenen Zerfall fort. Der bestätigte Journalzustand ist für alle Spieler maßgeblich. Konkurrenz führt zum Verwerfen des Plans; spätere Stammänderungen oder Beitritte prüfen erneut.
+Online wird nach Beitritt und nach erkanntem Stammabbau eine lokale, begrenzte Prüfung angestoßen. Nur bei tatsächlich vorhandenem ungestütztem Laub folgen Datenbankzugriffe. Maximal vier Blätter je Region verschwinden je drei Sekunden als ein atomarer Batch. Ein gemeinsamer Serverzeit-Cursor begrenzt auch mehrere gleichzeitig prüfende Clients auf dieses Tempo. Ein neuer Beitritt setzt unterbrochenen Zerfall fort. Der bestätigte Journalzustand ist für alle Spieler maßgeblich. Konkurrenz führt zum Verwerfen des Plans; spätere Stammänderungen oder Beitritte prüfen erneut.
 
 Holz im horizontalen Radius 3 (Manhattan-Abstand höchstens 4), vertikal ±4 schützt Laub. Blätter direkt auf Gras/Erde sowie registrierte Wachstumsspitzen bleiben bestehen. Spielerplatzierungen unbekannter/alter Herkunft werden vorsichtig als Dekoration geschützt; nur unverändertes generiertes Laub und ausdrücklich erzeugte Kronen zerfallen. Bereits schwebende natürliche Kronen werden beim Beitritt nach und nach entfernt. An Regionsrändern werden notwendige Nachbarregionen zur Holzstützenprüfung nachgeladen; dortige Stämme schützen ihre grenzübergreifenden Kronen ebenfalls.
 

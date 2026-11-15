@@ -107,7 +107,7 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
     JSONObject increment()throws JSONException{return new JSONObject().put(".sv",new JSONObject().put("increment",1));}
     void commit(Story inventory,OnlineChange c)throws Exception{
         long rev=revision+1;String uid=f.uid,eventKey=OnlineJournal.eventKey(rev),op=OnlineWorld.randomId(),prefix="head/actors/"+uid+"/",encrypted=encrypt(inventory,rev);
-        JSONObject patch=new JSONObject().put(prefix+"batch",JSONObject.NULL).put(prefix+"count",JSONObject.NULL).put(prefix+"base",JSONObject.NULL).put(prefix+"presenceBase",JSONObject.NULL).put(prefix+"growthToken",JSONObject.NULL).put(prefix+"growthDay",JSONObject.NULL).put("head/g",increment()).put(prefix+"rev",rev).put(prefix+"seq",sequence+(c==null?0:1)).put(prefix+"inventory",encrypted).put(prefix+"op",op).put(prefix+"eventKey",eventKey);
+        JSONObject patch=new JSONObject().put(prefix+"batch",JSONObject.NULL).put(prefix+"count",JSONObject.NULL).put(prefix+"base",JSONObject.NULL).put(prefix+"presenceBase",JSONObject.NULL).put(prefix+"growthToken",JSONObject.NULL).put(prefix+"growthDay",JSONObject.NULL).put(prefix+"decayRegion",JSONObject.NULL).put("head/g",increment()).put(prefix+"rev",rev).put(prefix+"seq",sequence+(c==null?0:1)).put(prefix+"inventory",encrypted).put(prefix+"op",op).put(prefix+"eventKey",eventKey);
         if(c!=null){JSONObject last=JournalBatch.last(c);
             patch.put(prefix+"last",last).put(prefix+"tail/e"+(c.sequence%16),c.encode()).put("head/regions/s"+c.region,increment()).put("head/chunks/"+OnlineJournal.chunk(c),increment()).put("chunks/"+OnlineJournal.chunk(c)+"/cells/"+c.key(),JournalBatch.cell(c,null));}
         if(c!=null){

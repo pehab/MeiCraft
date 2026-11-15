@@ -85,20 +85,20 @@ final class JournalChecks {
         try{
             OnlineV6 engine=v(a);engine.start(true,"Nature",2);ready(a);v(b).start(false,"",2);ready(b);
             Story stock=OnlineInventory.copy(a.inventory);stock.chapter=7;stock.inventory[6]=10;engine.commit(stock,null);engine.readSync();
-            OnlineChange soil=new OnlineChange(engine.sequence+1,0,20,29,20,2,false,OnlineWorld.randomId(),"","parent");engine.commit(a.inventory,soil);engine.readSync();engine.syncVisible(false);test.onGl(game,()->{});
-            engine.edit(20,30,20,6);drain(a,game);JSONObject record=(JSONObject)Backend.get(backend.root,engine.storage()+"/growth/saplings/0/20_30_20");check(record.getInt("stage")==0&&a.world.get(20,30,20)==6,"Player planting atomically registers a leaf sapling");
+            OnlineChange soil=new OnlineChange(engine.sequence+1,0,48,29,48,2,false,OnlineWorld.randomId(),"","parent");engine.commit(a.inventory,soil);engine.readSync();engine.syncVisible(false);test.onGl(game,()->{});
+            engine.edit(48,30,48,6);drain(a,game);JSONObject record=(JSONObject)Backend.get(backend.root,engine.storage()+"/growth/saplings/0/48_30_48");check(record.getInt("stage")==0&&a.world.get(48,30,48)==6,"Player planting atomically registers a leaf sapling");
             int inventory=a.inventory.inventory[6];long start=engine.day();
             for(int stage=1;stage<=3;stage++){
-                engine.db.serverOffset=stage*TreeGrowth.DAY;engine.nature.daily();test.onGl(game,()->{});record=(JSONObject)Backend.get(backend.root,engine.storage()+"/growth/saplings/0/20_30_20");check(record.getInt("stage")==stage&&record.getLong("lastGrowthDay")==start+stage,"Daily worker commits stage "+stage+" with UTC cursor");
+                engine.db.serverOffset=stage*TreeGrowth.DAY;engine.nature.daily();test.onGl(game,()->{});record=(JSONObject)Backend.get(backend.root,engine.storage()+"/growth/saplings/0/48_30_48");check(record.getInt("stage")==stage&&record.getLong("lastGrowthDay")==start+stage,"Daily worker commits stage "+stage+" with UTC cursor");
                 long generation=engine.fetchHead().generation;engine.nature.daily();check(engine.fetchHead().generation==generation,"Same-day login cannot grow again");
             }
-            v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});check(b.world.get(20,33,20)==5&&b.world.get(21,34,20)==6&&a.inventory.inventory[6]==inventory,"Whole grown tree reaches peer with unchanged inventory");
-            engine.checkpoints.lease();engine.checkpoints.save(true);JSONObject checkpoint=backend.firestore.docs.get(a.base()+"/sync/checkpoint").getJSONObject("fields");boolean provenance=false;for(String id:OnlineV5.keys(OnlineV5.fields(checkpoint,"chunks"))){String path=a.base()+"/saved/"+FirebaseRest.string(OnlineV5.fields(checkpoint,"chunks"),id);JSONObject cells=OnlineV5.fields(backend.firestore.docs.get(path).getJSONObject("fields"),"cells");if(cells.has("20_30_20"))provenance=FirebaseRest.string(cells,"20_30_20").contains(":tree_3_");}check(provenance,"Checkpoint retains root stage and crown provenance");
-            for(int y=30;y<=33;y++){a.healthy=true;engine.edit(20,y,20,0);drain(a,game);}
+            v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});check(b.world.get(48,33,48)==5&&b.world.get(49,34,48)==6&&a.inventory.inventory[6]==inventory,"Whole grown tree reaches peer with unchanged inventory");
+            engine.checkpoints.lease();engine.checkpoints.save(true);JSONObject checkpoint=backend.firestore.docs.get(a.base()+"/sync/checkpoint").getJSONObject("fields");boolean provenance=false;for(String id:OnlineV5.keys(OnlineV5.fields(checkpoint,"chunks"))){String path=a.base()+"/saved/"+FirebaseRest.string(OnlineV5.fields(checkpoint,"chunks"),id);JSONObject cells=OnlineV5.fields(backend.firestore.docs.get(path).getJSONObject("fields"),"cells");if(cells.has("48_30_48"))provenance=FirebaseRest.string(cells,"48_30_48").contains(":tree_3_");}check(provenance,"Checkpoint retains root stage and crown provenance");
+            for(int y=30;y<=33;y++){a.healthy=true;engine.edit(48,y,48,0);drain(a,game);}
             for(int i=0;i<4;i++){engine.nature.changed(0);engine.nature.decay();test.onGl(game,()->{});}
-            v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});check(a.world.get(21,34,20)==0&&b.world.get(21,34,20)==0,"Progressive crown decay is durable and identical for peers");
+            v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});check(a.world.get(49,34,48)==0&&b.world.get(49,34,48)==0,"Progressive crown decay is durable and identical for peers");
         }finally{finish(a);finish(b);}
-        OnlineSession restored=session(activity,backend,invite,"parent");try{v(restored).start(false,"",2);check(restored.world.get(21,34,20)==0,"Nature mutations survive warm restart");}finally{finish(restored);}
+        OnlineSession restored=session(activity,backend,invite,"parent");try{v(restored).start(false,"",2);check(restored.world.get(49,34,48)==0,"Nature mutations survive warm restart");}finally{finish(restored);}
     }
     void deleteRecovery(MainActivity activity,Backend backend,OnlineWorld invite)throws Exception{
         backend.firestore.docs.get("onlineWorlds/"+invite.id).getJSONObject("fields").put("closed",FirebaseRest.value(true));OnlineSession resumed=session(activity,backend,invite,"parent");boolean closed=false;
