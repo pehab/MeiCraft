@@ -45,6 +45,9 @@ public final class MaterialTests {
         check(resumed.materials.states.isEmpty()&&World.decode(resumed.encode()).get(20,6,20)==21,"completed offline reactions remove their persisted timer");
         Story story=new Story();story.chapter=7;story.inventory[23]=123;byte[] key=new byte[32];OnlineInventoryCipher cipher=new OnlineInventoryCipher(key);String encrypted=cipher.encrypt(story,"world","uid",9);check(encrypted.startsWith("2.")&&OnlineInventory.same(story,cipher.decrypt(encrypted,"world","uid",9)),"version-2 private inventories preserve every new material");
         VoxelMesher mesh=new VoxelMesher();w=NatureTests.flat(false);w.set(20,5,20,22);mesh.build(w,1,1,true);check(mesh.size>0&&mesh.values[3]>=37f/64&&mesh.values[3]<38f/64,"crystal glass has its own atlas slot in the transparent pass");
+        w=World.emptyOnlineTile(0);w.set(20,5,20,2);w.set(22,5,20,8);w.set(24,5,20,22);byte[] original=w.blocks.clone();
+        mesh.build(w,1,1,false);check(mesh.size==24*6,"opaque terrain excludes both glass materials");for(int n=3;n<mesh.size;n+=6)check(mesh.values[n]>=64.5f/2048&&mesh.values[n]<=95.5f/2048,"opaque dirt UVs address only the dirt tile in the expanded atlas");
+        mesh.build(w,1,1,true);check(mesh.size==48*6,"transparent pass includes both glass materials exactly once");check(Arrays.equals(original,w.blocks),"rendering never changes saved block IDs");
         System.out.println("PASS: "+checks+" material, generation, secret-reaction and compatibility assertions");
     }
 }

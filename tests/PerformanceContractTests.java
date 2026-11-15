@@ -8,12 +8,12 @@ public final class PerformanceContractTests {
     static int checks;
     static void check(boolean b,String message){checks++;if(!b)throw new AssertionError(message);}
     static void equal(World world,int cx,int cz,VoxelMesher mesher){
-        float[] expected=ReferenceMesher.build(world,cx,cz);mesher.build(world,cx,cz);
+        float[] expected=ReferenceMesher.build(world,cx,cz);mesher.buildLegacyForComparison(world,cx,cz);
         check(expected.length==mesher.size/4*6,"Expanded indexed vertex count at "+cx+","+cz);
         for(int i=0;i<expected.length;i++)if(Float.floatToIntBits(expected[i])!=Float.floatToIntBits(mesher.values[(i/36)*24+ReferenceMesher.ORDER[i/6%6]*6+i%6]))throw new AssertionError("Vertex/UV/light mismatch at float "+i+" chunk "+cx+","+cz);
         checks++;
         float[] scratch=mesher.values;int growths=mesher.growths;
-        mesher.build(world,cx,cz);
+        mesher.buildLegacyForComparison(world,cx,cz);
         check(scratch==mesher.values&&growths==mesher.growths,"Warm repeated builds allocate no new geometry array");
     }
     public static void main(String[] args){
@@ -54,7 +54,7 @@ public final class PerformanceContractTests {
     static volatile int sink;static volatile float[] meshSink;
     static void benchmark(World world,int cx,int cz,String name){
         VoxelMesher mesher=new VoxelMesher();
-        for(int i=0;i<40;i++){sink=ReferenceMesher.buildData(world,cx,cz).size;mesher.build(world,cx,cz);}
+        for(int i=0;i<40;i++){sink=ReferenceMesher.buildData(world,cx,cz).size;mesher.buildLegacyForComparison(world,cx,cz);}
         long[] old=new long[101],next=new long[101];
         for(int i=0;i<old.length;i++){
             // Alternate order to reduce systematic JIT/GC bias. Times are evidence,
@@ -66,5 +66,5 @@ public final class PerformanceContractTests {
         System.out.printf(java.util.Locale.ROOT,"MESH BENCH %s: reference p50/p95 %.3f/%.3f ms, candidate %.3f/%.3f ms; floats %d; scratch growths %d%n",name,old[50]/1e6,old[95]/1e6,next[50]/1e6,next[95]/1e6,mesher.size,mesher.growths);
     }
     static long reference(World world,int x,int z){long t=System.nanoTime();ReferenceMesher.Floats data=ReferenceMesher.buildData(world,x,z);meshSink=data.values;sink=data.size;return System.nanoTime()-t;}
-    static long candidate(World world,int x,int z,VoxelMesher mesher){long t=System.nanoTime();mesher.build(world,x,z);meshSink=mesher.values;sink=mesher.size;return System.nanoTime()-t;}
+    static long candidate(World world,int x,int z,VoxelMesher mesher){long t=System.nanoTime();mesher.buildLegacyForComparison(world,x,z);meshSink=mesher.values;sink=mesher.size;return System.nanoTime()-t;}
 }

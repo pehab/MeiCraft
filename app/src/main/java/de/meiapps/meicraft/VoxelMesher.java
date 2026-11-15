@@ -21,7 +21,7 @@ final class VoxelMesher {
         if(size+6>values.length){values=Arrays.copyOf(values,values.length*2);growths++;}
         values[size++]=a;values[size++]=b;values[size++]=c;values[size++]=u;values[size++]=v;values[size++]=l;
     }
-    void build(World world,int cx,int cz){buildMode(world,cx,cz,-1);}
+    void buildLegacyForComparison(World world,int cx,int cz){buildMode(world,cx,cz,-1);}
     void build(World world,int cx,int cz,boolean glassPass){buildMode(world,cx,cz,glassPass?1:0);}
     private void buildMode(World world,int cx,int cz,int mode){
         if(cx<0||cz<0||(cx+1)*16>world.width||(cz+1)*16>world.depth)throw new IllegalArgumentException("Invalid mesh chunk");

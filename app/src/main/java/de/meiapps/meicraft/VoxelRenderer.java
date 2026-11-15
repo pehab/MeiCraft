@@ -62,7 +62,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
     FloatBuffer terrainBuffer=ByteBuffer.allocateDirect(8192*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
     void mesh(int cx,int cz,Mesh mesh){
         long started=System.nanoTime();
-        terrainMesher.build(world,cx,cz);
+        terrainMesher.build(world,cx,cz,false);
         if(terrainBuffer.capacity()<terrainMesher.size)terrainBuffer=ByteBuffer.allocateDirect(terrainMesher.values.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
         terrainBuffer.clear();terrainBuffer.put(terrainMesher.values,0,terrainMesher.size).flip();
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,mesh.buffer);GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,terrainMesher.size*4,terrainBuffer,GLES20.GL_STATIC_DRAW);mesh.count=terrainMesher.size/6;

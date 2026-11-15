@@ -279,6 +279,28 @@ public final class SmokeInstrumentation extends Instrumentation {
  }
  static final String REFERENCE_FRAGMENT_SHADER="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;uniform float uAmbient;uniform vec4 uLamps[8];varying vec3 vWorld;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){float brightness=uAmbient;for(int i=0;i<8;i++){brightness=max(brightness,uLamps[i].w*max(0.0,1.0-distance(vWorld,uLamps[i].xyz)/6.0));}vec3 c=texture2D(uTex,vUv).rgb*min(vLight,1.0)*(vLight>1.1?1.0:brightness);float f=smoothstep(27.0,55.0,vDistance);gl_FragColor=vec4(mix(c,uFog,f),1.0);}";
  void checkGl(String stage){int error=GLES20.glGetError();check(error==GLES20.GL_NO_ERROR,stage+" · OpenGL 0x"+Integer.toHexString(error));}
+ void testTerrainAtlas(GameView game)throws Exception{
+  onGlAfterFrame(game,()->{
+   VoxelRenderer renderer=game.renderer;World old=renderer.world;World fixture=World.emptyOnlineTile(0);fixture.set(20,5,20,2);fixture.set(22,5,20,8);fixture.set(24,5,20,22);byte[] original=fixture.blocks.clone();
+   int[] buffers=new int[2],textures=new int[1],framebuffers=new int[1];int program=0;android.graphics.Bitmap atlas=null;
+   GLES20.glGenBuffers(2,buffers,0);GLES20.glGenTextures(1,textures,0);GLES20.glGenFramebuffers(1,framebuffers,0);
+   try{
+    try(java.io.InputStream stream=game.getContext().getAssets().open("blocks.png")){atlas=android.graphics.BitmapFactory.decodeStream(stream);}catch(IOException e){throw new AssertionError(e);}
+    check(atlas.getWidth()==2048&&atlas.getHeight()==32,"actual packaged atlas dimensions match terrain UVs");
+    VoxelRenderer.Mesh mesh=new VoxelRenderer.Mesh();mesh.buffer=buffers[0];mesh.glassBuffer=buffers[1];renderer.world=fixture;renderer.mesh(1,1,mesh);
+    check(mesh.count==24&&mesh.glassCount==48,"actual renderer uploads opaque terrain and both glass materials to separate passes");
+    String vertex="attribute vec3 aPos;attribute vec2 aUv;varying vec2 vUv;void main(){gl_Position=vec4((aPos.z-20.0)*2.0-1.0,(aPos.y-5.0)*2.0-1.0,0.0,1.0);vUv=aUv;}";
+    String fragment="precision mediump float;uniform sampler2D uTex;varying vec2 vUv;void main(){gl_FragColor=texture2D(uTex,vUv);}";
+    int vs=VoxelRenderer.shader(GLES20.GL_VERTEX_SHADER,vertex),fs=VoxelRenderer.shader(GLES20.GL_FRAGMENT_SHADER,fragment);program=GLES20.glCreateProgram();GLES20.glAttachShader(program,vs);GLES20.glAttachShader(program,fs);GLES20.glLinkProgram(program);GLES20.glDeleteShader(vs);GLES20.glDeleteShader(fs);
+    GLES20.glActiveTexture(GLES20.GL_TEXTURE0);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,textures[0]);GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MIN_FILTER,GLES20.GL_NEAREST);GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D,GLES20.GL_TEXTURE_MAG_FILTER,GLES20.GL_NEAREST);GLES20.glTexImage2D(GLES20.GL_TEXTURE_2D,0,GLES20.GL_RGBA,1,1,0,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,null);
+    GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,framebuffers[0]);GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER,GLES20.GL_COLOR_ATTACHMENT0,GLES20.GL_TEXTURE_2D,textures[0],0);check(GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER)==GLES20.GL_FRAMEBUFFER_COMPLETE,"terrain atlas pixel target complete");
+    GLES20.glViewport(0,0,1,1);GLES20.glDisable(GLES20.GL_CULL_FACE);GLES20.glDisable(GLES20.GL_DEPTH_TEST);GLES20.glDisable(GLES20.GL_BLEND);GLES20.glUseProgram(program);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,renderer.texture);GLES20.glUniform1i(GLES20.glGetUniformLocation(program,"uTex"),0);GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,mesh.buffer);
+    int pos=GLES20.glGetAttribLocation(program,"aPos"),uv=GLES20.glGetAttribLocation(program,"aUv");GLES20.glEnableVertexAttribArray(pos);GLES20.glEnableVertexAttribArray(uv);GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,0);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,24,12);GLES20.glDrawArrays(GLES20.GL_TRIANGLE_FAN,0,4);
+    java.nio.ByteBuffer pixel=java.nio.ByteBuffer.allocateDirect(4);GLES20.glReadPixels(0,0,1,1,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,pixel);int expected=atlas.getPixel(80,16);check((pixel.get(0)&255)==android.graphics.Color.red(expected)&&(pixel.get(1)&255)==android.graphics.Color.green(expected)&&(pixel.get(2)&255)==android.graphics.Color.blue(expected),"actual uploaded opaque mesh samples dirt, not a different atlas tile");
+    GLES20.glDisableVertexAttribArray(pos);GLES20.glDisableVertexAttribArray(uv);check(java.util.Arrays.equals(original,fixture.blocks),"actual mesh upload preserves world data");checkGl("actual terrain atlas rendering");
+   }finally{renderer.world=old;if(atlas!=null)atlas.recycle();GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,0);GLES20.glViewport(0,0,renderer.width,renderer.height);GLES20.glEnable(GLES20.GL_DEPTH_TEST);GLES20.glEnable(GLES20.GL_CULL_FACE);GLES20.glDisable(GLES20.GL_BLEND);GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,0);GLES20.glDeleteBuffers(2,buffers,0);GLES20.glDeleteTextures(1,textures,0);GLES20.glDeleteFramebuffers(1,framebuffers,0);if(program!=0)GLES20.glDeleteProgram(program);}
+  });
+ }
  void testLightingEquivalence(GameView game)throws Exception{
   onGlAfterFrame(game,()->{
    checkGl("renderer before lighting comparison");
@@ -714,6 +736,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   orient(activity,game,android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,960);
   testWorldLibrary(activity,game);onGlAfterFrame(game,()->checkGl("after testWorldLibrary"));
   testRecentOnlineRemoval(activity);
+  testTerrainAtlas(game);
   testLightingEquivalence(game);
   testSyncRequests(activity,game);
   testActiveSyncBudget(activity,game);
