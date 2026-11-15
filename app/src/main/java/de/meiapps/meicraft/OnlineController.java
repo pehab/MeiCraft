@@ -96,7 +96,7 @@ final class OnlineController {
     }
     void diagnostics(){
         activity.paused=true;activity.game.clearInput();
-        String report="App-Version: "+activity.versionName()+" · Android "+android.os.Build.VERSION.RELEASE+"\n"+FirebaseRest.DIAGNOSTICS.report()+"\nZuletzt gespeicherter Fehler (auch nach Neustart):\n"+activity.getSharedPreferences("online-diagnostics",0).getString("lastError","Keiner.");
+        String report="App-Version: "+activity.versionName()+" · Android "+android.os.Build.VERSION.RELEASE+"\n"+FirebaseRest.DIAGNOSTICS.report()+"\n"+activity.game.renderer.metrics.report()+"\nZuletzt gespeicherter Fehler (auch nach Neustart):\n"+activity.getSharedPreferences("online-diagnostics",0).getString("lastError","Keiner.")+"\n\nGesicherte Zähler beim letzten Fehler:\n"+activity.getSharedPreferences("online-diagnostics",0).getString("failureReport","Noch kein Bericht gespeichert.");
         android.widget.TextView text=new android.widget.TextView(activity);text.setText(report);text.setTextIsSelectable(true);int pad=(int)(20*activity.getResources().getDisplayMetrics().density);text.setPadding(pad,pad,pad,pad);
         android.widget.ScrollView scroll=new android.widget.ScrollView(activity);scroll.addView(text);
         new AlertDialog.Builder(activity).setTitle("Online-Diagnose").setView(scroll).setPositiveButton("Zurück",null)
@@ -123,7 +123,7 @@ final class OnlineController {
     }
     String[] workbenchRows(){
         Story p=session.inventory;
-        return new String[]{p.title()+" · "+p.goal(),"4 Bretter · 1 Holz ("+p.inventory[9]+")","4 Ziegel · 4 Erde + 1 Stein ("+p.inventory[7]+")","2 Glas · 2 Sand + 1 Holz ("+p.inventory[8]+")","1 Eisenbarren · 1 Erz + 1 Holz ("+p.iron+")","1 Eisenblock · 9 Barren ("+p.inventory[14]+")","4 Grasblöcke · 4 Erde + 1 Laub","Eiseneimer · 3 Barren (leer: "+p.buckets+")","Lavaeimer · Eimer + Leuchtstein + 4 Stein + 2 Holz"};
+        return new String[]{p.title()+" · "+p.goal(),"4 Bretter · 1 Holz ("+p.inventory[9]+")","4 Ziegel · 4 Erde + 1 Stein ("+p.inventory[7]+")","2 Glas · 2 Sand + 1 Holz ("+p.inventory[8]+")","1 Eisenbarren · 1 Erz + 1 Holz ("+p.iron+")","1 Eisenblock · 9 Barren ("+p.inventory[14]+")","4 Grasblöcke · 4 Erde + 1 Laub","Eiseneimer · 3 Barren (leer: "+p.buckets+")","Lavaeimer · Eimer + Leuchtstein + 4 Stein + 2 Holz","1 Kohleblock · 2 Holz im Ofen","1 Kristall · 1 Leuchtstein + 1 Glas"};
     }
     void refreshWorkbench(){if(session!=null&&workbenchDialog!=null&&workbenchDialog.isShowing()){workbenchAdapter.setNotifyOnChange(false);workbenchAdapter.clear();workbenchAdapter.addAll(workbenchRows());workbenchAdapter.notifyDataSetChanged();}}
     void workbench(){
@@ -132,7 +132,7 @@ final class OnlineController {
         workbenchDialog=new AlertDialog.Builder(activity).setTitle("Werkbank · "+Story.TOOLS[current.inventory.tool()]).setAdapter(workbenchAdapter,null).setNegativeButton("Weiterbauen",null).setOnDismissListener(d->{workbenchDialog=null;activity.resumePlay();}).create();workbenchDialog.show();
         workbenchDialog.getListView().setOnItemClickListener((parent,view,index,id)->{
             if(index==0){Story p=current.inventory;new AlertDialog.Builder(activity).setTitle(p.title()).setMessage(p.detail()).setPositiveButton(p.ready()?"Auftrag abschließen":"Weiter sammeln",(d,n)->{if(p.ready())current.progressAction(-1);}).setNegativeButton("Zurück",null).show();}
-            else current.progressAction(index==8?8:index-1);
+            else current.progressAction(index>=8?index:index-1);
         });
     }
     void players(){

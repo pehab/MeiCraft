@@ -4,14 +4,15 @@ import java.security.SecureRandom;
 
 /** Versioned online protocol; sector coordinates never alter the offline save format. */
 public final class OnlineWorld {
-    public static final int PROTOCOL=4;
+    public static final int PROTOCOL=5;
+    private static final SecureRandom RANDOM=new SecureRandom();
     private static final String PREFIX="MEICRAFT-ONLINE:1:";
     public final String id, invitation;
     public OnlineWorld(String id,String invitation){
         if(id==null||!id.matches("[a-f0-9]{32}")||invitation==null||!invitation.matches("[a-f0-9]{32}"))throw new IllegalArgumentException("Ungültige Online-Einladung");
         this.id=id;this.invitation=invitation;
     }
-    public static String randomId(){byte[] bytes=new byte[16];new SecureRandom().nextBytes(bytes);StringBuilder result=new StringBuilder(32);for(byte b:bytes){result.append("0123456789abcdef".charAt((b&255)>>>4));result.append("0123456789abcdef".charAt(b&15));}return result.toString();}
+    public static String randomId(){byte[] bytes=new byte[16];RANDOM.nextBytes(bytes);StringBuilder result=new StringBuilder(32);for(byte b:bytes){result.append("0123456789abcdef".charAt((b&255)>>>4));result.append("0123456789abcdef".charAt(b&15));}return result.toString();}
     public String encode(){return PREFIX+id+":"+invitation;}
     public static OnlineWorld decode(String text){
         if(text==null||!text.startsWith(PREFIX)||text.length()!=PREFIX.length()+65)throw new IllegalArgumentException("Das ist keine meiCraft-Online-Einladung.");

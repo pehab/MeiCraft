@@ -8,7 +8,7 @@ public final class Story {
  public static final String[] TOOLS={"Hand","Holzwerkzeug","Holzspitzhacke","Steinspitzhacke","Eisenspitzhacke"};
  public int tool(){return chapter>=5?4:chapter>=3?3:chapter>=2?2:chapter>=1?1:0;}
  public boolean furnace(){return chapter>=4;}
- public static int needed(int block){switch(block){case 1:case 2:return 0;case 4:case 5:case 6:case 9:case 12:return 1;case 3:case 7:return 2;case 8:case 13:case 16:return 3;default:return 4;}}
+ public static int needed(int block){switch(block){case 1:case 2:return 0;case 4:case 5:case 6:case 9:case 12:return 1;case 3:case 7:case 17:case 18:case 19:case 23:return 2;case 8:case 13:case 16:case 20:case 21:case 22:return 3;default:return 4;}}
  public boolean canMine(int block){return block>0&&block<World.NAMES.length&&tool()>=needed(block);}
  public float seconds(int block){float base=block==3?1.25f:block==13||block==16?1.7f:block==11?2f:block==5?.9f:.5f;return base/(1+.18f*tool());}
  public boolean add(int block,int amount){if(block<=0||block>=inventory.length||amount<0||inventory[block]>1000000-amount)return false;inventory[block]+=amount;return true;}
@@ -21,6 +21,8 @@ public final class Story {
   if(chapter<2)return "Baue zuerst die Werkbank im zweiten Auftrag.";
   int output=0,amount=0,costA=0,costB=0,typeA=0,typeB=0;
   switch(recipe){
+  case 9:if(!furnace())return "Baue zuerst den Ofen.";if(inventory[5]<2)return "Du brauchst 2 Holz.";if(!add(Materials.COAL,1))return "Dein Vorrat ist voll.";inventory[5]-=2;return "Ein Kohleblock ist im Ofen entstanden.";
+  case 10:if(!furnace())return "Baue zuerst den Ofen.";if(inventory[11]<1||inventory[8]<1)return "Du brauchst 1 Leuchtstein und 1 Glas.";if(!add(Materials.CRYSTAL,1))return "Dein Vorrat ist voll.";inventory[11]--;inventory[8]--;return "Ein Kristall wurde aus dem Leuchtstein gelöst.";
   case 6:if(iron<3)return "Du brauchst 3 Eisenbarren für einen Eiseneimer.";if(buckets>=1000000)return "Dein Vorrat ist voll.";iron-=3;buckets++;return "Eiseneimer hergestellt · − auf Lava zum Füllen";
   case 7:if(iron<2||inventory[5]<1)return "Du brauchst 2 Eisenbarren und 1 Holz.";if(sword)return "Du hast schon ein Eisenschwert.";iron-=2;inventory[5]--;sword=true;return "Eisenschwert hergestellt · − zum Angreifen";
   case 8:if(!furnace())return "Baue zuerst den Ofen.";if(buckets<1||inventory[11]<1||inventory[3]<4||inventory[5]<2)return "Du brauchst 1 leeren Eimer, 1 Leuchtstein, 4 Stein und 2 Holz.";if(!add(15,1))return "Dein Vorrat ist voll.";buckets--;inventory[11]--;inventory[3]-=4;inventory[5]-=2;return "Lavaeimer im Ofen geschmolzen";

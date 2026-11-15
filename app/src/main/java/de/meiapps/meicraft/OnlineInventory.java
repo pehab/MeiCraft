@@ -20,7 +20,7 @@ public final class OnlineInventory {
         }
         if(!next.canMine(block))return "Dafür brauchst du: "+Story.TOOLS[Story.needed(block)];
         if(block==16){if(next.iron>=1000000)return "Dein Vorrat ist voll.";next.iron++;}
-        else if(!next.add(block==1?2:block,1))return "Dein Vorrat ist voll.";
+        else if(!next.add(block==1?2:block==Materials.COAL_ORE?Materials.COAL:block,1))return "Dein Vorrat ist voll.";
         return "";
     }
     public static String place(Story next,int block){

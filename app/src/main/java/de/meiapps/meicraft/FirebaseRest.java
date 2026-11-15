@@ -6,6 +6,7 @@ import org.json.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /** Firebase user-token REST client. No service account or administrator credentials. */
 final class FirebaseRest {
@@ -21,14 +22,15 @@ final class FirebaseRest {
         String diagnostic(){return service+" · "+operation+" · HTTP "+status+" · "+serverStatus+" · "+detail;}
     }
     interface ConnectionFactory {HttpURLConnection open(URL url)throws IOException;}
-    final ConnectionFactory connections;
+    final ConnectionFactory connections;final boolean realtimeEligible;
     final android.content.Context context;
     final String project,key,root;
     final SharedPreferences credentials;
-    String uid,token="";long expires;
-    FirebaseRest(Context context)throws IOException,JSONException{this(context,url->(HttpURLConnection)url.openConnection());}
-    FirebaseRest(Context context,ConnectionFactory connections)throws IOException,JSONException{
-        this.connections=connections;this.context=context.getApplicationContext();
+    volatile String uid,token="";volatile long expires;
+    FirebaseRest(Context context)throws IOException,JSONException{this(context,url->(HttpURLConnection)url.openConnection(),true);}
+    FirebaseRest(Context context,ConnectionFactory connections)throws IOException,JSONException{this(context,connections,false);}
+    private FirebaseRest(Context context,ConnectionFactory connections,boolean realtimeEligible)throws IOException,JSONException{
+        this.realtimeEligible=realtimeEligible;this.connections=connections;this.context=context.getApplicationContext();
         JSONObject config;
         try(InputStream input=context.getAssets().open("google-services.json")){config=new JSONObject(new String(read(input),StandardCharsets.UTF_8));}
         project=config.getJSONObject("project_info").getString("project_id");
@@ -39,7 +41,7 @@ final class FirebaseRest {
         root="https://firestore.googleapis.com/v1/projects/"+project+"/databases/(default)/documents";
         credentials=context.getSharedPreferences("firebase-user",Context.MODE_PRIVATE);uid=credentials.getString("uid","");
     }
-    void authenticate()throws IOException,JSONException{
+    synchronized void authenticate()throws IOException,JSONException{
         if(!token.isEmpty()&&System.currentTimeMillis()<expires)return;
         String refresh=credentials.getString("refresh","");JSONObject result;
         if(refresh.isEmpty()){
@@ -54,8 +56,27 @@ final class FirebaseRest {
         if(!credentials.edit().putString("uid",uid).putString("refresh",refresh).commit())throw new IOException("Geräteanmeldung konnte nicht gespeichert werden.");
         expires=System.currentTimeMillis()+Math.max(0,result.optLong("expiresIn",result.optLong("expires_in",3600))-120)*1000;
     }
+    synchronized void invalidateToken(String used){if(token.equals(used)){token="";expires=0;}}
+    synchronized String idToken()throws IOException,JSONException{authenticate();return token;}
     JSONObject get(String path)throws IOException,JSONException{
         authenticate();try{JSONObject result=new JSONObject(request(root+"/"+path,"GET",null,true,false));DIAGNOSTICS.read(1);return result;}catch(Failure e){if(e.status==404)return null;throw e;}
+    }
+    static final class Snapshot {
+        final JSONObject document;final String readTime;
+        Snapshot(JSONObject document,String readTime){this.document=document;this.readTime=readTime;}
+    }
+    /** One overview document, with a server snapshot shared by every delta-query page. */
+    Snapshot snapshot(String path)throws IOException,JSONException{return snapshot(path,null);}
+    Snapshot snapshot(String path,List<String> fields)throws IOException,JSONException{
+        authenticate();JSONObject body=new JSONObject().put("documents",new JSONArray().put(documentName(path)));
+        if(fields!=null)body.put("mask",new JSONObject().put("fieldPaths",new JSONArray(fields)));
+        JSONArray response=new JSONArray(request(root+":batchGet","POST",body.toString(),true,false));
+        for(int i=0;i<response.length();i++){
+            JSONObject row=response.getJSONObject(i);
+            if(row.has("found")){DIAGNOSTICS.read(1);return new Snapshot(row.getJSONObject("found"),row.getString("readTime"));}
+            if(row.has("missing"))return new Snapshot(null,row.getString("readTime"));
+        }
+        throw new IOException("Unvollständiger Synchronisierungs-Snapshot.");
     }
     JSONObject commit(JSONArray writes)throws IOException,JSONException{
         authenticate();JSONObject result=new JSONObject(request(root+":commit","POST",new JSONObject().put("writes",writes).toString(),true,false));
@@ -96,6 +117,7 @@ final class FirebaseRest {
         if(url.contains("identitytoolkit.googleapis.com"))return "Anmeldung anlegen";
         if(url.contains("securetoken.googleapis.com"))return "Anmeldung erneuern";
         if(url.contains(":commit"))return "Änderungen speichern";
+        if(url.contains(":batchGet"))return "Änderungsübersicht lesen";
         if(url.contains("/sync/state"))return "Änderungsübersicht lesen";
         if(url.contains(":runQuery"))return "Blockänderungen lesen";
         if(url.contains("/inventory/"))return "Inventar lesen";
@@ -108,19 +130,27 @@ final class FirebaseRest {
         if(message.isEmpty())message="Server lieferte keine strukturierte Fehlerbeschreibung.";
         String refresh=credentials.getString("refresh","");
         Failure failure=new Failure(status,service,operation,OnlineDiagnostics.clean(serverStatus),OnlineDiagnostics.clean(message+reason,token,key,refresh,uid));
-        if(status!=404)context.getSharedPreferences("online-diagnostics",0).edit().putString("lastError",DIAGNOSTICS.failed(failure.diagnostic())).apply();return failure;
+        if(status!=404)saveFailure(DIAGNOSTICS.failed(failure.diagnostic()));return failure;
+    }
+    private String diagnosticVersion(){
+        try{return context.getPackageManager().getPackageInfo(context.getPackageName(),0).versionName;}
+        catch(android.content.pm.PackageManager.NameNotFoundException e){return "unbekannt";}
+    }
+    private void saveFailure(String detail){
+        context.getSharedPreferences("online-diagnostics",0).edit().putString("lastError",detail)
+            .putString("failureReport","App-Version: "+diagnosticVersion()+" · Android "+android.os.Build.VERSION.RELEASE+"\n"+DIAGNOSTICS.report()).apply();
     }
     private String request(String url,String method,String body,boolean authorized,boolean form)throws IOException{
         String operation=operation(url,method),service=url.contains("firestore.googleapis.com")?"Firestore":url.contains("securetoken.googleapis.com")?"Firebase Token":"Firebase Auth";
-        DIAGNOSTICS.request(operation);HttpURLConnection connection=connections.open(new URL(url));
+        String usedToken=token;DIAGNOSTICS.request(operation);HttpURLConnection connection=connections.open(new URL(url));
         try{
             connection.setConnectTimeout(8000);connection.setReadTimeout(10000);connection.setInstanceFollowRedirects(false);connection.setRequestMethod(method);
-            if(authorized)connection.setRequestProperty("Authorization","Bearer "+token);
-            if(body!=null){connection.setDoOutput(true);connection.setRequestProperty("Content-Type",form?"application/x-www-form-urlencoded":"application/json; charset=UTF-8");byte[] bytes=body.getBytes(StandardCharsets.UTF_8);connection.setFixedLengthStreamingMode(bytes.length);try(OutputStream output=connection.getOutputStream()){output.write(bytes);}}
+            if(authorized)connection.setRequestProperty("Authorization","Bearer "+usedToken);
+            if(body!=null){connection.setDoOutput(true);connection.setRequestProperty("Content-Type",form?"application/x-www-form-urlencoded":"application/json; charset=UTF-8");byte[] bytes=body.getBytes(StandardCharsets.UTF_8);DIAGNOSTICS.sent(bytes.length);connection.setFixedLengthStreamingMode(bytes.length);try(OutputStream output=connection.getOutputStream()){output.write(bytes);}}
             int status=connection.getResponseCode();
-            if(status<200||status>=300){String response="";try(InputStream input=connection.getErrorStream()){if(input!=null)response=new String(read(input),StandardCharsets.UTF_8);}catch(IOException ignored){/* The status remains useful when the error body is unavailable. */}Failure error=failure(status,service,operation,response);if(status==401&&authorized){token="";expires=0;}throw error;}
+            if(status<200||status>=300){String response="";try(InputStream input=connection.getErrorStream()){if(input!=null)response=new String(read(input),StandardCharsets.UTF_8);}catch(IOException ignored){/* The status remains useful when the error body is unavailable. */}Failure error=failure(status,service,operation,response);if(status==401&&authorized)invalidateToken(usedToken);throw error;}
             try(InputStream input=connection.getInputStream()){byte[] response=read(input);DIAGNOSTICS.received(response.length);return new String(response,StandardCharsets.UTF_8);}
-        }catch(Failure e){throw e;}catch(IOException e){String detail=DIAGNOSTICS.failed(service+" · "+operation+" · Netzwerkfehler: "+e.getClass().getSimpleName());context.getSharedPreferences("online-diagnostics",0).edit().putString("lastError",detail).apply();throw e;}
+        }catch(Failure e){throw e;}catch(IOException e){String detail=DIAGNOSTICS.failed(service+" · "+operation+" · Netzwerkfehler: "+e.getClass().getSimpleName());saveFailure(detail);throw e;}
         finally{connection.disconnect();}
     }
     static byte[] read(InputStream input)throws IOException{ByteArrayOutputStream output=new ByteArrayOutputStream();byte[] buffer=new byte[8192];int n;while((n=input.read(buffer))!=-1){if(output.size()+n>4*1024*1024)throw new IOException("Serverantwort zu groß.");output.write(buffer,0,n);}return output.toByteArray();}

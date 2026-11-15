@@ -14,10 +14,19 @@ public final class Nature {
     private float clock;
     private int step,grassColumn;
     private long dirtyChunks;
+    final BitSet naturalLeaves=new BitSet(levels.length),placedLeaves=new BitSet(levels.length);
+    void capture(World w){for(int i=0;i<w.blocks.length;i++)if(w.blocks[i]==6)naturalLeaves.set(i);}
+    void writeTrees(DataOutputStream out,World w)throws IOException{
+        for(BitSet source:new BitSet[]{naturalLeaves,placedLeaves}){BitSet bits=(BitSet)source.clone();for(int i=bits.nextSetBit(0);i>=0;i=bits.nextSetBit(i+1))if(w.blocks[i]!=6)bits.clear(i);byte[] data=bits.toByteArray();out.writeInt(data.length);out.write(data);}
+    }
+    void readTrees(DataInputStream in,World w)throws IOException{
+        for(BitSet bits:new BitSet[]{naturalLeaves,placedLeaves}){bits.clear();int n=in.readInt();if(n<0||n>(w.blocks.length+7)/8)throw new IOException("Ungültiges Laub");byte[] data=new byte[n];in.readFully(data);bits.or(BitSet.valueOf(data));for(int i=bits.nextSetBit(0);i>=0;i=bits.nextSetBit(i+1))if(i>=w.blocks.length||w.blocks[i]!=6)throw new IOException("Ungültiges Laub");}
+    }
+    void legacyTrees(World w){World origin=new World(w.seed,w.story,false);for(int i=0;i<w.blocks.length;i++)if(w.blocks[i]==6){if(origin.blocks[i]==6)naturalLeaves.set(i);else placedLeaves.set(i);}}
 
     public static boolean liquid(int block){return block==10||block==15;}
     void changed(int x,int y,int z){
-        int i=World.index(x,y,z);levels[i]=0;active.clear(i);springs.clear(i);
+        int i=World.index(x,y,z);naturalLeaves.clear(i);placedLeaves.clear(i);levels[i]=0;active.clear(i);springs.clear(i);
         dirty(x,z);
     }
     void dirty(int x,int z){
@@ -35,7 +44,7 @@ public final class Nature {
         clock+=Math.min(dt,.1f);if(clock<.5f)return;clock-=.5f;step++;
         react(w);
         if(flowEnabled){flow(w,10);if(step%3==0)flow(w,15);}
-        w.forge.step(w);
+        w.forge.step(w);if(step%6==0)w.materials.step(w);
         // One full pass every 36 seconds. Growth needs open sky and nearby grass.
         grow(w,128);
     }
@@ -65,7 +74,7 @@ public final class Nature {
             if(b==15&&adjacent(w,x,y,z,10))stone.set(i);
             if(b==4&&step%6==0&&adjacent(w,x,y,z,15))glass.set(i);
         }
-        for(int i=stone.nextSetBit(0);i>=0;i=stone.nextSetBit(i+1))w.set(i%World.W,i/(World.W*World.D),i/World.W%World.D,3);
+        for(int i=stone.nextSetBit(0);i>=0;i=stone.nextSetBit(i+1))w.set(i%World.W,i/(World.W*World.D),i/World.W%World.D,w.terrainVersion>=2?Materials.BASALT:3);
         for(int i=glass.nextSetBit(0);i>=0;i=glass.nextSetBit(i+1)){
             int x=i%World.W,y=i/(World.W*World.D),z=i/World.W%World.D;
             if(adjacent(w,x,y,z,15))w.set(x,y,z,8);
@@ -86,6 +95,70 @@ public final class Nature {
         }
         grassColumn%=World.W*World.D;
         for(int i=grass.nextSetBit(0);i>=0;i=grass.nextSetBit(i+1))w.set(i%World.W,i/(World.W*World.D),i/World.W%World.D,1);
+        decayUnsupportedLeaves(w,columns);
+        // A single leaf block placed directly on soil is a sapling. Reuse the
+        // existing leaf ID: older saves and inventories need no migration.
+        // Each column is visited every ~36 seconds; most visits do not grow.
+        for(int n=0;n<columns;n++){
+            int column=(grassColumn+World.W*World.D-columns+n)%(World.W*World.D);
+            int x=column%World.W,z=column/World.W;
+            if(x<3||z<3||x>=w.width-3||z>=w.depth-3)continue;
+            for(int y=World.H-8;y>=2;y--){
+                if(!placedLeaves.get(World.index(x,y,z))||w.get(x,y,z)!=6||w.get(x,y-1,z)!=1&&w.get(x,y-1,z)!=2)continue;
+                if(!saplingClearance(w,x,y,z))continue;
+                long hash=w.seed^(x*73856093L)^(z*19349663L)^(step*83492791L);
+                hash^=hash>>>33;hash*=0xff51afd7ed558ccdL;hash^=hash>>>33;
+                if((hash&15L)!=0)continue;
+                growTree(w,x,y,z);
+                break;
+            }
+        }
+    }
+    /** Unsupported leaf clusters slowly disappear after their trunks are mined.
+     * A leaf planted on grass or dirt is reserved as a sapling.
+     * Only offline nature ticks call this method; player-built leaves next to
+     * a wood support are retained.
+     */
+    private void decayUnsupportedLeaves(World w,int columns){
+        for(int n=0;n<columns;n++){
+            int column=(grassColumn+World.W*World.D-columns+n)%(World.W*World.D);
+            int x=column%World.W,z=column/World.W;
+            if(x<3||z<3||x>=w.width-3||z>=w.depth-3)continue;
+            for(int y=2;y<World.H-4;y++){
+                if(w.get(x,y,z)!=6||!naturalLeaves.get(World.index(x,y,z)))continue;
+                if(w.get(x,y-1,z)==1||w.get(x,y-1,z)==2)continue;
+                long hash=w.seed^(x*73856093L)^(z*19349663L)^(y*83492791L)^(step*2654435761L);
+                hash^=hash>>>33;hash*=0xff51afd7ed558ccdL;hash^=hash>>>33;
+                if((hash&7L)!=0||hasWoodSupport(w,x,y,z))continue;
+                w.set(x,y,z,0);
+            }
+        }
+    }
+    private static boolean hasWoodSupport(World w,int x,int y,int z){
+        for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++)
+            for(int dy=-4;dy<=4;dy++){
+                if(Math.abs(dx)+Math.abs(dz)>4)continue;
+                if(w.get(x+dx,y+dy,z+dz)==5)return true;
+            }
+        return false;
+    }
+    /** Never replace an occupied block or the player's current space. */
+    private static boolean saplingClearance(World w,int x,int y,int z){
+        for(int yy=y+1;yy<=y+5;yy++)if(w.get(x,yy,z)!=0||w.overlapsPlayer(x,yy,z))return false;
+        for(int yy=y+3;yy<=y+5;yy++)for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+            if(Math.abs(dx)+Math.abs(dz)>3||dx==0&&dz==0)continue;
+            if(w.get(x+dx,yy,z+dz)!=0||w.overlapsPlayer(x+dx,yy,z+dz))return false;
+        }
+        return !w.overlapsPlayer(x,y,z);
+    }
+    private static void growTree(World w,int x,int y,int z){
+        // Remove the planted leaf first; no pre-existing world blocks are lost.
+        for(int yy=y;yy<=y+3;yy++)w.set(x,yy,z,5);
+        for(int yy=y+3;yy<=y+5;yy++)for(int dx=-2;dx<=2;dx++)for(int dz=-2;dz<=2;dz++){
+            if(Math.abs(dx)+Math.abs(dz)+(yy==y+5?1:0)>3)continue;
+            if(dx==0&&dz==0&&yy<=y+3)continue;
+            w.set(x+dx,yy,z+dz,6);w.nature.naturalLeaves.set(World.index(x+dx,yy,z+dz));
+        }
     }
     private void flow(World w,int type){
         BitSet candidates=new BitSet(levels.length);
@@ -125,13 +198,13 @@ public final class Nature {
     /** Add only wholly untouched stone volumes; never regenerate a saved landscape. */
     public int addCaves(World w){
         if(cavesAdded||!w.story)return 0;
-        World original=new World(w.seed,true,false);Random random=new Random(w.seed^0x4c415641L);int added=0;
+        World original=new World(w.seed,true,false,w.terrainVersion);Random random=new Random(w.seed^0x4c415641L);int added=0;
         for(int attempt=0;attempt<80&&added<6;attempt++){
             int cx=7+random.nextInt(World.W-14),cz=7+random.nextInt(World.D-14),floor=3+random.nextInt(3);
             boolean safe=true;
             for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++)for(int y=floor-1;y<=floor+6;y++){
                 int x=cx+dx,z=cz+dz,i=World.index(x,y,z),b=w.get(x,y,z);
-                if(b!=original.get(x,y,z)||b!=3&&b!=13&&b!=11||w.overlapsPlayer(x,y,z))safe=false;
+                if(w.materials.touched.get(i)||b!=original.get(x,y,z)||b!=3&&b!=13&&b!=11&&b!=Materials.COAL_ORE&&b!=Materials.BASALT||w.overlapsPlayer(x,y,z))safe=false;
             }
             if(!safe)continue;
             for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){

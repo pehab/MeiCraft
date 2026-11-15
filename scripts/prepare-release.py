@@ -12,7 +12,7 @@ import zipfile
 version = dict(line.split("=", 1) for line in Path("version.properties").read_text().splitlines() if "=" in line)
 name = version["versionName"]
 code = int(version["versionCode"])
-if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){2}", name) or code <= 0:
+if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){2}(?:-rc\.[1-9][0-9]*)?", name) or code <= 0:
     raise SystemExit("Invalid release version")
 sdk = Path(os.environ["ANDROID_SDK_ROOT"])
 signer = sdk / "build-tools/36.0.0/apksigner"

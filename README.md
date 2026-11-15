@@ -2,7 +2,15 @@
 
 Eigenständiges Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Offline ohne Anmeldung, Werbung oder Käufe. Optional gemeinsam online bauen: Firebase speichert dafür eine anonyme Geräte-ID, Weltänderungen und Mitspielerpositionen.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.8.3
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 1.0.0
+
+## 1.0 · Feature-Freeze und Stabilisierung
+
+Die [vereinbarte Featureliste](docs/1.0-VISUAL-POLISH-IMPLEMENTATION.md) ist softwareseitig umgesetzt: neue Materialien und Kristallhöhlen in neuen Welten, begrenztes Kohlefeuer, Geheimreaktionen, Kristallglas, nachwachsende Bäume und gemeinsamer Laubzerfall. Nebel, Vegetation, Flüssigkeitsanimation und Partikel bleiben lokal. Alte Welten behalten ihre Landschaft.
+
+[Verhalten, Kompatibilität und Einführung](docs/MATERIALS-1.0.md): neue Apps auf allen Geräten und aktualisierte RTDB- **und** Firestore-Regeln erforderlich. Die Übernahme von PR #20 nach `main` und Veröffentlichung als 1.0.0 sind zur Stabilisierung freigegeben. Keine automatische Regelbereitstellung; echte Tablet-/Altweltsicherungs-Abnahme steht aus. [Prüfplan](docs/1.0-VALIDATION.md) und [Migration mit Sicherungs-/Rollbackhinweisen](docs/RELEASE-1.0.0-rc.6.md). Die folgenden Versionsabschnitte dokumentieren die bisher veröffentlichten Versionen.
+
+[Änderungen und Updatehinweise für 1.0.0](docs/RELEASE-1.0.0.md). Über die bestehende Installation aktualisieren; nicht deinstallieren oder App-Daten löschen.
 
 ## Gemeinsam bauen · 0.8.3
 
@@ -38,7 +46,7 @@ Im Hauptmenü liegen außerdem neue Welten, QR-Empfang, Update-Suche, Steuerung 
 
 Lava kann mehr als leuchten: Manche Materialien verändern sich, wenn man sie längere Zeit direkt über einer Quelle platziert. Glühen, Funken und die Anzeige beim Anvisieren zeigen eine begonnene Reaktion. In neuen Storywelten kann eine verfallene Glutstätte einen Hinweis liefern. Diese Möglichkeiten stehen nicht in der Rezeptliste der Werkbank.
 
-Die Reaktionen funktionieren auch in bestehenden Welten, deren Landschaft beim Laden unverändert bleibt. Neu gespeicherte Welten verwenden Format 5 und erhalten laufende Reaktionen über Laden, App-Neustart und QR-Übertragung. Alte Formate 1–4 bleiben lesbar. Zum Empfangen von Welten aus 0.6.0 muss das andere Gerät ebenfalls aktualisiert sein.
+Die Reaktionen funktionieren auch in bestehenden Welten, deren Landschaft beim Laden unverändert bleibt. Seit 0.6.0 erhält Format 5 laufende Reaktionen über Laden, App-Neustart und QR-Übertragung. Der 1.0-Kandidat verwendet inzwischen Format 7 und liest weiterhin Formate 1–6. Zum Empfangen von Welten aus 0.6.0 muss das andere Gerät ebenfalls aktualisiert sein.
 
 ## Kreativ und Story
 
@@ -118,7 +126,7 @@ bash scripts/build-upgrade-fixture.sh
 
 Die APK liegt unter `build/meiCraft-0.6.0.apk`. Der direkte SDK-Build benötigt keine Spielbibliotheken. `.signing/` enthält den privaten, lokal wiederverwendeten Schlüssel und ist aus Git ausgeschlossen. Updates veröffentlichter APKs brauchen den ursprünglichen Projektschlüssel. Das private Secret `MEICRAFT_SIGNING_JSON` hat die Felder `keystore` (Base64-PKCS12), `password` und `alias` (`meicraft`); `scripts/restore-signing.py` stellt daraus den lokalen Schlüssel wieder her. CI-Testschlüssel werden nie veröffentlicht.
 
-Alternativ Android Studio oder `./gradlew --warning-mode=fail assembleDebug lintDebug`. Versionen stehen in `version.properties`. Compiler-, Lint- und Gradle-Warnungen führen zu Fehlern. Der Gradle-Prüfpfad verwendet AGP 9.5.0-rc01 mit Kotlin-Build-Komponente 2.4.21, um deren dokumentierte Configuration.setVisible-Probleme mit Gradle 9.8.2 zu beheben. Die veröffentlichte APK entsteht direkt mit den stabilen SDK-Werkzeugen.
+Alternativ Android Studio oder `./gradlew --warning-mode=fail assembleDebug lintDebug`. Versionen stehen in `version.properties`. Compiler-, Lint- und Gradle-Warnungen führen zu Fehlern. Der Gradle-Prüfpfad verwendet AGP 9.5.0-rc01 mit Kotlin-Build-Komponente 2.4.21, um deren dokumentierte Configuration.setVisible-Probleme mit Gradle 9 zu beheben. Der Wrapper verwendet Gradle 9.9.1 mit offizieller SHA-256-Prüfsumme. Die veröffentlichte APK entsteht direkt mit den stabilen SDK-Werkzeugen.
 
 Auf einem Emulator ohne wertvollen Spielstand:
 
@@ -138,3 +146,8 @@ Alle Texturen sind prozedurale Originale. Neuerzeugen mit `python3 scripts/gener
 
 Updates folgen der tatsächlichen Installationsquelle: Google Play für Play-Installationen, GitHub für direkt installierte APKs. [Bedienung, Signierung und Veröffentlichung](docs/UPDATES.md).
 
+
+## Entwicklung von 1.0
+
+Der Kandidat `1.0.0-rc.2` erhält Funktion und Optik und optimiert interne Abläufe.
+[Prüfbare Verträge und Freigabekriterien](docs/1.0-CONTRACT.md) · [Kandidatenänderungen](docs/RELEASE-1.0.0-rc.2.md).
