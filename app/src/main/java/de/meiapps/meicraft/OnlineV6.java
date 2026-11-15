@@ -112,7 +112,7 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
                 int gx=c.region%s.side*World.W+c.x,gz=c.region/s.side*World.D+c.z;
                 World current=s.world;
                 if(current!=null&&(current.get(gx,c.y-1,gz)==1||current.get(gx,c.y-1,gz)==2))
-                    patch.put(saplingPath,new JSONObject().put("stage",0).put("plantedAt",System.currentTimeMillis()));
+                    patch.put(saplingPath,new JSONObject().put("stage",0).put("plantedAt",System.currentTimeMillis()).put("lastGrowthDay",-1));
                 else patch.put(saplingPath,JSONObject.NULL);
             }else patch.put(saplingPath,JSONObject.NULL);
         }
