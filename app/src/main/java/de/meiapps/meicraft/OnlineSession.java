@@ -204,7 +204,7 @@ final class OnlineSession implements AutoCloseable {
     static JSONObject order(String field)throws JSONException{return new JSONObject().put("field",new JSONObject().put("fieldPath",field)).put("direction","ASCENDING");}
     void apply(World target,int region,int x,int y,int z,int type,boolean initial){
         if(initial){target.set(x,y,z,type);return;}
-        activity.game.gl.queueEvent(()->{if(!closed&&world==target){int gx=region%side*World.W+x,gz=region/side*World.D+z;synchronized(target){target.set(gx,y,gz,type);}activity.game.renderer.dirty(gx,gz);}});
+        activity.game.gl.queueEvent(()->{if(!closed&&world==target){int gx=region%side*World.W+x,gz=region/side*World.D+z;int previous; synchronized(target){previous=target.get(gx,y,gz);target.set(gx,y,gz,type);}activity.game.renderer.dirty(gx,gz);if(previous!=0&&type==0)activity.game.renderer.miningDebris(gx,y,gz,previous);}});
     }
     String inventoryPath(){return member(firebase.uid)+"/inventory/main";}
     JSONObject inventoryFields(Story state,String lastBlock)throws JSONException{
