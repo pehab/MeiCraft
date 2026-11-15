@@ -183,10 +183,40 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             float phase=(world.forge.animation*.8f+(i%17)/17f)%1f;
             cube(x+(float)Math.sin(i+phase*5)*.24f,y+phase*.7f,z+(float)Math.cos(i+phase*4)*.24f,.055f,.055f,.055f,24);
         }
+        drawVegetation();
         drawPlayers();
         if(creatures.size==0)return;
         creatureBuffer.clear();creatureBuffer.put(creatures.values,0,creatures.size);creatureBuffer.position(0);GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,creatureBuffer);
         creatureBuffer.position(3);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,24,creatureBuffer);creatureBuffer.position(5);GLES20.glVertexAttribPointer(light,1,GLES20.GL_FLOAT,false,24,creatureBuffer);GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,creatures.size/6);
+    }
+    /** Deterministic, local-only foliage: no block IDs, save changes or network traffic. */
+    void drawVegetation(){
+        int px=(int)Math.floor(world.x),pz=(int)Math.floor(world.z),drawn=0;
+        for(int x=Math.max(1,px-12);x<Math.min(world.width-1,px+13);x++)
+            for(int z=Math.max(1,pz-12);z<Math.min(world.depth-1,pz+13);z++){
+                long hash=(world.seed^(x*73856093L)^(z*19349663L))*0x9E3779B97F4A7C15L;
+                hash^=hash>>>32;
+                if((hash&15)!=0||drawn>=64)continue;
+                int top=-1;
+                for(int y=World.H-2;y>=World.SEA;y--)if(world.get(x,y,z)==1&&world.get(x,y+1,z)==0){top=y;break;}
+                if(top<0||Math.abs(top+1-world.y)>9)continue;
+                float bx=x+.32f+((hash>>>8)&7)*.035f,bz=z+.32f+((hash>>>12)&7)*.035f;
+                int kind=(int)((hash>>>20)&7);
+                if(kind==0){
+                    // A tiny mushroom, with a contrasting cap.
+                    cube(bx,top+1,bz,.10f,.16f,.10f,9);
+                    cube(bx-.06f,top+1.14f,bz-.06f,.22f,.09f,.22f,7);
+                }else if(kind<=2){
+                    // A flower on a thin stem with a bright bloom.
+                    cube(bx+.04f,top+1,bz+.04f,.055f,.29f,.055f,6);
+                    cube(bx-.025f,top+1.26f,bz-.025f,.18f,.13f,.18f,kind==1?11:12);
+                }else{
+                    // Two thin, offset blades of grass.
+                    cube(bx,top+1,bz,.045f,.20f,.045f,6);
+                    cube(bx+.10f,top+1,bz+.08f,.045f,.14f,.045f,6);
+                }
+                drawn++;
+            }
     }
     final FloatBuffer outlineBuffer=ByteBuffer.allocateDirect(24*6*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
     void outline(int[] hit){
