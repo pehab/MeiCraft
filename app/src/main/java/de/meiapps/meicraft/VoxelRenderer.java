@@ -8,10 +8,10 @@ import javax.microedition.khronos.opengles.GL10;
 import javax.microedition.khronos.egl.EGLConfig;
 
 final class VoxelRenderer implements GLSurfaceView.Renderer {
-    static final String FRAGMENT_SHADER="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;uniform float uAmbient;uniform float uAlpha;uniform vec4 uLamps[8];varying vec3 vWorld;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){float brightness=uAmbient;if(uAmbient<1.0){for(int i=0;i<8;i++){brightness=max(brightness,uLamps[i].w*max(0.0,1.0-distance(vWorld,uLamps[i].xyz)/6.0));}}vec3 c=texture2D(uTex,vUv).rgb*min(vLight,1.0)*(vLight>1.1?1.0:brightness);float f=smoothstep(27.0,55.0,vDistance);gl_FragColor=vec4(mix(c,uFog,f),uAlpha);}";
+    static final String FRAGMENT_SHADER="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;uniform float uAmbient;uniform float uGlassPass;uniform vec4 uLamps[8];varying vec3 vWorld;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){float brightness=uAmbient;if(uAmbient<1.0){for(int i=0;i<8;i++){brightness=max(brightness,uLamps[i].w*max(0.0,1.0-distance(vWorld,uLamps[i].xyz)/6.0));}}vec3 c=texture2D(uTex,vUv).rgb*min(vLight,1.0)*(vLight>1.1?1.0:brightness);float f=smoothstep(27.0,55.0,vDistance);gl_FragColor=vec4(mix(c,uFog,f),mix(1.0,0.20,uGlassPass));}";
     final GameView view;
     World world;
-    int program,texture,pos,uv,light,mvp,camera,fog,ambient,alpha,lamps,sampler,terrainElements;
+    int program,texture,pos,uv,light,mvp,camera,fog,ambient,glassPass,lamps,sampler,terrainElements;
     final float[] lampData=new float[32],lampDistances=new float[8];float lampTimer;
     final float[] projection=new float[16],look=new float[16],matrix=new float[16];
     Mesh[] meshes=new Mesh[0];int meshCols,meshRows;
@@ -37,7 +37,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
         String vs="uniform mat4 uM;uniform vec3 uCamera;attribute vec3 aPos;attribute vec2 aUv;attribute float aLight;varying vec2 vUv;varying float vLight;varying float vDistance;varying vec3 vWorld;void main(){vWorld=aPos;gl_Position=uM*vec4(aPos,1.0);vUv=aUv;vLight=aLight;vDistance=distance(aPos,uCamera);}";
         String fs=FRAGMENT_SHADER;
         program=GLES20.glCreateProgram();GLES20.glAttachShader(program,shader(GLES20.GL_VERTEX_SHADER,vs));GLES20.glAttachShader(program,shader(GLES20.GL_FRAGMENT_SHADER,fs));GLES20.glLinkProgram(program);int[] linked=new int[1];GLES20.glGetProgramiv(program,GLES20.GL_LINK_STATUS,linked,0);if(linked[0]==0)throw new IllegalStateException(GLES20.glGetProgramInfoLog(program));
-        pos=GLES20.glGetAttribLocation(program,"aPos");uv=GLES20.glGetAttribLocation(program,"aUv");light=GLES20.glGetAttribLocation(program,"aLight");mvp=GLES20.glGetUniformLocation(program,"uM");camera=GLES20.glGetUniformLocation(program,"uCamera");fog=GLES20.glGetUniformLocation(program,"uFog");ambient=GLES20.glGetUniformLocation(program,"uAmbient");alpha=GLES20.glGetUniformLocation(program,"uAlpha");lamps=GLES20.glGetUniformLocation(program,"uLamps[0]");sampler=GLES20.glGetUniformLocation(program,"uTex");
+        pos=GLES20.glGetAttribLocation(program,"aPos");uv=GLES20.glGetAttribLocation(program,"aUv");light=GLES20.glGetAttribLocation(program,"aLight");mvp=GLES20.glGetUniformLocation(program,"uM");camera=GLES20.glGetUniformLocation(program,"uCamera");fog=GLES20.glGetUniformLocation(program,"uFog");ambient=GLES20.glGetUniformLocation(program,"uAmbient");glassPass=GLES20.glGetUniformLocation(program,"uGlassPass");lamps=GLES20.glGetUniformLocation(program,"uLamps[0]");sampler=GLES20.glGetUniformLocation(program,"uTex");
         ensureMeshes(view.world,true);int[] ids=new int[1];
         GLES20.glGenBuffers(1,ids,0);terrainElements=ids[0];
         short[] indices=TerrainIndices.pattern();ShortBuffer elements=ByteBuffer.allocateDirect(indices.length*2).order(ByteOrder.nativeOrder()).asShortBuffer();elements.put(indices).flip();
@@ -84,7 +84,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             float daylight=world.story&&!world.online?world.survival.daylight():1;float skyR=.025f+.505f*daylight*daylight,skyG=.035f+.725f*daylight*daylight,skyB=.09f+.77f*daylight*daylight;GLES20.glClearColor(skyR,skyG,skyB,1);GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT|GLES20.GL_DEPTH_BUFFER_BIT);
             float dx=-(float)Math.sin(world.yaw)*(float)Math.cos(world.pitch),dy=(float)Math.sin(world.pitch),dz=-(float)Math.cos(world.yaw)*(float)Math.cos(world.pitch);
             Matrix.setLookAtM(look,0,world.x,world.y,world.z,world.x+dx,world.y+dy,world.z+dz,0,1,0);Matrix.multiplyMM(matrix,0,projection,0,look,0);frustum.update(matrix);
-            GLES20.glUseProgram(program);GLES20.glUniformMatrix4fv(mvp,1,false,matrix,0);GLES20.glUniform3f(camera,world.x,world.y,world.z);GLES20.glUniform3f(fog,skyR,skyG,skyB);GLES20.glUniform1f(ambient,daylight);GLES20.glUniform1f(alpha,1f);lampTimer-=dt;if(lampTimer<=0){findLamps();lampTimer=.5f;}GLES20.glUniform4fv(lamps,8,lampData,0);
+            GLES20.glUseProgram(program);GLES20.glUniformMatrix4fv(mvp,1,false,matrix,0);GLES20.glUniform3f(camera,world.x,world.y,world.z);GLES20.glUniform3f(fog,skyR,skyG,skyB);GLES20.glUniform1f(ambient,daylight);GLES20.glUniform1f(glassPass,0f);lampTimer-=dt;if(lampTimer<=0){findLamps();lampTimer=.5f;}GLES20.glUniform4fv(lamps,8,lampData,0);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,texture);GLES20.glUniform1i(sampler,0);
             GLES20.glEnableVertexAttribArray(pos);GLES20.glEnableVertexAttribArray(uv);GLES20.glEnableVertexAttribArray(light);
             int drawn=0,culled=0;
@@ -106,7 +106,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
                 }
             }
             // Transparent glass is drawn after opaque geometry, without writing depth.
-            GLES20.glEnable(GLES20.GL_BLEND);GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA);GLES20.glDepthMask(false);GLES20.glUniform1f(alpha,.20f);
+            GLES20.glEnable(GLES20.GL_BLEND);GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA);GLES20.glDepthMask(false);GLES20.glUniform1f(glassPass,1f);
             for(int i=0;i<meshes.length;i++){Mesh m=meshes[i];if(m.glassCount==0)continue;int cx=i%meshCols,cz=i/meshCols;
                 float ddx=cx*16+8-world.x,ddz=cz*16+8-world.z;
                 if(ddx*ddx+ddz*ddz>72*72||!frustum.intersects(cx*16,0,cz*16+16-16,cx*16+16,World.H,cz*16+16))continue;
@@ -115,7 +115,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
                     GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,offset);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,24,offset+12);GLES20.glVertexAttribPointer(light,1,GLES20.GL_FLOAT,false,24,offset+20);GLES20.glDrawElements(GLES20.GL_TRIANGLES,count/4*6,GLES20.GL_UNSIGNED_SHORT,0);
                 }
             }
-            GLES20.glUniform1f(alpha,1f);GLES20.glDepthMask(true);GLES20.glDisable(GLES20.GL_BLEND);
+            GLES20.glUniform1f(glassPass,0f);GLES20.glDepthMask(true);GLES20.glDisable(GLES20.GL_BLEND);
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,0);GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER,0);
             drawMobs();view.target=world.ray(6);if(world.survival.aimed(world)==null)outline(view.target);view.hud.postInvalidate();
             if(sample)metrics.frame(System.nanoTime()-now,interval,drawn,culled);
