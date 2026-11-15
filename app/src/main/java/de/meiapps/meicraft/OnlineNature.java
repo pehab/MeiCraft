@@ -21,6 +21,8 @@ final class OnlineNature {
         repairIndex();JSONObject saplings=v.remote(v.storage()+"/growth/saplings");
         for(String region:OnlineV5.keys(saplings))for(String key:OnlineV5.keys(saplings.getJSONObject(region))){
             if(closed||s.closed)return;
+            JSONObject known=saplings.getJSONObject(region).getJSONObject(key);
+            if(known.optInt("stage",0)>=3||known.optLong("lastGrowthDay",-1)>=day)continue;
             // Renew only while processing actual trees. A killed client can be replaced on the next join.
             run.put("until",now()+15000);v.db.request("PUT",path,run);
             grow(Integer.parseInt(region),key,day,token);
