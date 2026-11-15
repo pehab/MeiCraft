@@ -22,7 +22,8 @@ final class MaterialReactions {
     static List<Change> plan(Space s,boolean legacyForge,boolean requireAuthored){
         List<Change> result=new ArrayList<>();Set<String> used=new HashSet<>();
         for(int y=1;y<World.H&&result.size()<16;y++)for(int z=0;z<World.D&&result.size()<16;z++)for(int x=0;x<World.W&&result.size()<16;x++){
-            int b=s.get(x,y,z);String old=s.tag(x,y,z);if(b==0||used.contains(x+"_"+y+"_"+z)||requireAuthored&&!authored(s,x,y,z))continue;
+            int b=s.get(x,y,z);if(b!=15&&b!=Materials.COAL&&b!=Materials.BASALT&&b!=8&&(!legacyForge||b!=13&&b!=14))continue;
+            if(used.contains(x+"_"+y+"_"+z)||requireAuthored&&!authored(s,x,y,z))continue;String old=s.tag(x,y,z);
             if(b==15&&adjacent(s,x,y,z,10)!=null){add(result,used,List.of(new Change(x,y,z,Materials.BASALT,"")),s);continue;}
             if(b==Materials.COAL){int[] lava=adjacent(s,x,y,z,15);if(lava==null||adjacent(s,x,y,z,10)!=null){if(active(old))add(result,used,List.of(new Change(x,y,z,b,"user")),s);continue;}
                 String tag=phase(s,x,y,z,"coal",3,new int[][]{lava});int out=tag.isEmpty()?(s.get(x,y-1,z)==15?Materials.EMBER:0):b;add(result,used,List.of(new Change(x,y,z,out,tag)),s);continue;}

@@ -15,7 +15,7 @@ final class JournalChecks {
         int failCheckpointPage=-1,checkpointPages;boolean failReady;
         final OnlineV5Checks.Store firestore=new OnlineV5Checks.Store(){
             @Override synchronized JSONObject commit(JSONObject body)throws Exception{boolean saved=false;JSONArray w=body.getJSONArray("writes");for(int i=0;i<w.length();i++)if(w.getJSONObject(i).has("update")&&w.getJSONObject(i).getJSONObject("update").getString("name").contains("/saved/"))saved=true;if(saved&&++checkpointPages==failCheckpointPage)throw new FirebaseRest.Failure(429);return super.commit(body);}
-        };JSONObject root=new JSONObject();int writes,reads;boolean loseReply,offline;long clockOffset;
+        };JSONObject root=new JSONObject();int writes,reads,liveReads;boolean loseReply,offline;long clockOffset;
         static Object get(JSONObject root,String path){Object value=root;for(String key:path.split("/")){if(key.isEmpty())continue;if(!(value instanceof JSONObject))return JSONObject.NULL;value=((JSONObject)value).opt(key);if(value==null)return JSONObject.NULL;}return value;}
         static Object resolve(Object value,Object old,long time)throws JSONException{
             if(value instanceof JSONObject){JSONObject object=(JSONObject)value;if(object.has(".sv")){Object sv=object.get(".sv");if(sv instanceof String)return time;return (old instanceof Number?((Number)old).longValue():0)+((JSONObject)sv).getLong("increment");}
@@ -28,7 +28,7 @@ final class JournalChecks {
             if(offline)throw new IOException("fixture RTDB offline");String path=url.getPath().substring(1,url.getPath().length()-5);Object old=get(root,path);holder.etag=etag(old);
             if(match!=null&&!match.equals(holder.etag)&&!(match.equals("null_etag")&&old==JSONObject.NULL)){holder.status=412;return "{}";}
             if(method.equals("GET")){
-                reads++;String query=URLDecoder.decode(url.getQuery(),"UTF-8");if(query.contains("orderBy=\"rev\"")){
+                reads++;if(path.endsWith("/live"))liveReads++;String query=URLDecoder.decode(url.getQuery(),"UTF-8");if(query.contains("orderBy=\"rev\"")){
                     JSONObject filtered=new JSONObject();double start=query.contains("startAt=")?Double.parseDouble(query.split("startAt=")[1].split("&")[0]):0,end=Double.parseDouble(query.split("endAt=")[1].split("&")[0]);
                     if(old instanceof JSONObject)for(String key:OnlineV5.keys((JSONObject)old)){JSONObject e=((JSONObject)old).getJSONObject(key);long rev=e.getLong("rev");if(rev>=start&&rev<=end)filtered.put(key,e);}return filtered.length()==0?"null":filtered.toString();
                 }return old.toString();
@@ -87,9 +87,10 @@ final class JournalChecks {
             check(a.terrainVersion==2&&b.terrainVersion==2&&a.world.terrainVersion==2,"New online worlds persist and share generation version 2");
             Story stock=OnlineInventory.copy(a.inventory);stock.chapter=7;stock.inventory[18]=2;stock.inventory[15]=2;stock.inventory[10]=2;stock.inventory[8]=2;stock.inventory[20]=2;engine.commit(stock,null);engine.readSync();
             check(engine.head.actors.getJSONObject("parent").getString("inventory").startsWith("2."),"New materials use the versioned authenticated inventory codec");
-            engine.edit(48,44,48,15);drain(a,game);a.healthy=true;engine.edit(48,45,48,18);drain(a,game);Story before=OnlineInventory.copy(a.inventory);
+            engine.edit(48,44,48,15);drain(a,game);a.healthy=true;engine.edit(48,45,48,18);drain(a,game);Story before=OnlineInventory.copy(a.inventory);int poses=backend.liveReads;
             for(int i=0;i<3;i++){engine.nature.changed(0);engine.nature.decay();if(engine.nature.failure!=null)throw engine.nature.failure;test.onGl(game,()->{});}
             check(a.world.get(48,45,48)==21&&OnlineInventory.same(before,a.inventory),"Coal over lava becomes ember stone without additional resource debits or refunds");
+            check(backend.liveReads==poses,"Heating existing solids does not fetch redundant player positions");
             check(!engine.nature.reactionPending.contains(0),"Completed fire reaction has no persistent polling task");
             a.healthy=true;engine.edit(95,44,48,8);drain(a,game);a.healthy=true;engine.edit(96,44,48,20);drain(a,game);
             for(int i=0;i<3;i++){engine.nature.changed(0);engine.nature.decay();if(engine.nature.failure!=null)throw engine.nature.failure;test.onGl(game,()->{});}
