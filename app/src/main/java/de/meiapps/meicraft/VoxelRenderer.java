@@ -8,10 +8,10 @@ import javax.microedition.khronos.opengles.GL10;
 import javax.microedition.khronos.egl.EGLConfig;
 
 final class VoxelRenderer implements GLSurfaceView.Renderer {
-    static final String FRAGMENT_SHADER="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;uniform float uAmbient;uniform vec4 uLamps[8];varying vec3 vWorld;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){float brightness=uAmbient;if(uAmbient<1.0){for(int i=0;i<8;i++){brightness=max(brightness,uLamps[i].w*max(0.0,1.0-distance(vWorld,uLamps[i].xyz)/6.0));}}vec3 c=texture2D(uTex,vUv).rgb*min(vLight,1.0)*(vLight>1.1?1.0:brightness);float f=smoothstep(27.0,55.0,vDistance);gl_FragColor=vec4(mix(c,uFog,f),1.0);}";
+    static final String FRAGMENT_SHADER="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;uniform float uAmbient;uniform float uAlpha;uniform vec4 uLamps[8];varying vec3 vWorld;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){float brightness=uAmbient;if(uAmbient<1.0){for(int i=0;i<8;i++){brightness=max(brightness,uLamps[i].w*max(0.0,1.0-distance(vWorld,uLamps[i].xyz)/6.0));}}vec3 c=texture2D(uTex,vUv).rgb*min(vLight,1.0)*(vLight>1.1?1.0:brightness);float f=smoothstep(27.0,55.0,vDistance);gl_FragColor=vec4(mix(c,uFog,f),uAlpha);}";
     final GameView view;
     World world;
-    int program,texture,pos,uv,light,mvp,camera,fog,ambient,lamps,sampler,terrainElements;
+    int program,texture,pos,uv,light,mvp,camera,fog,ambient,alpha,lamps,sampler,terrainElements;
     final float[] lampData=new float[32],lampDistances=new float[8];float lampTimer;
     final float[] projection=new float[16],look=new float[16],matrix=new float[16];
     Mesh[] meshes=new Mesh[0];int meshCols,meshRows;
@@ -30,14 +30,14 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
     };
     static final float[] SHADE={.82f,.66f,1,.49f,.88f,.73f};
     static final int[] ORDER={0,1,2,0,2,3};
-    static final class Mesh{int buffer,count;boolean dirty=true;}
+    static final class Mesh{int buffer,count,glassBuffer,glassCount;boolean dirty=true;}
     VoxelRenderer(GameView view){this.view=view;}
     static int shader(int type,String source){int s=GLES20.glCreateShader(type);GLES20.glShaderSource(s,source);GLES20.glCompileShader(s);int[] ok=new int[1];GLES20.glGetShaderiv(s,GLES20.GL_COMPILE_STATUS,ok,0);if(ok[0]==0)throw new IllegalStateException(GLES20.glGetShaderInfoLog(s));return s;}
     @Override public void onSurfaceCreated(GL10 unused,EGLConfig config){
         String vs="uniform mat4 uM;uniform vec3 uCamera;attribute vec3 aPos;attribute vec2 aUv;attribute float aLight;varying vec2 vUv;varying float vLight;varying float vDistance;varying vec3 vWorld;void main(){vWorld=aPos;gl_Position=uM*vec4(aPos,1.0);vUv=aUv;vLight=aLight;vDistance=distance(aPos,uCamera);}";
         String fs=FRAGMENT_SHADER;
         program=GLES20.glCreateProgram();GLES20.glAttachShader(program,shader(GLES20.GL_VERTEX_SHADER,vs));GLES20.glAttachShader(program,shader(GLES20.GL_FRAGMENT_SHADER,fs));GLES20.glLinkProgram(program);int[] linked=new int[1];GLES20.glGetProgramiv(program,GLES20.GL_LINK_STATUS,linked,0);if(linked[0]==0)throw new IllegalStateException(GLES20.glGetProgramInfoLog(program));
-        pos=GLES20.glGetAttribLocation(program,"aPos");uv=GLES20.glGetAttribLocation(program,"aUv");light=GLES20.glGetAttribLocation(program,"aLight");mvp=GLES20.glGetUniformLocation(program,"uM");camera=GLES20.glGetUniformLocation(program,"uCamera");fog=GLES20.glGetUniformLocation(program,"uFog");ambient=GLES20.glGetUniformLocation(program,"uAmbient");lamps=GLES20.glGetUniformLocation(program,"uLamps[0]");sampler=GLES20.glGetUniformLocation(program,"uTex");
+        pos=GLES20.glGetAttribLocation(program,"aPos");uv=GLES20.glGetAttribLocation(program,"aUv");light=GLES20.glGetAttribLocation(program,"aLight");mvp=GLES20.glGetUniformLocation(program,"uM");camera=GLES20.glGetUniformLocation(program,"uCamera");fog=GLES20.glGetUniformLocation(program,"uFog");ambient=GLES20.glGetUniformLocation(program,"uAmbient");alpha=GLES20.glGetUniformLocation(program,"uAlpha");lamps=GLES20.glGetUniformLocation(program,"uLamps[0]");sampler=GLES20.glGetUniformLocation(program,"uTex");
         ensureMeshes(view.world,true);int[] ids=new int[1];
         GLES20.glGenBuffers(1,ids,0);terrainElements=ids[0];
         short[] indices=TerrainIndices.pattern();ShortBuffer elements=ByteBuffer.allocateDirect(indices.length*2).order(ByteOrder.nativeOrder()).asShortBuffer();elements.put(indices).flip();
@@ -53,8 +53,8 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
     void ensureMeshes(World target,boolean newContext){
         int cols=(target==null?World.W:target.width)/16,rows=(target==null?World.D:target.depth)/16;
         if(!newContext&&cols==meshCols&&rows==meshRows)return;
-        if(!newContext&&meshes.length>0){int[] old=new int[meshes.length];for(int i=0;i<old.length;i++)old[i]=meshes[i].buffer;GLES20.glDeleteBuffers(old.length,old,0);}
-        meshCols=cols;meshRows=rows;meshes=new Mesh[cols*rows];int[] ids=new int[meshes.length];GLES20.glGenBuffers(ids.length,ids,0);for(int i=0;i<ids.length;i++){meshes[i]=new Mesh();meshes[i].buffer=ids[i];}
+        if(!newContext&&meshes.length>0){int[] old=new int[meshes.length*2];for(int i=0;i<meshes.length;i++){old[i*2]=meshes[i].buffer;old[i*2+1]=meshes[i].glassBuffer;}GLES20.glDeleteBuffers(old.length,old,0);}
+        meshCols=cols;meshRows=rows;meshes=new Mesh[cols*rows];int[] ids=new int[meshes.length*2];GLES20.glGenBuffers(ids.length,ids,0);for(int i=0;i<meshes.length;i++){meshes[i]=new Mesh();meshes[i].buffer=ids[i*2];meshes[i].glassBuffer=ids[i*2+1];}
     }
     void dirty(int x,int z){for(int zz=Math.max(0,(z-1)/16);zz<=Math.min(meshRows-1,(z+1)/16);zz++)for(int xx=Math.max(0,(x-1)/16);xx<=Math.min(meshCols-1,(x+1)/16);xx++)meshes[zz*meshCols+xx].dirty=true;}
     static final class Floats{float[] values=new float[8192];int size;void add(float a,float b,float c,float u,float v,float l){if(size+6>values.length)values=java.util.Arrays.copyOf(values,values.length*2);values[size++]=a;values[size++]=b;values[size++]=c;values[size++]=u;values[size++]=v;values[size++]=l;}}
@@ -65,7 +65,11 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
         terrainMesher.build(world,cx,cz);
         if(terrainBuffer.capacity()<terrainMesher.size)terrainBuffer=ByteBuffer.allocateDirect(terrainMesher.values.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
         terrainBuffer.clear();terrainBuffer.put(terrainMesher.values,0,terrainMesher.size).flip();
-        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,mesh.buffer);GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,terrainMesher.size*4,terrainBuffer,GLES20.GL_STATIC_DRAW);mesh.count=terrainMesher.size/6;mesh.dirty=false;
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,mesh.buffer);GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,terrainMesher.size*4,terrainBuffer,GLES20.GL_STATIC_DRAW);mesh.count=terrainMesher.size/6;
+        terrainMesher.build(world,cx,cz,true);
+        if(terrainBuffer.capacity()<terrainMesher.size)terrainBuffer=ByteBuffer.allocateDirect(terrainMesher.values.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+        terrainBuffer.clear();terrainBuffer.put(terrainMesher.values,0,terrainMesher.size).flip();
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,mesh.glassBuffer);GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,terrainMesher.size*4,terrainBuffer,GLES20.GL_STATIC_DRAW);mesh.glassCount=terrainMesher.size/6;mesh.dirty=false;
         metrics.mesh(System.nanoTime()-started);
     }
     @Override public void onDrawFrame(GL10 gl){
@@ -80,14 +84,14 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             float daylight=world.story&&!world.online?world.survival.daylight():1;float skyR=.025f+.505f*daylight*daylight,skyG=.035f+.725f*daylight*daylight,skyB=.09f+.77f*daylight*daylight;GLES20.glClearColor(skyR,skyG,skyB,1);GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT|GLES20.GL_DEPTH_BUFFER_BIT);
             float dx=-(float)Math.sin(world.yaw)*(float)Math.cos(world.pitch),dy=(float)Math.sin(world.pitch),dz=-(float)Math.cos(world.yaw)*(float)Math.cos(world.pitch);
             Matrix.setLookAtM(look,0,world.x,world.y,world.z,world.x+dx,world.y+dy,world.z+dz,0,1,0);Matrix.multiplyMM(matrix,0,projection,0,look,0);frustum.update(matrix);
-            GLES20.glUseProgram(program);GLES20.glUniformMatrix4fv(mvp,1,false,matrix,0);GLES20.glUniform3f(camera,world.x,world.y,world.z);GLES20.glUniform3f(fog,skyR,skyG,skyB);GLES20.glUniform1f(ambient,daylight);lampTimer-=dt;if(lampTimer<=0){findLamps();lampTimer=.5f;}GLES20.glUniform4fv(lamps,8,lampData,0);
+            GLES20.glUseProgram(program);GLES20.glUniformMatrix4fv(mvp,1,false,matrix,0);GLES20.glUniform3f(camera,world.x,world.y,world.z);GLES20.glUniform3f(fog,skyR,skyG,skyB);GLES20.glUniform1f(ambient,daylight);GLES20.glUniform1f(alpha,1f);lampTimer-=dt;if(lampTimer<=0){findLamps();lampTimer=.5f;}GLES20.glUniform4fv(lamps,8,lampData,0);
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,texture);GLES20.glUniform1i(sampler,0);
             GLES20.glEnableVertexAttribArray(pos);GLES20.glEnableVertexAttribArray(uv);GLES20.glEnableVertexAttribArray(light);
             int drawn=0,culled=0;
             GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER,terrainElements);
             for(int i=0;i<meshes.length;i++){Mesh m=meshes[i];int cx=i%meshCols,cz=i/meshCols;float dxChunk=cx*16+8-world.x,dzChunk=cz*16+8-world.z;
                 OnlineSession online=view.activity.online==null?null:view.activity.online.session;
-                if(dxChunk*dxChunk+dzChunk*dzChunk>72*72||world.online&&(online==null||!online.canMove(cx*16+8,cz*16+8))){if(world.online&&m.count>0){GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,m.buffer);GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,0,null,GLES20.GL_STATIC_DRAW);m.count=0;m.dirty=true;}continue;}
+                if(dxChunk*dxChunk+dzChunk*dzChunk>72*72||world.online&&(online==null||!online.canMove(cx*16+8,cz*16+8))){if(world.online&&m.count>0){GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,m.buffer);GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER,0,null,GLES20.GL_STATIC_DRAW);m.count=0;m.glassCount=0;m.dirty=true;}continue;}
                 if(m.dirty)mesh(cx,cz,m);
                 // Retain the existing prewarming order, including off-camera
                 // meshes, so turning never creates a new rebuild backlog.
@@ -101,6 +105,17 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
                     GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,offset);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,24,offset+12);GLES20.glVertexAttribPointer(light,1,GLES20.GL_FLOAT,false,24,offset+20);GLES20.glDrawElements(GLES20.GL_TRIANGLES,count/4*6,GLES20.GL_UNSIGNED_SHORT,0);
                 }
             }
+            // Transparent glass is drawn after opaque geometry, without writing depth.
+            GLES20.glEnable(GLES20.GL_BLEND);GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA);GLES20.glDepthMask(false);GLES20.glUniform1f(alpha,.20f);
+            for(int i=0;i<meshes.length;i++){Mesh m=meshes[i];if(m.glassCount==0)continue;int cx=i%meshCols,cz=i/meshCols;
+                float ddx=cx*16+8-world.x,ddz=cz*16+8-world.z;
+                if(ddx*ddx+ddz*ddz>72*72||!frustum.intersects(cx*16,0,cz*16+16-16,cx*16+16,World.H,cz*16+16))continue;
+                GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,m.glassBuffer);
+                for(int first=0;first<m.glassCount;first+=TerrainIndices.MAX_VERTICES){int count=Math.min(TerrainIndices.MAX_VERTICES,m.glassCount-first),offset=first*24;
+                    GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,offset);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,24,offset+12);GLES20.glVertexAttribPointer(light,1,GLES20.GL_FLOAT,false,24,offset+20);GLES20.glDrawElements(GLES20.GL_TRIANGLES,count/4*6,GLES20.GL_UNSIGNED_SHORT,0);
+                }
+            }
+            GLES20.glUniform1f(alpha,1f);GLES20.glDepthMask(true);GLES20.glDisable(GLES20.GL_BLEND);
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,0);GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER,0);
             drawMobs();view.target=world.ray(6);if(world.survival.aimed(world)==null)outline(view.target);view.hud.postInvalidate();
             if(sample)metrics.frame(System.nanoTime()-now,interval,drawn,culled);
