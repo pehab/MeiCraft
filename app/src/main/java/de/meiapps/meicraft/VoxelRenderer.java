@@ -8,7 +8,7 @@ import javax.microedition.khronos.opengles.GL10;
 import javax.microedition.khronos.egl.EGLConfig;
 
 final class VoxelRenderer implements GLSurfaceView.Renderer {
-    static final String FRAGMENT_SHADER="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;uniform float uAmbient;uniform float uGlassPass;uniform float uLiquidTime;uniform vec4 uLamps[8];varying vec3 vWorld;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){float brightness=uAmbient;if(uAmbient<1.0){for(int i=0;i<8;i++){brightness=max(brightness,uLamps[i].w*max(0.0,1.0-distance(vWorld,uLamps[i].xyz)/6.0));}}vec3 c=texture2D(uTex,vUv).rgb*min(vLight,1.0)*(vLight>1.1?1.0:brightness);float tile=floor(vUv.x*32.0);float liquid=step(9.5,tile)*step(tile,10.5)+step(17.5,tile)*step(tile,18.5);float shimmer=sin(vWorld.x*2.3+vWorld.z*1.7+uLiquidTime*2.1)*sin(vWorld.y*2.7-uLiquidTime*1.4);c*=1.0+liquid*step(0.001,uLiquidTime)*0.075*shimmer;float fogStart=27.0;float fogEnd=55.0;float haze=step(0.001,uLiquidTime)*(0.75+0.25*sin(uLiquidTime*0.11+vWorld.x*0.035+vWorld.z*0.045));float f=smoothstep(fogStart,fogEnd,vDistance);f=clamp(f+haze*0.045*smoothstep(18.0,48.0,vDistance),0.0,1.0);gl_FragColor=vec4(mix(c,uFog,f),mix(1.0,0.20,uGlassPass));}";
+    static final String FRAGMENT_SHADER="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;uniform float uAmbient;uniform float uGlassPass;uniform float uLiquidTime;uniform vec4 uLamps[8];varying vec3 vWorld;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){float brightness=uAmbient;if(uAmbient<1.0){for(int i=0;i<8;i++){brightness=max(brightness,uLamps[i].w*max(0.0,1.0-distance(vWorld,uLamps[i].xyz)/6.0));}}vec3 c=texture2D(uTex,vUv).rgb*min(vLight,1.0)*(vLight>1.1?1.0:brightness);float tile=floor(vUv.x*64.0);float liquid=step(9.5,tile)*step(tile,10.5)+step(17.5,tile)*step(tile,18.5);float shimmer=sin(vWorld.x*2.3+vWorld.z*1.7+uLiquidTime*2.1)*sin(vWorld.y*2.7-uLiquidTime*1.4);c*=1.0+liquid*step(0.001,uLiquidTime)*0.075*shimmer;float fogStart=27.0;float fogEnd=55.0;float haze=step(0.001,uLiquidTime)*(0.75+0.25*sin(uLiquidTime*0.11+vWorld.x*0.035+vWorld.z*0.045));float f=smoothstep(fogStart,fogEnd,vDistance);f=clamp(f+haze*0.045*smoothstep(18.0,48.0,vDistance),0.0,1.0);gl_FragColor=vec4(mix(c,uFog,f),mix(1.0,0.20,uGlassPass));}";
     final GameView view;
     World world;
     int program,texture,pos,uv,light,mvp,camera,fog,ambient,glassPass,liquidTime,lamps,sampler,terrainElements;
@@ -125,15 +125,15 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
         java.util.Arrays.fill(lampData,0);float[] distances=lampDistances;java.util.Arrays.fill(distances,Float.MAX_VALUE);
         int cx=(int)world.x,cy=(int)world.y,cz=(int)world.z;
         for(int x=cx-8;x<=cx+8;x++)for(int z=cz-8;z<=cz+8;z++)for(int y=cy-6;y<=cy+5;y++){
-            int b=world.get(x,y,z);float heat=world.forge.heat(x,y,z);if(b!=11&&b!=15&&b!=16&&heat<=0)continue;float d=(x+.5f-world.x)*(x+.5f-world.x)+(y+.5f-world.y)*(y+.5f-world.y)+(z+.5f-world.z)*(z+.5f-world.z);
+            int b=world.get(x,y,z);float heat=world.forge.heat(x,y,z);if(!Materials.luminous(b)&&!Materials.burning(world,x,y,z)&&heat<=0)continue;float d=(x+.5f-world.x)*(x+.5f-world.x)+(y+.5f-world.y)*(y+.5f-world.y)+(z+.5f-world.z)*(z+.5f-world.z);
             for(int i=0;i<8;i++)if(d<distances[i]){for(int j=7;j>i;j--){distances[j]=distances[j-1];System.arraycopy(lampData,(j-1)*4,lampData,j*4,4);}distances[i]=d;lampData[i*4]=x+.5f;lampData[i*4+1]=y+.5f;lampData[i*4+2]=z+.5f;lampData[i*4+3]=b==16?.4f:heat>0?.25f+.7f*heat:1;break;}
         }
     }
     final Floats creatures=new Floats();
-    final FloatBuffer creatureBuffer=ByteBuffer.allocateDirect(100000*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+    FloatBuffer creatureBuffer=ByteBuffer.allocateDirect(100000*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
     void cube(float x,float y,float z,float sx,float sy,float sz,int tile){
-        for(int face=0;face<6;face++)for(int corner:ORDER){float[] f=F[face];float u=(tile*32+((corner==0||corner==1)?.5f:31.5f))/1024f,v=(corner==0||corner==3)?31.5f/32:.5f/32;
-            creatures.add(x+f[corner*3]*sx,y+f[corner*3+1]*sy,z+f[corner*3+2]*sz,u,v,tile==24?1.2f:SHADE[face]);}
+        for(int face=0;face<6;face++)for(int corner:ORDER){float[] f=F[face];float u=(tile*32+((corner==0||corner==1)?.5f:31.5f))/2048f,v=(corner==0||corner==3)?31.5f/32:.5f/32;
+            creatures.add(x+f[corner*3]*sx,y+f[corner*3+1]*sy,z+f[corner*3+2]*sz,u,v,tile==24||tile==35||tile==36?1.2f:SHADE[face]);}
     }
     static final class PlayerLabel {final String name;final float x,y;PlayerLabel(String name,float x,float y){this.name=name;this.x=x;this.y=y;}}
     volatile java.util.List<PlayerLabel> playerLabels=java.util.Collections.emptyList();
@@ -141,7 +141,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
     void actorPart(float cx,float feet,float cz,float yaw,float ox,float oy,float oz,float sx,float sy,float sz,int tile){
         float sin=(float)Math.sin(yaw),cos=(float)Math.cos(yaw);
         for(int face=0;face<6;face++)for(int corner:ORDER){float[] f=F[face];float xx=ox+f[corner*3]*sx,zz=oz+f[corner*3+2]*sz;boolean plainSkin=Math.abs(tile)==25&&(tile<0||face!=5);int atlas=Math.abs(tile);
-            float u=(atlas*32+(plainSkin?2.5f:(corner==0||corner==1)?.5f:31.5f))/1024f,v=plainSkin?2.5f/32:(corner==0||corner==3)?31.5f/32:.5f/32;
+            float u=(atlas*32+(plainSkin?2.5f:(corner==0||corner==1)?.5f:31.5f))/2048f,v=plainSkin?2.5f/32:(corner==0||corner==3)?31.5f/32:.5f/32;
             creatures.add(cx+xx*cos+zz*sin,feet+oy+f[corner*3+1]*sy,cz-xx*sin+zz*cos,u,v,SHADE[face]);
         }
     }
@@ -172,10 +172,12 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
         final float x,y,z;final int tile;final long started;
         MiningBurst(int x,int y,int z,int tile,long started){this.x=x+.5f;this.y=y+.5f;this.z=z+.5f;this.tile=tile;this.started=started;}
     }
+    int particleCount;
+    void particle(float x,float y,float z,float sx,float sy,float sz,int tile){if(particleCount++<150)cube(x,y,z,sx,sy,sz,tile);}
     final java.util.ArrayDeque<MiningBurst> miningBursts=new java.util.ArrayDeque<>();
     void miningDebris(int x,int y,int z,int block){
         if(block<=0||miningBursts.size()>=12)return;
-        miningBursts.addLast(new MiningBurst(x,y,z,block==13?16:block==15?18:Math.min(block,16),System.nanoTime()));
+        miningBursts.addLast(new MiningBurst(x,y,z,Materials.tile(block),System.nanoTime()));
     }
     void drawMiningDebris(){
         long now=System.nanoTime();
@@ -189,7 +191,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
                 float x=burst.x+(float)Math.cos(a)*speed*age;
                 float z=burst.z+(float)Math.sin(a)*speed*age;
                 float y=burst.y+.5f*age-2.8f*age*age+(i%4)*.08f;
-                cube(x,y,z,.07f,.07f,.07f,burst.tile);
+                particle(x,y,z,.07f,.07f,.07f,burst.tile);
             }
         }
     }
@@ -209,16 +211,27 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
                 float bx=x+.5f+(float)Math.sin(time*1.3f+x)*.2f;
                 float bz=z+.5f+(float)Math.cos(time*1.1f+z)*.2f;
                 // Rising ember and a larger, dimmer smoke puff above the lava.
-                cube(bx,y+1.02f+phase*.75f,bz,.065f,.065f,.065f,24);
+                particle(bx,y+1.02f+phase*.75f,bz,.065f,.065f,.065f,24);
                 if(phase>.22f){
                     float drift=(phase-.22f)*.27f;
-                    cube(bx+drift,y+1.25f+phase*1.1f,bz-drift,.12f+phase*.09f,.10f+phase*.06f,.12f+phase*.09f,3);
+                    particle(bx+drift,y+1.25f+phase*1.1f,bz-drift,.12f+phase*.09f,.10f+phase*.06f,.12f+phase*.09f,3);
                 }
                 emitted++;
             }
     }
+    void drawMaterialEffects(){
+        int sites=0;float t=(System.nanoTime()*1e-9f)%10000f;
+        for(int y=Math.max(1,(int)world.y-9);y<Math.min(World.H,(int)world.y+7)&&sites<32;y++)for(int z=Math.max(0,(int)world.z-9);z<Math.min(world.depth,(int)world.z+10)&&sites<32;z++)for(int x=Math.max(0,(int)world.x-9);x<Math.min(world.width,(int)world.x+10)&&sites<32;x++){
+            int b=world.get(x,y,z);boolean burning=Materials.burning(world,x,y,z);
+            if(b!=Materials.CRYSTAL&&b!=Materials.EMBER&&!burning)continue;sites++;float phase=(t*.7f+x*.31f+z*.17f)%1f;
+            if(burning){boolean wet=false;for(int[] d:MaterialReactions.NEIGHBORS)if(world.get(x+d[0],y+d[1],z+d[2])==10)wet=true;if(wet)continue;
+                particle(x+.3f,y+1+phase*.65f,z+.35f,.16f,.30f*(1-phase)+.10f,.13f,24);
+                particle(x+.6f,y+1.2f+phase*1.1f,z+.6f,.18f,.15f,.18f,3);
+            }else particle(x+.15f+phase*.6f,y+1.05f+(float)Math.sin(t+x)*.13f,z+.5f,.045f,.045f,.045f,b==Materials.CRYSTAL?35:36);
+        }
+    }
     void drawMobs(){
-        creatures.size=0;
+        creatures.size=0;particleCount=0;
         if(world.story)for(Survival.Mob m:world.survival.mobs){float feet=m.y-1.6f,swing=(float)Math.sin(world.survival.time*5+m.x)*.1f;
             cube(m.x-.3f,feet+.5f,m.z-.22f,.6f,.65f,.44f,19);
             cube(m.x-.34f,feet+1.15f,m.z-.34f,.68f,.55f,.68f,20);
@@ -231,13 +244,15 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             float x=i%World.W+.5f,y=i/(World.W*World.D)+1,z=i/World.W%World.D+.5f;
             if(Math.abs(x-world.x)>12||Math.abs(z-world.z)>12||Math.abs(y-world.y)>8||sparks++>=48)continue;
             float phase=(world.forge.animation*.8f+(i%17)/17f)%1f;
-            cube(x+(float)Math.sin(i+phase*5)*.24f,y+phase*.7f,z+(float)Math.cos(i+phase*4)*.24f,.055f,.055f,.055f,24);
+            particle(x+(float)Math.sin(i+phase*5)*.24f,y+phase*.7f,z+(float)Math.cos(i+phase*4)*.24f,.055f,.055f,.055f,24);
         }
         drawVegetation();
         drawLavaAtmosphere();
+        drawMaterialEffects();
         drawMiningDebris();
         drawPlayers();
         if(creatures.size==0)return;
+        if(creatures.size>creatureBuffer.capacity())creatureBuffer=ByteBuffer.allocateDirect(Math.max(creatures.size,creatureBuffer.capacity()*2)*4).order(ByteOrder.nativeOrder()).asFloatBuffer();
         creatureBuffer.clear();creatureBuffer.put(creatures.values,0,creatures.size);creatureBuffer.position(0);GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,creatureBuffer);
         creatureBuffer.position(3);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,24,creatureBuffer);creatureBuffer.position(5);GLES20.glVertexAttribPointer(light,1,GLES20.GL_FLOAT,false,24,creatureBuffer);GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,creatures.size/6);
     }
@@ -278,7 +293,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             outlineBuffer.put(hit[0]+((vertex&1)==0?-.004f:1.004f));
             outlineBuffer.put(hit[1]+((vertex&2)==0?-.004f:1.004f));
             outlineBuffer.put(hit[2]+((vertex&4)==0?-.004f:1.004f));
-            outlineBuffer.put((11*32+16f)/1024);outlineBuffer.put(.5f);outlineBuffer.put(1f);
+            outlineBuffer.put((11*32+16f)/2048);outlineBuffer.put(.5f);outlineBuffer.put(1f);
         }
         outlineBuffer.position(0);GLES20.glVertexAttribPointer(pos,3,GLES20.GL_FLOAT,false,24,outlineBuffer);
         outlineBuffer.position(3);GLES20.glVertexAttribPointer(uv,2,GLES20.GL_FLOAT,false,24,outlineBuffer);

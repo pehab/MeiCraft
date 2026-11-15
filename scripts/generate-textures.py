@@ -1,7 +1,7 @@
 from PIL import Image,ImageDraw
 import random
 random.seed(413)
-im=Image.new('RGB',(1024,32));d=ImageDraw.Draw(im)
+im=Image.new('RGB',(2048,32));d=ImageDraw.Draw(im)
 colors=[(255,0,255),(113,171,67),(135,94,58),(132,140,143),(218,201,147),(139,102,57),(58,132,60),(170,83,64),(163,214,225),(181,143,91),(53,148,183),(244,207,104),(223,238,239),(135,94,58),(171,134,80),(255,255,255),(130,137,140),(177,188,193),(245,80,13),(62,78,112),(83,103,145),(69,56,52),(145,80,40),(180,100,45),(255,218,92)]
 for t,col in enumerate(colors):
  x=t*32;d.rectangle((x,0,x+31,31),fill=col)
@@ -50,5 +50,20 @@ for t,color in enumerate([skin,(48,65,90),(57,134,232),(69,184,106),(237,157,50)
  if t==25:
   d.rectangle((x+6,10,x+11,14),fill=(43,47,58));d.rectangle((x+20,10,x+25,14),fill=(43,47,58))
   d.line((x+11,23,x+20,23),fill=(136,76,62),width=2)
+# Version-2 materials occupy new slots; the original 32 tiles are unchanged.
+for t,col in enumerate([(106,111,119),(29,33,42),(68,73,82),(77,191,213),(194,81,27),(150,191,222),(74,86,108)],32):
+ x=t*32;d.rectangle((x,0,x+31,31),fill=col)
+ for i in range(90):
+  px=x+random.randrange(32);py=random.randrange(32);v=random.randint(-14,14);d.point((px,py),fill=tuple(max(0,min(255,c+v)) for c in col))
+ if t==32:
+  for dx,dy in [(3,6),(16,4),(10,21),(24,18)]:d.polygon([(x+dx,dy),(x+dx+5,dy-2),(x+dx+7,dy+5),(x+dx+1,dy+7)],fill=(22,25,30))
+ if t in (34,38):
+  for y in range(4,32,8):d.line((x,y,x+31,y+2),fill=(45,51,64),width=2)
+ if t==35:
+  for dx,dy in [(3,6),(15,2),(21,18)]:d.polygon([(x+dx,dy+7),(x+dx+3,dy),(x+dx+8,dy+6),(x+dx+4,dy+12)],fill=(167,245,253),outline=(225,255,255))
+ if t==36:
+  for dx,dy in [(3,8),(12,18),(22,4)]:d.line((x+dx,dy,x+dx+3,dy+6,x+min(31,dx+8),dy+9),fill=(255,221,98),width=3)
+ if t==37:
+  d.rectangle((x,0,x+31,31),outline=(211,253,255),width=2);d.line((x+3,27,x+28,2),fill=(231,235,255),width=2)
 im.save('app/src/main/assets/blocks.png')
 

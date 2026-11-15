@@ -18,7 +18,7 @@ public final class OnlineDeltaTests {
         check(OnlineChange.reconcile(0,0,2,new HashMap<>(),new HashMap<>(),List.of(),List.of(a,change(1,1,"",token(3),"b")))==null,"Causal fork cannot be accepted as a complete snapshot");
         check(OnlineChange.reconcile(0,2,1,new HashMap<>(),current,List.of(),List.of())==null,"Revision rollback never advances a checkpoint");
         check(OnlineChange.reconcile(0,2,2,Map.of("a",1L,"b",1L),current,List.of(),List.of(a,b)).isEmpty(),"Persisted actor heads exclude already completed old tail entries");
-        for(String invalid:new String[]{"",a.encode()+"/extra",a.encode().replace("1_30_1","1_0_1"),a.encode().replace("/7/","/17/"),a.encode().replace("/0/1_","/9/1_"),a.encode().replace("/0/000","/2/000")}){
+        for(String invalid:new String[]{"",a.encode()+"/extra",a.encode().replace("1_30_1","1_0_1"),a.encode().replace("/7/","/24/"),a.encode().replace("/0/1_","/9/1_"),a.encode().replace("/0/000","/2/000")}){
             boolean failed=false;try{OnlineChange.decode(invalid,"a");}catch(java.io.IOException expected){failed=true;}check(failed,"Reject invalid event: "+invalid);
         }
         for(int n:new int[]{2,3}){simulate(n,3600,10,1);simulate(n,30,1,12);}

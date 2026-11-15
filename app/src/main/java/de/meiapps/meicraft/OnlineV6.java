@@ -23,7 +23,7 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
             if(member!=null&&member.getJSONObject("fields").getJSONObject("banned").getBoolean("booleanValue"))throw new IOException("Du wurdest aus dieser Welt entfernt.");
             if(member==null){try{root=f.get(s.base());}catch(FirebaseRest.Failure e){if(e.status!=403)throw e;}if(root==null)f.commit(new JSONArray().put(s.memberWrite()));}
             if(root==null)root=f.get(s.base());if(root==null)throw new IOException("Diese Welt existiert nicht.");JSONObject data=root.getJSONObject("fields");
-            s.owner=FirebaseRest.string(data,"owner");s.name=FirebaseRest.string(data,"name");s.seed=integer(data,"seed");s.side=FirebaseRest.integer(data,"side");s.invitation=new OnlineWorld(s.invitation.id,FirebaseRest.string(data,"invite"));protocol=FirebaseRest.integer(data,"protocol");migrating=data.has("migration")&&FirebaseRest.string(data,"migration").equals("rtdb6");s.deletionOnly=data.getJSONObject("closed").getBoolean("booleanValue");
+            s.terrainVersion=data.has("terrain")?FirebaseRest.integer(data,"terrain"):1;if(s.terrainVersion<1||s.terrainVersion>2)throw new IOException("Bitte App aktualisieren: Landschaftsversion.");s.owner=FirebaseRest.string(data,"owner");s.name=FirebaseRest.string(data,"name");s.seed=integer(data,"seed");s.side=FirebaseRest.integer(data,"side");s.invitation=new OnlineWorld(s.invitation.id,FirebaseRest.string(data,"invite"));protocol=FirebaseRest.integer(data,"protocol");migrating=data.has("migration")&&FirebaseRest.string(data,"migration").equals("rtdb6");s.deletionOnly=data.getJSONObject("closed").getBoolean("booleanValue");
             if(s.deletionOnly&&protocol<=5&&data.has("migration")&&FirebaseRest.string(data,"migration").equals("v5"))s.deletionOnly=false;
             if(s.deletionOnly)throw new IOException("Diese Welt wurde geschlossen.");
             if(protocol<6&&!s.owner())throw new IOException("Bitte zuerst den Weltbesitzer mit dieser Version verbinden lassen, damit der dauerhafte RTDB-Spielstand eingerichtet wird.");
@@ -39,8 +39,8 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
         JSONObject control=remote(storage()+"/control");if(!control.getString("phase").equals("ready"))throw new IOException("Migration noch nicht abgeschlossen.");epoch=control.getString("epoch");
         try(OnlineRealtime presence=new OnlineRealtime(s)){presence.initialize();}
         activated=true;readSync();
-        if(s.world!=null)cachePrimed=false;if(s.regionCache!=null)s.regionCache.close();s.regionCache=new OnlineRegionCache(new File(s.activity.getCacheDir(),"online-regions-v6-"+epoch),s.invitation.id,s.seed,s.side);
-        boolean fresh=s.world==null;if(fresh){s.world=World.onlineSpace(s.seed,s.side);World origin=OnlineTerrain.region(s.seed,0,s.side);s.world.x=origin.x;s.world.y=origin.y;s.world.z=origin.z;s.px=origin.x;s.py=origin.y;s.pz=origin.z;}
+        if(s.world!=null)cachePrimed=false;if(s.regionCache!=null)s.regionCache.close();s.regionCache=new OnlineRegionCache(new File(s.activity.getCacheDir(),"online-regions-v6-"+epoch+"-t"+s.terrainVersion),s.invitation.id,s.seed,s.side);
+        boolean fresh=s.world==null;if(fresh){s.world=World.onlineSpace(s.seed,s.side,s.terrainVersion);World origin=OnlineTerrain.region(s.seed,0,s.side,s.terrainVersion);s.world.x=origin.x;s.world.y=origin.y;s.world.z=origin.z;s.px=origin.x;s.py=origin.y;s.pz=origin.z;}
         OnlineInventory.apply(s.world.progress,s.inventory);syncVisible(fresh);s.remember();
         nature=new OnlineNature(this);if(services)nature.join();checkpoints=new OnlineCheckpoint(this);if(services){checkpoints.start();journalReader.execute(this::listen);}
     }
@@ -85,7 +85,7 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
         if(!activated){super.syncVisible(initial);return;}World target=s.world;if(target==null)return;
         try{for(int id:OnlineWorld.visibleSectors(s.px,s.pz,s.side,82)){
             if(s.closed)return;OnlineSession.Region r=s.regions.get(id);if(r==null){r=new OnlineSession.Region(id);s.regions.put(id,r);OnlineRegionCache.Snapshot cache=s.regionCache==null?null:s.regionCache.load(id);if(cache!=null){r.versions.putAll(cache.versions);r.types.putAll(cache.types);r.renewable.putAll(cache.renewable);r.heads.putAll(cache.heads);r.revision=cache.revision;r.complete=true;FirebaseRest.DIAGNOSTICS.cacheRestored(cache.types.size());}}
-            long announced=head.region(id);if(r.revision>announced)throw new IOException("Weltstand zurückgesetzt. Bitte erneut beitreten.");World tile=r.generated?null:OnlineTerrain.region(s.seed,id,s.side);if(tile!=null){s.streaming=true;for(String key:r.types.keySet()){String[] xyz=key.split("_");tile.set(Integer.parseInt(xyz[0]),Integer.parseInt(xyz[1]),Integer.parseInt(xyz[2]),r.types.get(key));}}
+            long announced=head.region(id);if(r.revision>announced)throw new IOException("Weltstand zurückgesetzt. Bitte erneut beitreten.");World tile=r.generated?null:OnlineTerrain.region(s.seed,id,s.side,s.terrainVersion);if(tile!=null){s.streaming=true;for(String key:r.types.keySet()){String[] xyz=key.split("_");tile.set(Integer.parseInt(xyz[0]),Integer.parseInt(xyz[1]),Integer.parseInt(xyz[2]),r.types.get(key));}}
             boolean changed=announced!=r.revision||!r.complete;List<OnlineChange> delta=r.complete?OnlineChange.reconcile(id,r.revision,announced,r.heads,r.versions,r.own,tail):null;
             if(delta==null)loadRegion(r,tile);else{for(OnlineChange c:delta)cell(r,tile,c.x,c.y,c.z,c.type,c.renewable,c.token);if(!delta.isEmpty())FirebaseRest.DIAGNOSTICS.tailApplied(delta.size());}
             if(changed&&nature!=null)nature.changed(id);
@@ -107,7 +107,7 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
     JSONObject increment()throws JSONException{return new JSONObject().put(".sv",new JSONObject().put("increment",1));}
     void commit(Story inventory,OnlineChange c)throws Exception{
         long rev=revision+1;String uid=f.uid,eventKey=OnlineJournal.eventKey(rev),op=OnlineWorld.randomId(),prefix="head/actors/"+uid+"/",encrypted=encrypt(inventory,rev);
-        JSONObject patch=new JSONObject().put(prefix+"batch",JSONObject.NULL).put(prefix+"count",JSONObject.NULL).put(prefix+"base",JSONObject.NULL).put(prefix+"presenceBase",JSONObject.NULL).put(prefix+"growthToken",JSONObject.NULL).put(prefix+"growthDay",JSONObject.NULL).put(prefix+"decayRegion",JSONObject.NULL).put("head/g",increment()).put(prefix+"rev",rev).put(prefix+"seq",sequence+(c==null?0:1)).put(prefix+"inventory",encrypted).put(prefix+"op",op).put(prefix+"eventKey",eventKey);
+        JSONObject patch=new JSONObject().put(prefix+"batch",JSONObject.NULL).put(prefix+"count",JSONObject.NULL).put(prefix+"base",JSONObject.NULL).put(prefix+"presenceBase",JSONObject.NULL).put(prefix+"growthToken",JSONObject.NULL).put(prefix+"growthDay",JSONObject.NULL).put(prefix+"decayRegion",JSONObject.NULL).put(prefix+"reactionRegion",JSONObject.NULL).put(prefix+"needsSpace",JSONObject.NULL).put("head/g",increment()).put(prefix+"schemaRev",rev).put(prefix+"rev",rev).put(prefix+"seq",sequence+(c==null?0:1)).put(prefix+"inventory",encrypted).put(prefix+"op",op).put(prefix+"eventKey",eventKey);
         if(c!=null){JSONObject last=JournalBatch.last(c);
             patch.put(prefix+"last",last).put(prefix+"tail/e"+(c.sequence%16),c.encode()).put("head/regions/s"+c.region,increment()).put("head/chunks/"+OnlineJournal.chunk(c),increment()).put("chunks/"+OnlineJournal.chunk(c)+"/cells/"+c.key(),JournalBatch.cell(c,null));}
         if(c!=null){
@@ -119,7 +119,7 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
         db.request("PATCH",storage(),patch);
     }
     long day(){return Math.floorDiv(System.currentTimeMillis()+db.serverOffset,TreeGrowth.DAY);}
-    String designation(int type,int x,int y,int z){if(type!=6)return "";World w=s.world;boolean single=w!=null&&w.get(x+1,y,z)!=6&&w.get(x-1,y,z)!=6&&w.get(x,y,z+1)!=6&&w.get(x,y,z-1)!=6&&w.get(x,y+1,z)!=6;return single&&(w.get(x,y-1,z)==1||w.get(x,y-1,z)==2)?"tree_0_"+day()+"_"+(System.currentTimeMillis()+db.serverOffset):"decor";}
+    String designation(int type,int x,int y,int z){if(type!=6)return "user";World w=s.world;boolean single=w!=null&&w.get(x+1,y,z)!=6&&w.get(x-1,y,z)!=6&&w.get(x,y,z+1)!=6&&w.get(x,y,z-1)!=6&&w.get(x,y+1,z)!=6;return single&&(w.get(x,y-1,z)==1||w.get(x,y-1,z)==2)?"tree_0_"+day()+"_"+(System.currentTimeMillis()+db.serverOffset):"decor";}
     @Override void edit(int x,int y,int z,int type){
         if(!activated){super.edit(x,y,z,type);return;}World target=s.world;if(target==null||!target.contains(x,y,z)||y==0||type<0||type>=World.NAMES.length||!s.beginAction())return;int r=OnlineWorld.sectorAt(x,z,s.side),lx=x-r%s.side*World.W,lz=z-r/s.side*World.D,expected=target.get(x,y,z);long started=s.actionStarted;
         s.worker.execute(()->{try{OnlineSession.Region data=s.regions.get(r);if(data==null||!data.generated)return;String key=lx+"_"+y+"_"+lz;if(data.types.containsKey(key)&&data.types.get(key)!=expected||type!=0&&expected!=0){s.activity.game.message("Der Block wurde inzwischen geändert. Bitte erneut versuchen.");return;}

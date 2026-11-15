@@ -6,7 +6,7 @@ import java.util.concurrent.*;
 
 /** Event-driven nature work on the session's serial worker; no idle timer or extra stream. */
 final class OnlineNature {
-    final OnlineV6 v;final OnlineSession s;boolean queued,closed;Exception failure;final Set<Integer> decayRegions=new HashSet<>();
+    final OnlineV6 v;final OnlineSession s;boolean queued,closed;Exception failure;final Set<Integer> decayRegions=new HashSet<>(),reactionPending=new HashSet<>();
     final Map<Integer,World> terrain=new HashMap<>();final Map<Integer,Map<String,String>> cellCache=new HashMap<>();final Map<String,Long> counters=new HashMap<>();
     OnlineNature(OnlineV6 v){this.v=v;s=v.s;}
     void join(){s.worker.execute(()->{try{daily();}catch(Exception e){FirebaseRest.DIAGNOSTICS.failed("Baumprüfung · "+e.getClass().getSimpleName());}for(int id:s.readyRegions)decayRegions.add(id);schedule();});}
@@ -41,7 +41,7 @@ final class OnlineNature {
         }
         patch.put("indexReady",true);v.db.request("PATCH",v.storage()+"/growth",patch);
     }
-    final class Tile implements TreeGrowth.Space {
+    final class Tile implements TreeGrowth.Space,MaterialReactions.Space {
         final long presenceVersion;final World world;final Map<String,String> values;final JSONObject players;final int region,side;final OnlineSession s;
         Tile(World w,Map<String,String> values,JSONObject players,int region,OnlineSession s){world=w;this.values=values;this.presenceVersion=players.optLong("poseVersion",0);this.players=JournalHead.object(players,"players");this.region=region;side=s.side;this.s=s;}
         public int get(int x,int y,int z){
@@ -57,11 +57,15 @@ final class OnlineNature {
             }return false;
         }
         static boolean overlap(float x,float y,float z,float px,float py,float pz){return x+1>px-.4f&&x<px+.4f&&y+1>py-1.7f&&y<py+.3f&&z+1>pz-.4f&&z<pz+.4f;}
+        public boolean inside(int x,int y,int z){int gx=region%side*World.W+x,gz=region/side*World.D+z;return gx>=0&&gz>=0&&gx<side*World.W&&gz<side*World.D&&y>0&&y<World.H;}
+        String valueAt(int x,int y,int z){if(!inside(x,y,z))return "";int gx=region%side*World.W+x,gz=region/side*World.D+z,r=gz/World.D*side+gx/World.W;return cellCache.getOrDefault(r,Collections.emptyMap()).getOrDefault(gx%World.W+"_"+y+"_"+gz%World.D,"");}
+        public String tag(int x,int y,int z){String[] p=valueAt(x,y,z).split(":",-1);return p.length>3?p[3]:"";}
+        public String token(int x,int y,int z){String[] p=valueAt(x,y,z).split(":",-1);return p.length>2?p[2]:"";}
         String nature(String key){String value=values.get(key);if(value==null)return "";String[] parts=value.split(":",-1);return parts.length>3?parts[3]:"";}
         String nonce(String key){String value=values.get(key);return value==null?"":value.split(":")[2];}
     }
     void loadTerrain(int region,JournalHead head)throws Exception{
-        World world=terrain.computeIfAbsent(region,id->OnlineTerrain.region(s.seed,id,s.side));Map<String,String> values=cellCache.computeIfAbsent(region,id->new HashMap<>());
+        World world=terrain.computeIfAbsent(region,id->OnlineTerrain.region(s.seed,id,s.side,s.terrainVersion));Map<String,String> values=cellCache.computeIfAbsent(region,id->new HashMap<>());
         for(String chunk:OnlineV5.keys(head.chunks))if(chunk.startsWith(region+"_")&&counters.getOrDefault(chunk,-1L)!=head.chunk(chunk)){
             Map<String,String> changed=JournalHead.cells(v.remote(v.storage()+"/chunks/"+chunk));values.putAll(changed);
             for(String key:changed.keySet()){String[] xyz=key.split("_");world.set(Integer.parseInt(xyz[0]),Integer.parseInt(xyz[1]),Integer.parseInt(xyz[2]),Integer.parseInt(changed.get(key).split(":")[0]));}
@@ -105,11 +109,28 @@ final class OnlineNature {
             for(int y=2;y<World.H;y++)for(int z=0;z<World.D;z++)for(int x=0;x<World.W;x++)if(local.get(x,y,z)==6&&local.get(x,y-1,z)!=1&&local.get(x,y-1,z)!=2&&!TreeGrowth.supported(local,x,y,z))return true;
         }return false;
     }
+    boolean materialCandidate(int region){
+        if(reactionPending.contains(region))return true;World w=s.world;if(w==null)return false;int ox=region%s.side*World.W,oz=region/s.side*World.D;
+        synchronized(w){TreeGrowth.Space space=new TreeGrowth.Space(){public int get(int x,int y,int z){return w.get(ox+x,y,oz+z);}public boolean occupied(int x,int y,int z){return false;}};
+            for(int y=1;y<World.H;y++)for(int z=0;z<World.D;z++)for(int x=0;x<World.W;x++)if(MaterialReactions.potential(space,x,y,z))return true;
+        }return false;
+    }
+    void neighbors(int region,JournalHead h)throws Exception{for(int rz=Math.max(0,region/s.side-1);rz<=Math.min(s.side-1,region/s.side+1);rz++)for(int rx=Math.max(0,region%s.side-1);rx<=Math.min(s.side-1,region%s.side+1);rx++)loadTerrain(rz*s.side+rx,h);}
+    boolean reactions(int region,JournalHead h,Tile tile)throws Exception{
+        neighbors(region,h);List<MaterialReactions.Change> plan=MaterialReactions.plan(tile,true,true);if(plan.isEmpty()){reactionPending.remove(region);return false;}
+        List<OnlineChange> changes=new ArrayList<>();boolean active=false,needsSpace=false;
+        for(MaterialReactions.Change c:plan){int gx=region%s.side*World.W+c.x,gz=region/s.side*World.D+c.z,r=gz/World.D*s.side+gx/World.W;active|=MaterialReactions.active(c.tag);needsSpace|=tile.get(c.x,c.y,c.z)==15&&c.type==Materials.BASALT;
+            changes.add(new OnlineChange(v.sequence+changes.size()+1,r,gx%World.W,c.y,gz%World.D,c.type,false,OnlineWorld.randomId(),tile.token(c.x,c.y,c.z),v.f.uid,c.tag));}
+        String prefix="head/actors/"+v.f.uid+"/";JSONObject patch=JournalBatch.patch(v,changes).put(prefix+"base",h.generation).put(prefix+"presenceBase",tile.presenceVersion).put(prefix+"reactionRegion",region).put(prefix+"needsSpace",needsSpace)
+            .put("growth/reactions/"+region,new JSONObject().put("at",new JSONObject().put(".sv","timestamp")));
+        publish(patch,changes);if(active){reactionPending.add(region);decayRegions.add(region);}else reactionPending.remove(region);return true;
+    }
     void decay(){
         failure=null;queued=false;if(closed||s.closed||!s.foreground)return;Set<Integer> work=new HashSet<>(decayRegions);decayRegions.clear();
         for(int region:work)try{
-            if(!candidate(region))continue;
-            v.readSync();JournalHead h=v.fetchHead();Tile tile=load(region,h,false);
+            boolean materials=materialCandidate(region);if(!materials&&!candidate(region))continue;
+            v.readSync();JournalHead h=v.fetchHead();Tile tile=load(region,h,materials);
+            if(materials&&reactions(region,h,tile))continue;
             boolean border=false;for(int y=2;y<World.H&&!border;y++)for(int z=0;z<World.D&&!border;z++)for(int x=0;x<World.W;x++)if((x<4||x>=World.W-4||z<4||z>=World.D-4)&&tile.get(x,y,z)==6){border=true;break;}
             if(border)for(int rz=Math.max(0,region/s.side-1);rz<=Math.min(s.side-1,region/s.side+1);rz++)for(int rx=Math.max(0,region%s.side-1);rx<=Math.min(s.side-1,region%s.side+1);rx++)loadTerrain(rz*s.side+rx,h);
             List<OnlineChange> changes=new ArrayList<>();boolean more=false;

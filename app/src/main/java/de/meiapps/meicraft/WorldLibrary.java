@@ -62,7 +62,7 @@ final class WorldLibrary {
         AtomicFile source = file(entry);
         if (("creative".equals(entry.id) || "story".equals(entry.id))
                 && !source.getBaseFile().exists() && !new File(source.getBaseFile() + ".bak").exists())
-            return new World(20261025L + entry.mode, entry.mode == 1);
+            return World.fresh(20261025L + entry.mode, entry.mode == 1);
         World world = World.decode(source.readFully());
         if (world.story != (entry.mode == 1)) throw new IOException("Weltmodus stimmt nicht überein");
         return world;

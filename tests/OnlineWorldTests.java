@@ -15,7 +15,7 @@ public final class OnlineWorldTests {
         check(OnlineWorld.neighbor(0,2,-1,0)==-1,"No wrapping at west edge");
         check(OnlineWorld.neighbor(3,2,1,0)==-1,"No wrapping at east edge");
         check(OnlineWorld.validBlock(0,1,95,16),"Valid boundary block");
-        check(!OnlineWorld.validBlock(0,0,0,1)&&!OnlineWorld.validBlock(96,3,2,1)&&!OnlineWorld.validBlock(1,3,2,17),"Reject foundation, bounds, unknown materials");
+        check(!OnlineWorld.validBlock(0,0,0,1)&&!OnlineWorld.validBlock(96,3,2,1)&&!OnlineWorld.validBlock(1,3,2,World.NAMES.length),"Reject foundation, bounds, unknown materials");
         for(String invalid:new String[]{"","  ","a\nb","0123456789012345678901234"})try{OnlineWorld.playerName(invalid);throw new AssertionError("Accepted invalid name");}catch(IllegalArgumentException expected){}
         World a=new World(OnlineWorld.sectorSeed(123,2),false,false),b=new World(OnlineWorld.sectorSeed(123,2),false,false);
         check(java.util.Arrays.equals(a.blocks,b.blocks),"Same seed on both devices");

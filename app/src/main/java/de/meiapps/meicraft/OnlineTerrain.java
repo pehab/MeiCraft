@@ -58,6 +58,11 @@ public final class OnlineTerrain {
         if((side!=2&&side!=3)||sector<0||sector>=side*side)throw new IllegalArgumentException("Invalid online region");
         return area(seed,sector%side*World.W,sector/side*World.D);
     }
+    public static World region(long seed,int sector,int side,int terrain){
+        if(terrain<1||terrain>2)throw new IllegalArgumentException("Unsupported terrain version");World tile=region(seed,sector,side);tile.terrainVersion=terrain;
+        if(terrain==2){MaterialTerrain.decorate(tile,sector%side*World.W,sector/side*World.D,true);tile.forge.initialize(tile);}return tile;
+    }
+    static World area(long seed,int x,int z,int terrain){World tile=area(seed,x,z);tile.terrainVersion=terrain;if(terrain==2){MaterialTerrain.decorate(tile,x,z,true);tile.forge.initialize(tile);}return tile;}
     /** An arbitrary sampling window; useful for verifying overlapping and reordered loads. */
     static World area(long seed,int originX,int originZ) {
         World tile=World.emptyOnlineTile(seed);

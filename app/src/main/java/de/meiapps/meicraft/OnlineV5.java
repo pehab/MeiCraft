@@ -35,8 +35,8 @@ class OnlineV5 {
     void start(boolean create,String name,int side)throws Exception{
         if(create){
             if(side!=2&&side!=3)throw new IOException("Ungültige Weltgröße.");if(name.trim().isEmpty()||name.trim().length()>48)throw new IOException("Weltname: 1–48 Zeichen.");
-            s.owner=f.uid;s.seed=new java.security.SecureRandom().nextInt(1000000000);s.side=side;s.name=name.trim();
-            JSONObject root=FirebaseRest.fields("owner",s.owner,"name",s.name,"seed",s.seed,"side",side,"protocol",5,"invite",s.invitation.invitation,"closed",false);
+            s.terrainVersion=this instanceof OnlineV6?2:1;s.owner=f.uid;s.seed=new java.security.SecureRandom().nextInt(1000000000);s.side=side;s.name=name.trim();
+            JSONObject root=FirebaseRest.fields("owner",s.owner,"name",s.name,"seed",s.seed,"side",side,"protocol",5,"invite",s.invitation.invitation,"closed",false);if(s.terrainVersion==2)root.put("terrain",FirebaseRest.value(2));
             state=initial(new JSONObject().put(f.uid,FirebaseRest.value(true)),new JSONObject().put(f.uid,map(player(new Story()))),true);
             f.commit(new JSONArray().put(f.write(s.base(),root,null,new JSONObject().put("exists",false),false)).put(s.memberWrite()).put(f.write(path(),state,null,new JSONObject().put("exists",false),false)));
         }else{
@@ -48,6 +48,7 @@ class OnlineV5 {
             else if(member.getJSONObject("fields").getJSONObject("banned").getBoolean("booleanValue"))throw new IOException("Du wurdest aus dieser Welt entfernt.");
             JSONObject document=owned==null?f.get(s.base()):owned;if(document==null)throw new IOException("Diese Welt existiert nicht.");JSONObject root=document.getJSONObject("fields");
             s.owner=FirebaseRest.string(root,"owner");s.name=FirebaseRest.string(root,"name");s.side=FirebaseRest.integer(root,"side");s.seed=integer(root,"seed");s.invitation=new OnlineWorld(s.invitation.id,FirebaseRest.string(root,"invite"));
+            s.terrainVersion=root.has("terrain")?FirebaseRest.integer(root,"terrain"):1;if(s.terrainVersion<1||s.terrainVersion>2)throw new IOException("Bitte App aktualisieren: Landschaftsversion.");
             int protocol=FirebaseRest.integer(root,"protocol");boolean closed=root.getJSONObject("closed").getBoolean("booleanValue");
             if(protocol==3&&!closed){
                 if(!s.owner())throw new IOException("Bitte zuerst den Weltbesitzer mit der neuen Version verbinden lassen.");
@@ -69,9 +70,9 @@ class OnlineV5 {
             JSONObject joined=new JSONObject().put("access",map(new JSONObject().put(f.uid,FirebaseRest.value(true)))).put("players",map(new JSONObject().put(f.uid,map(player(new Story())))));
             f.commit(new JSONArray().put(f.write(path(),joined,new String[]{"access."+OnlineSession.quoted(f.uid),"players."+OnlineSession.quoted(f.uid)},new JSONObject().put("exists",true),false)));readSync();
         }
-        s.regionCache=new OnlineRegionCache(new File(s.activity.getCacheDir(),"online-regions-v5"),s.invitation.id,s.seed,s.side);
+        s.regionCache=new OnlineRegionCache(new File(s.activity.getCacheDir(),"online-regions-v5-t"+s.terrainVersion),s.invitation.id,s.seed,s.side);
         if(s.closed){s.regionCache.close();return;}
-        s.world=World.onlineSpace(s.seed,s.side);World origin=OnlineTerrain.region(s.seed,0,s.side);s.world.x=origin.x;s.world.y=origin.y;s.world.z=origin.z;s.px=origin.x;s.py=origin.y;s.pz=origin.z;
+        s.world=World.onlineSpace(s.seed,s.side,s.terrainVersion);World origin=OnlineTerrain.region(s.seed,0,s.side,s.terrainVersion);s.world.x=origin.x;s.world.y=origin.y;s.world.z=origin.z;s.px=origin.x;s.py=origin.y;s.pz=origin.z;
         OnlineInventory.apply(s.world.progress,s.inventory);syncVisible(true);heartbeat();s.remember();
     }
     void readSync()throws Exception{
@@ -117,7 +118,7 @@ class OnlineV5 {
                 if(saved!=null){region.versions.putAll(saved.versions);region.types.putAll(saved.types);region.renewable.putAll(saved.renewable);region.heads.putAll(saved.heads);region.revision=saved.revision;region.watermark=saved.watermark;region.complete=true;FirebaseRest.DIAGNOSTICS.cacheRestored(saved.types.size());}}
             long announced=s.announcedRegions.has("s"+id)?integer(fields(s.announcedRegions,"s"+id),"revision"):0;
             if(region.revision>announced)throw new IOException("Weltstand zurückgesetzt. Bitte erneut beitreten.");
-            World tile=region.generated?null:OnlineTerrain.region(s.seed,id,s.side);if(tile!=null){s.streaming=true;for(String key:region.types.keySet()){String[] xyz=key.split("_");tile.set(Integer.parseInt(xyz[0]),Integer.parseInt(xyz[1]),Integer.parseInt(xyz[2]),region.types.get(key));}}
+            World tile=region.generated?null:OnlineTerrain.region(s.seed,id,s.side,s.terrainVersion);if(tile!=null){s.streaming=true;for(String key:region.types.keySet()){String[] xyz=key.split("_");tile.set(Integer.parseInt(xyz[0]),Integer.parseInt(xyz[1]),Integer.parseInt(xyz[2]),region.types.get(key));}}
             boolean changed=announced!=region.revision||!region.complete;
             List<OnlineChange> delta=region.complete?OnlineChange.reconcile(id,region.revision,announced,region.heads,region.versions,region.own,tail):null;
             if(delta==null)loadChunks(region,tile);

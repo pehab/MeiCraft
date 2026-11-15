@@ -4,6 +4,12 @@ Eigenständiges Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigene
 
 **[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 0.8.3
 
+## Vorschau 1.0 · bestehender PR #20
+
+Die [vereinbarte Featureliste](docs/1.0-VISUAL-POLISH-IMPLEMENTATION.md) ist softwareseitig umgesetzt: neue Materialien und Kristallhöhlen in neuen Welten, begrenztes Kohlefeuer, Geheimreaktionen, Kristallglas, nachwachsende Bäume und gemeinsamer Laubzerfall. Nebel, Vegetation, Flüssigkeitsanimation und Partikel bleiben lokal. Alte Welten behalten ihre Landschaft.
+
+[Verhalten, Kompatibilität und Einführung](docs/MATERIALS-1.0.md): neue Apps auf allen Geräten und aktualisierte RTDB- **und** Firestore-Regeln erforderlich. Noch keine Veröffentlichung oder Regelbereitstellung; echte Tablet-/Altweltsicherungs-Abnahme steht aus. Die folgenden Versionsabschnitte dokumentieren die bisher veröffentlichten Versionen.
+
 ## Gemeinsam bauen · 0.8.3
 
 **Gemeinsam bauen** öffnet Online-Bauwelten mit 192 × 192 oder 288 × 288 Blöcken.

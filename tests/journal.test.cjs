@@ -9,7 +9,7 @@ const actor=()=>({rev:1,seq:0,inventory:cipher,op:'a'.repeat(32)});
 async function seed(){await set(r('parent',base),{meta:{invite,side:2,closed:false},members:{parent:member,child:member,sibling:member}});await set(r('parent',storage),{control:{phase:'ready',epoch,source:'fixture'},head:{g:0,actors:{parent:actor(),child:actor(),sibling:actor()}}});}
 function action(uid,seq=1,rev=2,before='',x=1,token='c'.repeat(32)){
  const key=`${x}_44_1`,chunk=`0_${Math.floor(x/16)}_2_0`,event=`${seq}/0/${key}/2/0/${token}/${before}`,last={region:0,chunk,key,x,y:44,z:1,type:2,water:false,token,before},a=`head/actors/${uid}/`;
- return {'head/g':increment(1),[a+'rev']:rev,[a+'seq']:seq,[a+'inventory']:cipher,[a+'op']:token,[a+'eventKey']:String(rev),[a+'last']:last,[a+`tail/e${seq%16}`]:event,'head/regions/s0':increment(1),['head/chunks/'+chunk]:increment(1),['chunks/'+chunk+'/cells/'+key]:{type:2,water:false,token},[`journal/${uid}/${rev}`]:{rev,seq,inventory:cipher,op:token,event}};
+ return {'head/g':increment(1),[a+'rev']:rev,[a+'schemaRev']:rev,[a+'seq']:seq,[a+'inventory']:cipher,[a+'op']:token,[a+'eventKey']:String(rev),[a+'last']:last,[a+`tail/e${seq%16}`]:event,'head/regions/s0':increment(1),['head/chunks/'+chunk]:increment(1),['chunks/'+chunk+'/cells/'+key]:{type:2,water:false,token},[`journal/${uid}/${rev}`]:{rev,seq,inventory:cipher,op:token,event}};
 }
 before(async()=>{env=await initializeTestEnvironment({projectId:'demo-meicraft-journal',database:{rules:readFileSync('database.rules.json','utf8')},firestore:{rules:readFileSync('firestore.rules','utf8')}});});
 beforeEach(async()=>{await env.clearDatabase();await env.clearFirestore();});after(async()=>{if(env)await env.cleanup();});
@@ -30,7 +30,7 @@ test('stale resources, forged author, duplicate action and wrong previous nonce 
  const h=(await get(r('child',storage+'/head'))).val();assert.equal(h.actors.child.rev,2);assert.equal(h.g,1);
 });
 test('craft-only resource changes have a journal entry and no block mutation',async()=>{
- await seed();const uid='child',a=`head/actors/${uid}/`,op='f'.repeat(32);await assertSucceeds(update(r(uid,storage),{'head/g':increment(1),[a+'rev']:2,[a+'inventory']:cipher,[a+'seq']:0,[a+'op']:op,[a+'eventKey']:'2','journal/child/2':{rev:2,seq:0,inventory:cipher,op,event:''}}));assert.equal((await get(r(uid,storage+'/head/g'))).val(),1);
+ await seed();const uid='child',a=`head/actors/${uid}/`,op='f'.repeat(32);await assertSucceeds(update(r(uid,storage),{'head/g':increment(1),[a+'rev']:2,[a+'schemaRev']:2,[a+'inventory']:cipher,[a+'seq']:0,[a+'op']:op,[a+'eventKey']:'2','journal/child/2':{rev:2,seq:0,inventory:cipher,op,event:''}}));assert.equal((await get(r(uid,storage+'/head/g'))).val(),1);
 });
 test('members cannot overwrite durable state, change epoch or delete history without acknowledged backup',async()=>{
  await seed();await update(r('child',storage),action('child'));await assertFails(set(r('child',storage),{}));await assertFails(set(r('parent',storage+'/control/epoch'),'f'.repeat(32)));await assertFails(set(r('child',storage+'/journal/child/2'),null));await assertFails(set(r('child',storage+'/head/actors/parent/rev'),2));
@@ -91,7 +91,7 @@ function batch(uid,blocks,{base=0,seq=0,rev=1,presenceBase=0,growthToken,growthD
  blocks.forEach((b,i)=>{
   const slot='b'+i,key=`${b.x}_${b.y}_${b.z}`,chunk=`${b.region??0}_${Math.floor(b.x/16)}_${Math.floor(b.y/16)}_${Math.floor(b.z/16)}`,token=b.token??(i+1).toString(16).padStart(32,'0'),nature=b.nature??'',last={region:b.region??0,chunk,key,x:b.x,y:b.y,z:b.z,type:b.type,water:false,token,before:b.before??'',nature},r=rev+i+1,q=seq+i+1,event=`${q}/${last.region}/${key}/${b.type}/0/${token}/${last.before}`+(nature?'/'+nature:'');
   items[slot]={last,rev:r,seq:q,inventory:cipher};patch[`journal/${uid}/${r}`]={rev:r,seq:q,inventory:cipher,op:'f'.repeat(32),event,slot};patch[a+`tail/e${q%16}`]=event;patch[`chunks/${chunk}/cells/${key}`]={type:b.type,water:false,token,nature,slot};
-  if(i===blocks.length-1)Object.assign(patch,{[a+'last']:last,[a+'rev']:r,[a+'seq']:q,[a+'inventory']:cipher,[a+'eventKey']:String(r)});
+  if(i===blocks.length-1)Object.assign(patch,{[a+'last']:last,[a+'rev']:r,[a+'schemaRev']:r,[a+'seq']:q,[a+'inventory']:cipher,[a+'eventKey']:String(r)});
  });
  patch[a+'batch']=items;
  for(const [name,field] of [['regions','region'],['chunks','chunk']]){
@@ -154,4 +154,21 @@ test('stationary keepalive needs no nature counter write; moving without increme
 test('database rule generation is repeatable and retains the stationary keepalive exemption',()=>{
  const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{execFileSync}=require('node:child_process');const folder=fs.mkdtempSync(path.join(os.tmpdir(),'meicraft-rules-')),file=path.join(folder,'database.rules.json'),source=fs.readFileSync('database.rules.json','utf8');
  try{fs.writeFileSync(file,source);for(let n=0;n<2;n++){for(const script of ['add-journal-rules.py','nature-rules.py'])execFileSync('python3',[path.resolve('scripts',script)],{cwd:folder});assert.equal(fs.readFileSync(file,'utf8'),source);}}finally{fs.rmSync(folder,{recursive:true,force:true});}
+});
+const reaction=(uid,blocks,options={})=>({...batch(uid,blocks,options),[`head/actors/${uid}/reactionRegion`]:0,[`head/actors/${uid}/needsSpace`]:blocks.some(b=>b.type===19),'growth/reactions/0':{at:{'.sv':'timestamp'}}});
+test('material reaction atomically publishes inputs, metadata, inventory and output across chunk boundaries',async()=>{
+ await seed();const p=reaction('child',[{x:15,y:30,z:20,type:22},{x:16,y:30,z:20,type:0}]);await assertSucceeds(update(r('child',storage),p));const s=(await get(r('child',storage))).val();assert.equal(s.head.regions.s0,2);assert.equal(s.head.chunks['0_0_1_1'],1);assert.equal(s.head.chunks['0_1_1_1'],1);assert.equal(s.chunks['0_0_1_1'].cells['15_30_20'].type,22);
+});
+test('missing reaction cadence or stale global revision rejects all recipe outputs',async()=>{
+ await seed();const p=reaction('child',[{x:20,y:30,z:20,type:21}]);const missing={...p};delete missing['growth/reactions/0'];await assertFails(update(r('child',storage),missing));await update(r('sibling',storage),action('sibling'));await assertFails(update(r('child',storage),p));assert.equal((await get(r('child',storage+'/chunks/0_1_1_1/cells/20_30_20'))).exists(),false);
+});
+test('two active reaction workers cannot advance a timer twice in one cadence window',async()=>{
+ await seed();await assertSucceeds(update(r('child',storage),reaction('child',[{x:20,y:30,z:20,type:18,nature:'coal_1_abc'}])));const p=reaction('sibling',[{x:20,y:30,z:20,type:18,nature:'coal_2_abc',before:'1'.padStart(32,'0'),token:'a'.repeat(32)}],{base:1});await assertFails(update(r('sibling',storage),p));
+});
+test('basalt solidification requires a stable position snapshot, while heating existing solids does not',async()=>{
+ await seed();await update(r('sibling',base+'/live'),{'players/sibling':{name:'Sibling',sector:0,x:25,y:31,z:20,yaw:0,t:{'.sv':'timestamp'}},poseVersion:increment(1)});
+ const basalt=reaction('child',[{x:20,y:30,z:20,type:19}]);await assertFails(update(r('child',storage),basalt));const forged={...basalt,'head/actors/child/needsSpace':false};await assertFails(update(r('child',storage),forged));await assertSucceeds(update(r('child',storage),reaction('child',[{x:20,y:30,z:20,type:18,nature:'coal_1_abc'}])));
+});
+test('material-schema binding fences old writers and accepts authenticated v2 inventory envelopes',async()=>{
+ await seed();const p=action('child'),old={...p};delete old['head/actors/child/schemaRev'];await assertFails(update(r('child',storage),old));const v2='2.'+'a'.repeat(16)+'.'+'b'.repeat(188);p['head/actors/child/inventory']=v2;p['journal/child/2'].inventory=v2;await assertSucceeds(update(r('child',storage),p));assert.equal((await get(r('child',storage+'/head/actors/child/inventory'))).val(),v2);
 });

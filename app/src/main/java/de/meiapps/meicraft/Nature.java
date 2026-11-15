@@ -44,7 +44,7 @@ public final class Nature {
         clock+=Math.min(dt,.1f);if(clock<.5f)return;clock-=.5f;step++;
         react(w);
         if(flowEnabled){flow(w,10);if(step%3==0)flow(w,15);}
-        w.forge.step(w);
+        w.forge.step(w);if(step%6==0)w.materials.step(w);
         // One full pass every 36 seconds. Growth needs open sky and nearby grass.
         grow(w,128);
     }
@@ -74,7 +74,7 @@ public final class Nature {
             if(b==15&&adjacent(w,x,y,z,10))stone.set(i);
             if(b==4&&step%6==0&&adjacent(w,x,y,z,15))glass.set(i);
         }
-        for(int i=stone.nextSetBit(0);i>=0;i=stone.nextSetBit(i+1))w.set(i%World.W,i/(World.W*World.D),i/World.W%World.D,3);
+        for(int i=stone.nextSetBit(0);i>=0;i=stone.nextSetBit(i+1))w.set(i%World.W,i/(World.W*World.D),i/World.W%World.D,w.terrainVersion>=2?Materials.BASALT:3);
         for(int i=glass.nextSetBit(0);i>=0;i=glass.nextSetBit(i+1)){
             int x=i%World.W,y=i/(World.W*World.D),z=i/World.W%World.D;
             if(adjacent(w,x,y,z,15))w.set(x,y,z,8);
@@ -198,13 +198,13 @@ public final class Nature {
     /** Add only wholly untouched stone volumes; never regenerate a saved landscape. */
     public int addCaves(World w){
         if(cavesAdded||!w.story)return 0;
-        World original=new World(w.seed,true,false);Random random=new Random(w.seed^0x4c415641L);int added=0;
+        World original=new World(w.seed,true,false,w.terrainVersion);Random random=new Random(w.seed^0x4c415641L);int added=0;
         for(int attempt=0;attempt<80&&added<6;attempt++){
             int cx=7+random.nextInt(World.W-14),cz=7+random.nextInt(World.D-14),floor=3+random.nextInt(3);
             boolean safe=true;
             for(int dx=-4;dx<=4;dx++)for(int dz=-4;dz<=4;dz++)for(int y=floor-1;y<=floor+6;y++){
                 int x=cx+dx,z=cz+dz,i=World.index(x,y,z),b=w.get(x,y,z);
-                if(b!=original.get(x,y,z)||b!=3&&b!=13&&b!=11||w.overlapsPlayer(x,y,z))safe=false;
+                if(w.materials.touched.get(i)||b!=original.get(x,y,z)||b!=3&&b!=13&&b!=11&&b!=Materials.COAL_ORE&&b!=Materials.BASALT||w.overlapsPlayer(x,y,z))safe=false;
             }
             if(!safe)continue;
             for(int dx=-3;dx<=3;dx++)for(int dz=-3;dz<=3;dz++){

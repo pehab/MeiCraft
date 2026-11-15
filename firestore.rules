@@ -28,7 +28,8 @@ service cloud.firestore {
       allow list: if false;
       allow create: if signedIn() && token(world)
         && request.resource.data.keys().hasAll(['owner','name','seed','side','protocol','invite','closed'])
-        && request.resource.data.keys().hasOnly(['owner','name','seed','side','protocol','invite','closed'])
+        && request.resource.data.keys().hasOnly(['owner','name','seed','side','protocol','invite','closed','terrain'])
+        && (!request.resource.data.keys().hasAny(['terrain']) || request.resource.data.terrain == 2)
         && request.resource.data.owner == request.auth.uid
         && name(request.resource.data.name,48)
         && request.resource.data.seed is int && request.resource.data.seed >= 0 && request.resource.data.seed < 1000000000
@@ -88,7 +89,7 @@ service cloud.firestore {
         function inventory(data) {
           return data.keys().hasAll(['items','chapter','iron','placed','glassPlaced','buckets','sword','lastBlock','updatedAt'])
             && data.keys().hasOnly(['items','chapter','iron','placed','glassPlaced','buckets','sword','lastBlock','updatedAt'])
-            && data.items is list && data.items.size() == 17 && data.items[0] == 0
+            && data.items is list && data.items.size() in [17,24] && data.items[0] == 0
             && count(data.items[1])
             && count(data.items[2])
             && count(data.items[3])
@@ -105,6 +106,7 @@ service cloud.firestore {
             && count(data.items[14])
             && count(data.items[15])
             && count(data.items[16])
+            && (data.items.size() == 17 || count(data.items[17]) && count(data.items[18]) && count(data.items[19]) && count(data.items[20]) && count(data.items[21]) && count(data.items[22]) && count(data.items[23]))
             && data.chapter is int && data.chapter >= 0 && data.chapter <= 7
             && count(data.iron) && count(data.placed) && count(data.glassPlaced) && count(data.buckets)
             && data.sword is bool && data.lastBlock is string && data.lastBlock.size() <= 48
@@ -130,7 +132,7 @@ service cloud.firestore {
           || resource == null && deleting(world));
       }
       function v5Inventory(data) {
-        return data is string && data.matches('^1[.][A-Za-z0-9_-]{16}[.][A-Za-z0-9_-]{146}$');
+        return data is string && (data.matches('^1[.][A-Za-z0-9_-]{16}[.][A-Za-z0-9_-]{146}$') || data.matches('^2[.][A-Za-z0-9_-]{16}[.][A-Za-z0-9_-]{188}$'));
       }
       function v5Empty(data) {
         return data.keys().hasAll(['inventory','rev','seq','log','last','position']) && data.keys().hasOnly(['inventory','rev','seq','log','last','position'])
@@ -166,7 +168,7 @@ service cloud.firestore {
         return last.keys().hasAll(['sector','x','y','z','type','renewable','token','before']) && last.keys().hasOnly(['sector','x','y','z','type','renewable','token','before'])
           && last.sector is int && last.sector >= 0 && last.sector < resource.data.side * resource.data.side
           && last.x is int && last.x >= 0 && last.x < 96 && last.y is int && last.y > 0 && last.y < 48 && last.z is int && last.z >= 0 && last.z < 96
-          && last.type is int && last.type >= 0 && last.type < 17 && last.renewable is bool
+          && last.type is int && last.type >= 0 && last.type < 24 && last.renewable is bool
           && last.token is string && token(last.token) && last.before is string && last.before.matches('^([a-f0-9]{32})?$') && last.token != last.before;
       }
       function v5Cell(last) { return string(last.x) + '_' + string(last.y) + '_' + string(last.z); }
@@ -295,7 +297,7 @@ service cloud.firestore {
       function v5LastForChunk(last,side) {
         return last.sector is int && last.sector >= 0 && last.sector < side * side
           && last.x is int && last.x >= 0 && last.x < 96 && last.y is int && last.y > 0 && last.y < 48 && last.z is int && last.z >= 0 && last.z < 96
-          && last.type is int && last.type >= 0 && last.type < 17 && last.renewable is bool && token(last.token) && last.before.matches('^([a-f0-9]{32})?$') && last.token != last.before;
+          && last.type is int && last.type >= 0 && last.type < 24 && last.renewable is bool && token(last.token) && last.before.matches('^([a-f0-9]{32})?$') && last.token != last.before;
       }
       match /sync/{slot} {
         function ownPresence() {
@@ -347,7 +349,7 @@ service cloud.firestore {
           && request.resource.data.y is int && request.resource.data.y > 0 && request.resource.data.y < 48
           && request.resource.data.z is int && request.resource.data.z >= 0 && request.resource.data.z < 96
           && block == string(request.resource.data.x) + '_' + string(request.resource.data.y) + '_' + string(request.resource.data.z)
-          && request.resource.data.type is int && request.resource.data.type >= 0 && request.resource.data.type < 17
+          && request.resource.data.type is int && request.resource.data.type >= 0 && request.resource.data.type < 24
           && request.resource.data.by == request.auth.uid && request.resource.data.updatedAt == request.time
           && (get(worldPath(world)).data.protocol == 1 || (
             request.resource.data.renewable is bool

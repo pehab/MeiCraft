@@ -31,7 +31,7 @@ final class VoxelMesher {
         for(int y=0;y<World.H;y++)for(int z=z0;z<z0+16;z++){
             int index=(y*depth+z)*width+x0;
             for(int x=x0;x<x0+16;x++,index++){
-                visited++;int block=blocks[index]&255;if(block==0||(mode==1&&block!=8)||(mode==0&&block==8))continue;
+                visited++;int block=blocks[index]&255;if(block==0||(mode==1&&!Materials.glass(block))||(mode==0&&Materials.glass(block)))continue;
                 int exposed=0;
                 for(int face=0;face<6;face++){
                     if(y==0&&face==3)continue;
@@ -45,15 +45,15 @@ final class VoxelMesher {
                         case 4:neighbor=z+1<depth?blocks[index+width]&255:0;break;
                         default:neighbor=z>0?blocks[index-width]&255:0;
                     }
-                    if(neighbor==0||((neighbor==10||neighbor==15||(mode!=-1&&neighbor==8))&&block!=neighbor))exposed|=1<<face;
+                    if(neighbor==0||((neighbor==10||neighbor==15||(mode!=-1&&Materials.glass(neighbor)))&&block!=neighbor))exposed|=1<<face;
                 }
                 if(exposed==0)continue;
                 // Buried blocks have no visible heat or UVs, so do not consult Forge.
                 heatLookups++;float heat=world.forge.heat(x,y,z);
                 for(int face=0;face<6;face++)if((exposed&(1<<face))!=0){
-                    int tile=block==16?21:block==13?(heat>0?22:16):block==14?(heat>0?23:17):block==15?18:block;if(block==1)tile=face==2?1:face==3?2:13;if(block==5&&face>=2&&face<=3)tile=14;
-                    float u0=(tile*32+.5f)/1024f,u1=(tile*32+31.5f)/1024f;
-                    float shade=block==11||block==15||block==16||heat>0?1.2f:SHADE[face];
+                    int tile=block>=17?Materials.tile(block):block==16?21:block==13?(heat>0?22:16):block==14?(heat>0?23:17):block==15?18:block;if(block==1)tile=face==2?1:face==3?2:13;if(block==5&&face>=2&&face<=3)tile=14;
+                    float atlas=mode==-1?1024f:Materials.ATLAS_WIDTH;float u0=(tile*32+.5f)/atlas,u1=(tile*32+31.5f)/atlas;
+                    float shade=Materials.luminous(block)||heat>0?1.2f:SHADE[face];
                     for(int corner=0;corner<4;corner++){float[] f=F[face];float u=(corner==0||corner==1)?u0:u1;float v=(corner==0||corner==3)?31.5f/32:.5f/32;add(x+f[corner*3],y+f[corner*3+1],z+f[corner*3+2],u,v,shade);}
                 }
             }

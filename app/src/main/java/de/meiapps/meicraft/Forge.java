@@ -84,7 +84,7 @@ public final class Forge {
             boolean safe=true;
             for(int dx=-4;dx<=5;dx++)for(int dz=-4;dz<=6;dz++)for(int y=floor-1;y<=floor+8;y++){
                 int b=w.get(x+dx,y,z+dz);
-                if(b!=3&&b!=13&&b!=11||w.overlapsPlayer(x+dx,y,z+dz))safe=false;
+                if(b!=3&&b!=13&&b!=11&&b!=Materials.COAL_ORE&&b!=Materials.BASALT||w.overlapsPlayer(x+dx,y,z+dz))safe=false;
             }
             if(!safe)continue;
             for(int dx=-3;dx<=4;dx++)for(int dz=-3;dz<=5;dz++){w.set(x+dx,floor-1,z+dz,3);w.set(x+dx,floor,z+dz,3);for(int y=floor+1;y<=floor+5;y++)w.set(x+dx,y,z+dz,0);}

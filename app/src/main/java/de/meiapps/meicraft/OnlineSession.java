@@ -22,7 +22,7 @@ final class OnlineSession implements AutoCloseable {
     private ScheduledFuture<?> pollTask;private final java.util.concurrent.atomic.AtomicBoolean realtimeSyncQueued=new java.util.concurrent.atomic.AtomicBoolean();
     volatile boolean closed,foreground=true,healthy,loading=true,pending,streaming,deletionOnly;
     volatile List<Player> players=Collections.emptyList();
-    volatile int sector,side;
+    volatile int sector,side;int terrainVersion=1;
     volatile World world;
     volatile String owner="",name="";
     long seed,lastHeartbeat,nextAttempt;volatile long actionStarted;int failures;
@@ -86,7 +86,7 @@ final class OnlineSession implements AutoCloseable {
             if(region.revision>revision){if(region.generated)throw new IOException("Weltstand zurückgesetzt. Bitte erneut beitreten.");region.versions.clear();region.types.clear();region.renewable.clear();region.watermark="";region.complete=false;region.revision=-1;region.ownChanges=0;}
             boolean reload=OnlineSyncPolicy.reload(region.complete||region.generated,region.revision,region.ownChanges,revision);
             if(!region.generated)streaming=true;
-            World tile=region.generated?null:OnlineTerrain.region(seed,id,side);
+            World tile=region.generated?null:OnlineTerrain.region(seed,id,side,terrainVersion);
             if(tile!=null)for(Map.Entry<String,Integer> entry:region.types.entrySet()){
                 String[] xyz=entry.getKey().split("_");tile.set(Integer.parseInt(xyz[0]),Integer.parseInt(xyz[1]),Integer.parseInt(xyz[2]),entry.getValue());
             }
@@ -227,7 +227,7 @@ final class OnlineSession implements AutoCloseable {
     }
     Story decodeInventory(JSONObject d)throws JSONException,IOException{
         Story state=new Story();JSONArray items=d.getJSONObject("items").getJSONObject("arrayValue").getJSONArray("values");
-        if(items.length()!=state.inventory.length)throw new IOException("Ungültiges Online-Inventar.");
+        if(items.length()!=17&&items.length()!=state.inventory.length)throw new IOException("Ungültiges Online-Inventar.");
         for(int i=0;i<items.length();i++)state.inventory[i]=items.getJSONObject(i).getInt("integerValue");
         state.chapter=FirebaseRest.integer(d,"chapter");state.iron=FirebaseRest.integer(d,"iron");state.placed=FirebaseRest.integer(d,"placed");state.glassPlaced=FirebaseRest.integer(d,"glassPlaced");state.buckets=FirebaseRest.integer(d,"buckets");state.sword=d.getJSONObject("sword").getBoolean("booleanValue");
         if(!OnlineInventory.valid(state))throw new IOException("Ungültiges Online-Inventar.");return state;

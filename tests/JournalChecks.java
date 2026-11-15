@@ -77,8 +77,28 @@ final class JournalChecks {
             check(backend.firestore.commits.size()>fsCommits&&backend.firestore.writes<40,"Many builds are coalesced into a small number of checkpoint writes");
         }finally{finish(a);finish(b);}
         OnlineSession warm=session(activity,backend,invite,"parent");try{v(warm).start(false,"",2);ready(warm);check(warm.world.get(45,44,10)==2&&warm.inventory.inventory[2]==78,"Restart restores durable peer builds and the private inventory after a host change");}finally{finish(warm);}
-        deleteRecovery(activity,backend,invite);largeUpload(activity);resumeMigration(activity,game);nature(activity,game);
+        deleteRecovery(activity,backend,invite);largeUpload(activity);resumeMigration(activity,game);nature(activity,game);materials(activity,game);
         System.out.println("JOURNAL CHECKS: migration, zero-write builds, lost replies, ring gaps, coherent checkpoints, host takeover and warm restart verified");
+    }
+    void materials(MainActivity activity,GameView game)throws Exception{
+        Backend backend=new Backend();OnlineWorld invite=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession a=session(activity,backend,invite,"parent"),b=session(activity,backend,invite,"child");
+        try{
+            OnlineV6 engine=v(a);engine.start(true,"Materials",2);ready(a);v(b).start(false,"",2);ready(b);
+            check(a.terrainVersion==2&&b.terrainVersion==2&&a.world.terrainVersion==2,"New online worlds persist and share generation version 2");
+            Story stock=OnlineInventory.copy(a.inventory);stock.chapter=7;stock.inventory[18]=2;stock.inventory[15]=2;stock.inventory[10]=2;stock.inventory[8]=2;stock.inventory[20]=2;engine.commit(stock,null);engine.readSync();
+            check(engine.head.actors.getJSONObject("parent").getString("inventory").startsWith("2."),"New materials use the versioned authenticated inventory codec");
+            engine.edit(48,44,48,15);drain(a,game);a.healthy=true;engine.edit(48,45,48,18);drain(a,game);Story before=OnlineInventory.copy(a.inventory);
+            for(int i=0;i<3;i++){engine.nature.changed(0);engine.nature.decay();if(engine.nature.failure!=null)throw engine.nature.failure;test.onGl(game,()->{});}
+            check(a.world.get(48,45,48)==21&&OnlineInventory.same(before,a.inventory),"Coal over lava becomes ember stone without additional resource debits or refunds");
+            check(!engine.nature.reactionPending.contains(0),"Completed fire reaction has no persistent polling task");
+            a.healthy=true;engine.edit(95,44,48,8);drain(a,game);a.healthy=true;engine.edit(96,44,48,20);drain(a,game);
+            for(int i=0;i<3;i++){engine.nature.changed(0);engine.nature.decay();if(engine.nature.failure!=null)throw engine.nature.failure;test.onGl(game,()->{});}
+            v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});
+            check(a.world.get(95,44,48)==22&&a.world.get(96,44,48)==0&&b.world.get(95,44,48)==22&&b.world.get(96,44,48)==0,"Crystal glass consumes its input atomically across a region boundary and reaches peers");
+            a.healthy=true;engine.edit(50,44,48,15);drain(a,game);a.healthy=true;engine.edit(51,44,48,10);drain(a,game);engine.nature.changed(0);engine.nature.decay();if(engine.nature.failure!=null)throw engine.nature.failure;test.onGl(game,()->{});check(a.world.get(50,44,48)==19,"Authored online water/lava contact produces durable basalt");
+            engine.checkpoints.lease();engine.checkpoints.save(true);
+        }finally{finish(a);finish(b);}
+        OnlineSession warm=session(activity,backend,invite,"parent");try{v(warm).start(false,"",2);check(warm.terrainVersion==2&&warm.world.get(95,44,48)==22&&warm.world.get(50,44,48)==19&&warm.inventory.inventory[18]==1,"New terrain, reaction outputs and version-2 private resources survive warm restart");}finally{finish(warm);}
     }
     void nature(MainActivity activity,GameView game)throws Exception{
         Backend backend=new Backend();OnlineWorld invite=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession a=session(activity,backend,invite,"parent"),b=session(activity,backend,invite,"child");

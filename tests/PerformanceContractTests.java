@@ -24,7 +24,7 @@ public final class PerformanceContractTests {
         for(int id:new int[]{0,1,3,4,8})OnlineInventory.install(wide,OnlineTerrain.region(7412,id,3),id,3);
         for(int[] c:new int[][]{{0,0},{5,2},{6,2},{5,5},{6,6},{11,11},{12,12},{17,17}})equal(wide,c[0],c[1],mesher);
         World mixed=World.emptyOnlineTile(0);Random random=new Random(1000);
-        for(int y=0;y<World.H;y++)for(int z=0;z<17;z++)for(int x=0;x<17;x++)mixed.blocks[mixed.idx(x,y,z)]=(byte)random.nextInt(World.NAMES.length);
+        for(int y=0;y<World.H;y++)for(int z=0;z<17;z++)for(int x=0;x<17;x++)mixed.blocks[mixed.idx(x,y,z)]=(byte)random.nextInt(Materials.LEGACY_COUNT);
         // Heat on every material, not only ore: the hidden ritual also heats stone/glass.
         for(int y=1;y<World.H;y+=4)for(int z=0;z<17;z+=3)for(int x=0;x<17;x+=3)mixed.forge.glow.put(World.index(x,y,z),.5f);
         equal(mixed,0,0,mesher);equal(mixed,1,0,mesher);equal(mixed,0,1,mesher);

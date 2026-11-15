@@ -16,7 +16,7 @@ final class GameView {
     final Object inputLock=new Object();
     float velocityY;boolean grounded;
     int moveId=-1,lookId=-1,verticalId=-1,mineId=-1;float lookX,lookY,knobX,knobY,mineTime;int[] miningTarget;volatile String status="";volatile long statusUntil;
-    static final int[] COLORS={0,0xff79b94f,0xff986a45,0xff8c9397,0xffdfcd91,0xff9c7246,0xff47944d,0xffbd6954,0xffb9e1e8,0xffbf955f,0xff3c9dbd,0xffffdb76,0xffe8f4f7,0xffaa8b77,0xffbac4ca,0xffff6624,0xff634a42};
+    static final int[] COLORS={0,0xff79b94f,0xff986a45,0xff8c9397,0xffdfcd91,0xff9c7246,0xff47944d,0xffbd6954,0xffb9e1e8,0xffbf955f,0xff3c9dbd,0xffffdb76,0xffe8f4f7,0xffaa8b77,0xffbac4ca,0xffff6624,0xff634a42,0xff6c7077,0xff242832,0xff474c57,0xff69d8e8,0xfff4a54a,0xffb9b4f5,0xff626d83};
     GameView(MainActivity activity,World world){this.activity=activity;root=new FrameLayout(activity);this.world=world;
         gl=new GLSurfaceView(activity);gl.setEGLContextClientVersion(2);gl.setPreserveEGLContextOnPause(true);renderer=new VoxelRenderer(this);gl.setRenderer(renderer);root.addView(gl,new FrameLayout.LayoutParams(-1,-1));hud=new Hud(activity);root.addView(hud,new FrameLayout.LayoutParams(-1,-1));root.setKeepScreenOn(true);
     }
@@ -98,7 +98,7 @@ final class GameView {
             center(c,"WELTKARTE",left+size/2,top+size+16,10,Color.WHITE);
 
         }
-        int hotbarFirst(){return world.selected<=8?1:world.selected<=12?5:World.NAMES.length-8;}
+        int hotbarFirst(){return world.selected<=8?1:world.selected<=12?5:Math.max(1,Math.min(World.NAMES.length-8,world.selected-4));}
         void joystick(Canvas c,float x,float y,float dx,float dy,String label){
             p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(0x88ffffff);c.drawCircle(x,y,68,p);p.setStyle(Paint.Style.FILL);p.setColor(0x55122d34);c.drawCircle(x,y,66,p);p.setColor(0x99ffffff);c.drawCircle(x+dx,y+dy,27,p);center(c,label,x,y+90,10,0xffe1eeee);
         }

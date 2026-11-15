@@ -12,7 +12,7 @@ final class JournalBatch {
     }
     static JSONObject patch(OnlineV6 v,List<OnlineChange> changes)throws Exception{
         if(changes.isEmpty()||changes.size()>16)throw new IllegalArgumentException("batch size");
-        String uid=v.f.uid,p="head/actors/"+uid+"/",op=OnlineWorld.randomId();JSONObject patch=new JSONObject().put(p+"growthToken",JSONObject.NULL).put(p+"growthDay",JSONObject.NULL).put(p+"decayRegion",JSONObject.NULL),batch=new JSONObject();Set<String> cells=new HashSet<>();
+        String uid=v.f.uid,p="head/actors/"+uid+"/",op=OnlineWorld.randomId();JSONObject patch=new JSONObject().put(p+"growthToken",JSONObject.NULL).put(p+"growthDay",JSONObject.NULL).put(p+"decayRegion",JSONObject.NULL).put(p+"reactionRegion",JSONObject.NULL).put(p+"needsSpace",JSONObject.NULL),batch=new JSONObject();Set<String> cells=new HashSet<>();
         long rev=v.revision;for(int i=0;i<changes.size();i++){
             OnlineChange c=changes.get(i);if(c.sequence!=v.sequence+i+1||!cells.add(c.region+"/"+c.key()))throw new IllegalArgumentException("batch order");
             String slot="b"+i,encrypted=v.encrypt(v.s.inventory,++rev),event=c.encode();JSONObject entry=new JSONObject().put("rev",rev).put("seq",c.sequence).put("inventory",encrypted).put("op",op).put("event",event).put("slot",slot);
@@ -22,6 +22,6 @@ final class JournalBatch {
         }
         Map<String,Integer> counters=new HashMap<>();for(OnlineChange c:changes){counters.merge("head/regions/s"+c.region,1,Integer::sum);counters.merge("head/chunks/"+OnlineJournal.chunk(c),1,Integer::sum);}
         for(String key:counters.keySet())patch.put(key,new JSONObject().put(".sv",new JSONObject().put("increment",counters.get(key))));
-        return patch.put("head/g",v.increment()).put(p+"op",op).put(p+"batch",batch).put(p+"count",changes.size());
+        return patch.put(p+"schemaRev",rev).put("head/g",v.increment()).put(p+"op",op).put(p+"batch",batch).put(p+"count",changes.size());
     }
 }
