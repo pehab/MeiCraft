@@ -84,7 +84,7 @@ final class JournalChecks {
         Backend backend=new Backend();OnlineWorld invite=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession a=session(activity,backend,invite,"parent"),b=session(activity,backend,invite,"child");
         try{
             OnlineV6 engine=v(a);engine.start(true,"Nature",2);ready(a);v(b).start(false,"",2);ready(b);
-            Story stock=OnlineInventory.copy(a.inventory);stock.inventory[6]=10;engine.commit(stock,null);engine.readSync();
+            Story stock=OnlineInventory.copy(a.inventory);stock.chapter=7;stock.inventory[6]=10;engine.commit(stock,null);engine.readSync();
             OnlineChange soil=new OnlineChange(engine.sequence+1,0,20,29,20,2,false,OnlineWorld.randomId(),"","parent");engine.commit(a.inventory,soil);engine.readSync();engine.syncVisible(false);test.onGl(game,()->{});
             engine.edit(20,30,20,6);drain(a,game);JSONObject record=(JSONObject)Backend.get(backend.root,engine.storage()+"/growth/saplings/0/20_30_20");check(record.getInt("stage")==0&&a.world.get(20,30,20)==6,"Player planting atomically registers a leaf sapling");
             int inventory=a.inventory.inventory[6];long start=engine.day();

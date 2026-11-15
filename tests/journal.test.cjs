@@ -130,3 +130,11 @@ test('one sapling growth per UTC day is enforced by the database index',async()=
  const p=batch('child',growthBlocks(),{growthToken:'a'.repeat(32),growthDay:utcDay()});p['growth/saplings/0/'+key]={stage:1,plantedAt,lastGrowthDay:utcDay(),token:'1'.padStart(32,'0')};await assertSucceeds(update(r('child',storage),p));
  const next=batch('child',[{x:20,y:30,z:20,type:5,token:'3'.padStart(32,'0'),before:'1'.padStart(32,'0'),nature:'tree_2_'+utcDay()+'_'+plantedAt},{x:20,y:31,z:20,type:5,token:'4'.padStart(32,'0'),before:'2'.padStart(32,'0')}],{base:1,seq:2,rev:3,growthToken:'a'.repeat(32),growthDay:utcDay()});next['growth/saplings/0/'+key]={stage:2,plantedAt,lastGrowthDay:utcDay(),token:'3'.padStart(32,'0')};await assertFails(update(r('child',storage),next));
 });
+test('player planting persists an eighth-field journal event and index atomically',async()=>{
+ await seed();const day=utcDay(),at=Date.now()-1000,token='c'.repeat(32),p=action('child'),a='head/actors/child/',last=p[a+'last'];last.type=6;last.nature=`tree_0_${day}_${at}`;const event=`1/0/1_44_1/6/0/${token}//${last.nature}`;p[a+'tail/e1']=event;p['journal/child/2'].event=event;p['chunks/0_0_2_0/cells/1_44_1']={type:6,water:false,token,nature:last.nature};p['growth/saplings/0/1_44_1']={stage:0,plantedAt:at,lastGrowthDay:day,token};await assertSucceeds(update(r('child',storage),p));assert.equal((await get(r('child',storage+'/growth/saplings/0/1_44_1/stage'))).val(),0);
+ const incomplete={...p};delete incomplete['chunks/0_0_2_0/cells/1_44_1'];await assertFails(update(r('sibling',storage),incomplete));
+});
+test('root provenance reconstructs a missing index without changing the saved day or stage',async()=>{
+ await seed();const day=utcDay()-1,at=Date.now()-86400000,token='a'.repeat(32),key='20_30_20',chunk='0_1_1_1';await env.withSecurityRulesDisabled(c=>set(ref(c.database(),storage+'/chunks/'+chunk+'/cells/'+key),{type:5,water:false,token,nature:`tree_2_${day}_${at}`}));
+ await assertSucceeds(set(r('child',storage+'/growth/saplings/0/'+key),{chunk,stage:2,plantedAt:at,lastGrowthDay:day,token}));await assertFails(set(r('child',storage+'/growth/saplings/0/'+key),{chunk,stage:1,plantedAt:at,lastGrowthDay:day,token}));assert.equal((await get(r('child',storage+'/growth/saplings/0/'+key+'/stage'))).val(),2);
+});

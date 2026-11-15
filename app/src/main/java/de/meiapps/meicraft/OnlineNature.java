@@ -11,7 +11,7 @@ final class OnlineNature {
     OnlineNature(OnlineV6 v){this.v=v;s=v.s;}
     void join(){s.worker.execute(()->{try{daily();}catch(Exception e){FirebaseRest.DIAGNOSTICS.failed("Baumprüfung · "+e.getClass().getSimpleName());}for(int id:s.readyRegions)decayRegions.add(id);schedule();});}
     void changed(int region){decayRegions.add(region);schedule();}
-    void schedule(){if(queued||closed||s.closed||decayRegions.isEmpty())return;queued=true;s.worker.schedule(this::decay,3,TimeUnit.SECONDS);}
+    void schedule(){if(!v.services||queued||closed||s.closed||decayRegions.isEmpty())return;queued=true;s.worker.schedule(this::decay,3,TimeUnit.SECONDS);}
     long now(){return System.currentTimeMillis()+v.db.serverOffset;}
     void daily()throws Exception{
         String path=v.storage()+"/growth/run";RtdbRest.Version version=v.db.version(path);JSONObject old=v.object(version.value);long day=v.day();
@@ -50,7 +50,7 @@ final class OnlineNature {
         public boolean occupied(int x,int y,int z){
             float gx=region%side*World.W+x,gz=region/side*World.D+z;
             if(overlap(gx,y,gz,s.px,s.py,s.pz))return true;
-            for(String uid:OnlineV5.keys(players)){JSONObject p=players.optJSONObject(uid);if(p==null)continue;int r=p.optInt("sector",-1);if(r<0)continue;
+            for(String uid:OnlineV5.keys(players)){JSONObject p=players.optJSONObject(uid);if(p==null||now()-p.optLong("t",0)>8000)continue;int r=p.optInt("sector",-1);if(r<0)continue;
                 if(overlap(gx,y,gz,(float)p.optDouble("x")+r%side*World.W,(float)p.optDouble("y"),(float)p.optDouble("z")+r/side*World.D))return true;
             }return false;
         }
