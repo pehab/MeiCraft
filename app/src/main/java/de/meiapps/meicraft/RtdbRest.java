@@ -24,13 +24,18 @@ final class RtdbRest implements AutoCloseable {
             stream=c;if(closed){c.disconnect();throw new IOException("RTDB beendet.");}
             int status=c.getResponseCode();if(status==307){String location=c.getHeaderField("Location");c.disconnect();if(location==null)throw new IOException("RTDB-Weiterleitung fehlt.");URL next=new URL(url,location);
                 if(!next.getProtocol().equals("https")||next.getUserInfo()!=null||next.getPort()!=-1||!next.getHost().endsWith(".firebasedatabase.app")&&!next.getHost().endsWith(".firebaseio.com"))throw new IOException("Ungültige RTDB-Weiterleitung.");url=next;continue;}
-            check(c,status,token);long date=c.getHeaderFieldDate("Date",0);if(date>0)serverOffset=date-System.currentTimeMillis();return c;
+            check(c,status,token,"Live-Stream · "+resourceName(path));long date=c.getHeaderFieldDate("Date",0);if(date>0)serverOffset=date-System.currentTimeMillis();return c;
         }throw new IOException("Zu viele RTDB-Weiterleitungen.");
     }
-    void check(HttpURLConnection c,int status,String token)throws IOException{
+    static String resourceName(String path){
+        String resource=path.split("\\?",2)[0];int at=resource.indexOf("/storage");if(at>=0)return "storage"+resource.substring(at+8).replaceAll("[A-Za-z0-9_-]{20,}","[id]");
+        at=resource.indexOf("/live");if(at>=0)return "live"+resource.substring(at+5).replaceAll("[A-Za-z0-9_-]{20,}","[id]");return "Weltzugriff";
+    }
+    void check(HttpURLConnection c,int status,String token,String operation)throws IOException{
         if(status>=200&&status<300)return;
-        try(InputStream in=c.getErrorStream()){if(in!=null)FirebaseRest.read(in);}finally{c.disconnect();}
-        if(status==401)f.invalidateToken(token);throw f.failure(status,"RTDB","Livekanal", "{}");
+        String response="";try(InputStream in=c.getErrorStream()){if(in!=null)response=new String(FirebaseRest.read(in),StandardCharsets.UTF_8);}finally{c.disconnect();}
+        // RTDB also uses 401 for rule conflicts. Refreshing a valid token adds latency without fixing them.
+        if(status==401&&!response.toLowerCase(java.util.Locale.ROOT).contains("permission denied"))f.invalidateToken(token);throw f.failure(status,"RTDB",operation,response);
     }
     Object request(String method,String path,Object value)throws Exception{return request(method,path,value,false);}
     Object request(String method,String path,Object value,boolean create)throws Exception{return exchange(method,path,value,create?"null_etag":null,false).value;}
@@ -42,7 +47,7 @@ final class RtdbRest implements AutoCloseable {
         try{
             if(method.equals("PATCH")){c.setRequestMethod("POST");c.setRequestProperty("X-HTTP-Method-Override","PATCH");}else c.setRequestMethod(method);if(etag!=null)c.setRequestProperty("if-match",etag);if(version)c.setRequestProperty("X-Firebase-ETag","true");
             if(value!=null){byte[] body=value.toString().getBytes(StandardCharsets.UTF_8);c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json; charset=UTF-8");c.setFixedLengthStreamingMode(body.length);FirebaseRest.DIAGNOSTICS.sent(body.length);try(OutputStream out=c.getOutputStream()){out.write(body);}}
-            check(c,c.getResponseCode(),URLDecoder.decode(c.getURL().getQuery().substring(5).split("&",2)[0],"UTF-8"));Object result;
+            check(c,c.getResponseCode(),URLDecoder.decode(c.getURL().getQuery().substring(5).split("&",2)[0],"UTF-8"),method+" · "+resourceName(path));Object result;
             try(InputStream in=c.getInputStream()){byte[] body=FirebaseRest.read(in);FirebaseRest.DIAGNOSTICS.received(body.length);result=body.length==0?JSONObject.NULL:new JSONTokener(new String(body,StandardCharsets.UTF_8)).nextValue();}
             long date=c.getHeaderFieldDate("Date",0);if(date>0)serverOffset=date-System.currentTimeMillis();
             success=true;if(!method.equals("GET"))FirebaseRest.DIAGNOSTICS.realtimeWrite();return new Version(result,c.getHeaderField("ETag"));

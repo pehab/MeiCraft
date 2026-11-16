@@ -16,7 +16,7 @@ final class FirebaseRest {
         final int status;final String service,operation,serverStatus,detail;
         Failure(int status){this(status,"Firebase","Anfrage","","Keine genauere Servermeldung verfügbar.");}
         Failure(int status,String service,String operation,String serverStatus,String detail){
-            super((status==403?"Zugriff verweigert":status==429?"Kontingent oder Anfragerate begrenzt":status==401?"Anmeldung abgelaufen":"Anfrage fehlgeschlagen")+" · "+service+" · HTTP "+status+(serverStatus.isEmpty()?"":" · "+serverStatus)+". Online-Diagnose öffnen.");
+            super((status==403||status==401&&service.equals("RTDB")&&detail.toLowerCase(java.util.Locale.ROOT).contains("permission denied")?"Zugriff verweigert":status==429?"Kontingent oder Anfragerate begrenzt":status==401?"Anmeldung abgelaufen":"Anfrage fehlgeschlagen")+" · "+service+" · HTTP "+status+(serverStatus.isEmpty()?"":" · "+serverStatus)+". Online-Diagnose öffnen.");
             this.status=status;this.service=service;this.operation=operation;this.serverStatus=serverStatus;this.detail=detail;
         }
         String diagnostic(){return service+" · "+operation+" · HTTP "+status+" · "+serverStatus+" · "+detail;}
@@ -127,6 +127,7 @@ final class FirebaseRest {
     Failure failure(int status,String service,String operation,String response){
         String serverStatus="",message="",reason="";
         try{JSONObject error=new JSONObject(response).optJSONObject("error");if(error!=null){serverStatus=error.optString("status","");message=error.optString("message","");JSONArray details=error.optJSONArray("details");if(details!=null)for(int i=0;i<details.length();i++){JSONObject detail=details.optJSONObject(i);if(detail!=null){if(detail.has("reason"))reason+=" · "+detail.optString("reason");JSONObject metadata=detail.optJSONObject("metadata");if(metadata!=null)for(String key:new String[]{"quota_metric","quota_limit","quota_limit_value","service"})if(metadata.has(key))reason+=" · "+key+"="+metadata.optString(key);JSONArray violations=detail.optJSONArray("violations");if(violations!=null)for(int v=0;v<Math.min(4,violations.length());v++){JSONObject violation=violations.optJSONObject(v);if(violation!=null)reason+=" · "+violation.optString("description","");}}}}}catch(JSONException ignored){/* Never persist a raw proxy response or request body. */}
+        if(message.isEmpty())try{Object error=new JSONObject(response).opt("error");if(error instanceof String)message=(String)error;}catch(JSONException ignored){/* Persist only structured server messages. */}
         if(message.isEmpty())message="Server lieferte keine strukturierte Fehlerbeschreibung.";
         String refresh=credentials.getString("refresh","");
         Failure failure=new Failure(status,service,operation,OnlineDiagnostics.clean(serverStatus),OnlineDiagnostics.clean(message+reason,token,key,refresh,uid));

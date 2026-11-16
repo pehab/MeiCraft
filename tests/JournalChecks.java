@@ -12,7 +12,7 @@ final class JournalChecks {
     final SmokeInstrumentation test;JournalChecks(SmokeInstrumentation test){this.test=test;}
     void check(boolean ok,String message){test.check(ok,message);}
     static final class Backend implements FirebaseRest.ConnectionFactory {
-        int failCheckpointPage=-1,checkpointPages;boolean failReady;
+        int failCheckpointPage=-1,checkpointPages;boolean failReady,conflictBackground;
         final OnlineV5Checks.Store firestore=new OnlineV5Checks.Store(){
             @Override synchronized JSONObject commit(JSONObject body)throws Exception{boolean saved=false;JSONArray w=body.getJSONArray("writes");for(int i=0;i<w.length();i++)if(w.getJSONObject(i).has("update")&&w.getJSONObject(i).getJSONObject("update").getString("name").contains("/saved/"))saved=true;if(saved&&++checkpointPages==failCheckpointPage)throw new FirebaseRest.Failure(429);return super.commit(body);}
         };JSONObject root=new JSONObject();int writes,reads,liveReads;boolean loseReply,offline;long clockOffset;
@@ -34,6 +34,10 @@ final class JournalChecks {
                 }return old.toString();
             }
             JSONObject next=new JSONObject(root.toString());Object value=body.isEmpty()?JSONObject.NULL:new JSONTokener(body).nextValue();if(failReady&&path.endsWith("/storage/control")&&value instanceof JSONObject&&((JSONObject)value).optString("phase").equals("ready")){failReady=false;throw new IOException("fixture migration interrupted before activation");}long now=System.currentTimeMillis()+clockOffset;
+            if(conflictBackground&&method.equals("PATCH")&&value instanceof JSONObject&&((JSONObject)value).has("head/actors/parent/base")){
+                conflictBackground=false;JSONObject head=(JSONObject)get(root,path+"/head");head.put("g",head.getLong("g")+1);holder.status=401;return "{\"error\":\"Permission denied\"}";
+            }
+
             if(method.equals("PATCH")){JSONObject patch=(JSONObject)value;for(String key:OnlineV5.keys(patch))put(next,path+"/"+key,resolve(patch.get(key),get(root,path+"/"+key),now));}
             else put(next,path,resolve(value,old,now));root=next;writes++;if(loseReply){loseReply=false;throw new IOException("fixture lost reply after durable journal commit");}return value.toString();
         }
@@ -43,7 +47,7 @@ final class JournalChecks {
             return new HttpURLConnection(url){final ByteArrayOutputStream body=new ByteArrayOutputStream();final Holder result=new Holder();String response;boolean evaluated;
                 @Override public void connect(){}@Override public void disconnect(){}@Override public boolean usingProxy(){return false;}@Override public OutputStream getOutputStream(){return body;}
                 void evaluate()throws IOException{if(evaluated)return;evaluated=true;try{String effective=getRequestProperty("X-HTTP-Method-Override");response=request(url,effective==null?getRequestMethod():effective,body.toString("UTF-8"),getRequestProperty("if-match"),result);}catch(IOException e){throw e;}catch(Exception e){throw new IOException(e);}}
-                @Override public int getResponseCode()throws IOException{evaluate();return result.status;}@Override public InputStream getInputStream()throws IOException{evaluate();return new ByteArrayInputStream(response.getBytes(StandardCharsets.UTF_8));}@Override public InputStream getErrorStream(){return new ByteArrayInputStream("{}".getBytes(StandardCharsets.UTF_8));}
+                @Override public int getResponseCode()throws IOException{evaluate();return result.status;}@Override public InputStream getInputStream()throws IOException{evaluate();return new ByteArrayInputStream(response.getBytes(StandardCharsets.UTF_8));}@Override public InputStream getErrorStream(){return new ByteArrayInputStream((response==null?"{}":response).getBytes(StandardCharsets.UTF_8));}
                 @Override public String getHeaderField(String key){if(key.equalsIgnoreCase("ETag"))return result.etag;return null;}
             };
         }
@@ -62,6 +66,10 @@ final class JournalChecks {
         try{
             v(a).start(true,"Journal-Test",2);ready(a);stock(v(a));v(b).start(false,"",2);ready(b);stock(v(b));
             check(FirebaseRest.integer(backend.firestore.docs.get(a.base()).getJSONObject("fields"),"protocol")==6&&!backend.firestore.docs.get(a.base()).getJSONObject("fields").has("migration"),"v6 migration freezes old writers and clears its marker only after verification");
+            OnlineV6 initial=v(a);long revision=initial.revision;Story untouched=OnlineInventory.copy(a.inventory);backend.conflictBackground=true;
+            List<OnlineChange> stale=Collections.singletonList(new OnlineChange(initial.sequence+1,0,20,44,10,0,false,OnlineWorld.randomId(),"","parent",""));boolean deferred=false;
+            try{initial.nature.publish(JournalBatch.patch(initial,stale).put("head/actors/parent/base",initial.fetchHead().generation),stale);}catch(OnlineNature.Deferred expected){deferred=true;}
+            check(deferred&&initial.revision==revision&&OnlineInventory.same(untouched,a.inventory)&&a.firebase.token.equals("fixture-token"),"A proven background generation conflict is deferred without charging resources or invalidating the valid token");
             int fsWrites=backend.firestore.writes,fsCommits=backend.firestore.commits.size();v(a).edit(10,44,10,2);drain(a,game);v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});
             check(a.inventory.inventory[2]==99&&b.world.get(10,44,10)==2&&backend.firestore.writes==fsWrites,"Immediate durable build consumes one resource and reaches peers with zero Firestore writes");
             backend.loseReply=true;v(a).edit(11,44,10,2);drain(a,game);check(!a.inventoryUncertain&&a.inventory.inventory[2]==98&&a.world.get(11,44,10)==2,"Lost RTDB response reconciles the cell and inventory exactly once");
@@ -91,7 +99,13 @@ final class JournalChecks {
             java.util.List<ResourceRetrofit.Cell> vulnerable=ResourceRetrofit.plan(original,clear,0,2,0);if(!vulnerable.isEmpty()){
                 ResourceRetrofit.Cell cell=vulnerable.get(0);OnlineChange building=new OnlineChange(engine.sequence+1,0,cell.x,cell.y,cell.z,7,false,OnlineWorld.randomId(),"","parent","user");engine.commit(a.inventory,building);engine.readSync();engine.syncVisible(false);test.onGl(game,()->{});
             }
+            int quietReads=backend.reads,quietWrites=backend.writes;a.pending=true;
+            engine.resources.tick();engine.nature.changed(0);engine.nature.decay();
+            check(backend.reads==quietReads&&backend.writes==quietWrites&&engine.nature.failure==null&&engine.resources.failures==0,"Queued player actions defer nature and resource work before any network call without consuming retries");
+            a.pending=false;
             backend.loseReply=true;try{engine.resources.wave();throw new AssertionError("Expected a lost resource reply");}catch(IOException expected){engine.resources=new OnlineResources(engine);}
+            engine.resources.wave(true);JSONObject partial=engine.resources.cursors;int progressed=0;for(String key:OnlineV5.keys(partial))if(partial.getJSONObject(key).optInt("next")>0)progressed++;
+            check(progressed<=1,"One scheduled enrichment step advances at most one region before yielding the serial worker");
             int waves=0;while(engine.resources.wave()&&waves++<15)test.onGl(game,()->{});test.onGl(game,()->{});check(engine.resources.done&&waves<15,"finite resource work resumes until all region cursors are complete");
             int coal=0,crystals=0,lava=0;JournalHead head=engine.fetchHead();for(String chunk:OnlineV5.keys(head.chunks))for(String value:JournalHead.cells(engine.remote(engine.storage()+"/chunks/"+chunk)).values()){int type=Integer.parseInt(value.split(":")[0]);if(type==17)coal++;if(type==20)crystals++;if(type==15)lava++;}
             check(coal>0&&crystals>0&&lava>0&&OnlineInventory.same(inventory,a.inventory),"existing online world gains coal, crystal caves and lava without resource gifts or deductions");

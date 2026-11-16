@@ -6,21 +6,24 @@ import java.util.concurrent.*;
 
 /** Event-driven nature work on the session's serial worker; no idle timer or extra stream. */
 final class OnlineNature {
-    final OnlineV6 v;final OnlineSession s;boolean queued,closed;Exception failure;final Set<Integer> decayRegions=new HashSet<>(),reactionPending=new HashSet<>();
+    final OnlineV6 v;final OnlineSession s;boolean queued,closed;Exception failure;final Set<Integer> decayRegions=new LinkedHashSet<>(),reactionPending=new HashSet<>();
     final Map<Integer,World> terrain=new HashMap<>();final Map<Integer,Map<String,String>> cellCache=new HashMap<>();final Map<String,Long> counters=new HashMap<>();
     OnlineNature(OnlineV6 v){this.v=v;s=v.s;}
-    void join(){s.worker.execute(()->{try{daily();}catch(Exception e){FirebaseRest.DIAGNOSTICS.failed("Baumprüfung · "+e.getClass().getSimpleName());}for(int id:s.readyRegions)decayRegions.add(id);schedule();});}
+    static final class Deferred extends Exception {private static final long serialVersionUID=1L;}
+    void yieldToPlayer()throws Deferred{if(s.pending||v.services&&System.nanoTime()-s.actionStarted<250000000L)throw new Deferred();}
+    void join(){s.worker.execute(()->{dailyStep();for(int id:s.readyRegions)decayRegions.add(id);schedule();});}
+    void dailyStep(){if(closed||s.closed||!s.foreground)return;try{yieldToPlayer();daily();}catch(Deferred e){if(v.services)s.worker.schedule(this::dailyStep,250,TimeUnit.MILLISECONDS);}catch(Exception e){FirebaseRest.DIAGNOSTICS.failed("Baumprüfung · "+e.getClass().getSimpleName());}}
     void changed(int region){decayRegions.add(region);schedule();}
     void schedule(){if(!v.services||queued||closed||s.closed||decayRegions.isEmpty())return;queued=true;s.worker.schedule(this::decay,3,TimeUnit.SECONDS);}
     long now(){return System.currentTimeMillis()+v.db.serverOffset;}
     void daily()throws Exception{
         String path=v.storage()+"/growth/run";RtdbRest.Version version=v.db.version(path);JSONObject old=v.object(version.value);long day=v.day();
-        if(old.optLong("day",-1)==day&&(old.optBoolean("done")||old.optLong("until")>now()))return;
-        String token=OnlineWorld.randomId();JSONObject run=new JSONObject().put("day",day).put("uid",v.f.uid).put("token",token).put("until",now()+15000).put("done",false);
+        if(old.optLong("day",-1)==day&&(old.optBoolean("done")||old.optLong("until")>now()&&!old.optString("uid").equals(v.f.uid)))return;
+        String token=old.optLong("day",-1)==day&&old.optString("uid").equals(v.f.uid)&&!old.optBoolean("done")?old.getString("token"):OnlineWorld.randomId();JSONObject run=new JSONObject().put("day",day).put("uid",v.f.uid).put("token",token).put("until",now()+15000).put("done",false);
         try{v.db.compare(path,run,version.etag);}catch(FirebaseRest.Failure e){if(e.status==412||e.status==401||e.status==403)return;throw e;}
         repairIndex();JSONObject saplings=v.remote(v.storage()+"/growth/saplings");
         for(String region:OnlineV5.keys(saplings))for(String key:OnlineV5.keys(saplings.getJSONObject(region))){
-            if(closed||s.closed)return;
+            if(closed||s.closed)return;yieldToPlayer();
             JSONObject known=saplings.getJSONObject(region).getJSONObject(key);
             if(known.optInt("stage",0)>=3||known.optLong("lastGrowthDay",-1)>=day)continue;
             // Renew only while processing actual trees. A killed client can be replaced on the next join.
@@ -33,7 +36,7 @@ final class OnlineNature {
         if(Boolean.TRUE.equals(v.db.request("GET",v.storage()+"/growth/indexReady",null)))return;
         JournalHead head=v.fetchHead();JSONObject patch=new JSONObject();
         for(String chunk:OnlineV5.keys(head.chunks)){
-            JSONObject cells=JournalHead.object(v.remote(v.storage()+"/chunks/"+chunk),"cells");String region=chunk.substring(0,chunk.indexOf('_'));
+            yieldToPlayer();JSONObject cells=JournalHead.object(v.remote(v.storage()+"/chunks/"+chunk),"cells");String region=chunk.substring(0,chunk.indexOf('_'));
             for(String key:OnlineV5.keys(cells)){
                 JSONObject cell=cells.getJSONObject(key);String metadata=cell.optString("nature");if(!metadata.startsWith("tree_"))continue;String[] p=metadata.split("_");
                 patch.put("saplings/"+region+"/"+key,new JSONObject().put("stage",Integer.parseInt(p[1])).put("lastGrowthDay",Long.parseLong(p[2])).put("plantedAt",Long.parseLong(p[3])).put("token",cell.getString("token")).put("chunk",chunk));
@@ -65,9 +68,10 @@ final class OnlineNature {
         String nonce(String key){String value=values.get(key);return value==null?"":value.split(":")[2];}
     }
     void loadTerrain(int region,JournalHead head)throws Exception{
+        yieldToPlayer();
         World world=terrain.computeIfAbsent(region,id->OnlineTerrain.region(s.seed,id,s.side,s.terrainVersion));Map<String,String> values=cellCache.computeIfAbsent(region,id->new HashMap<>());
         for(String chunk:OnlineV5.keys(head.chunks))if(chunk.startsWith(region+"_")&&counters.getOrDefault(chunk,-1L)!=head.chunk(chunk)){
-            Map<String,String> changed=JournalHead.cells(v.remote(v.storage()+"/chunks/"+chunk));values.putAll(changed);
+            yieldToPlayer();Map<String,String> changed=JournalHead.cells(v.remote(v.storage()+"/chunks/"+chunk));values.putAll(changed);
             for(String key:changed.keySet()){String[] xyz=key.split("_");world.set(Integer.parseInt(xyz[0]),Integer.parseInt(xyz[1]),Integer.parseInt(xyz[2]),Integer.parseInt(changed.get(key).split(":")[0]));}
             counters.put(chunk,head.chunk(chunk));
         }
@@ -78,7 +82,7 @@ final class OnlineNature {
     }
     void grow(int region,String key,long day,String lease)throws Exception{
         for(int retry=0;retry<3;retry++){
-            v.readSync();JournalHead h=v.fetchHead();Tile tile=load(region,h);JSONObject record=v.remote(v.storage()+"/growth/saplings/"+region+"/"+key);
+            JournalHead h=v.fetchHead();v.accept(h);Tile tile=load(region,h);JSONObject record=v.remote(v.storage()+"/growth/saplings/"+region+"/"+key);
             int stage=record.optInt("stage",-1);if(stage<0||stage>=3||record.optLong("lastGrowthDay",day)>=day)return;
             String[] xyz=key.split("_");int x=Integer.parseInt(xyz[0]),y=Integer.parseInt(xyz[1]),z=Integer.parseInt(xyz[2]);
             // Old registrations are accepted only while the original planted leaf still exists.
@@ -99,7 +103,20 @@ final class OnlineNature {
     String xyzKey(String key,int stage){String[] xyz=key.split("_");return xyz[0]+"_"+(Integer.parseInt(xyz[1])+stage)+"_"+xyz[2];}
     OnlineChange change(int region,int x,int y,int z,int type,Tile tile,int offset,String nature){return new OnlineChange(v.sequence+offset+1,region,x,y,z,type,false,OnlineWorld.randomId(),tile.nonce(x+"_"+y+"_"+z),v.f.uid,nature);}
     void publish(JSONObject patch,List<OnlineChange> changes)throws Exception{
-        v.db.request("PATCH",v.storage(),patch);v.revision+=changes.size();v.sequence+=changes.size();s.inventoryVersion=Long.toString(v.revision);
+        yieldToPlayer();
+        try{v.db.request("PATCH",v.storage(),patch);}catch(FirebaseRest.Failure e){
+            if(e.status==401||e.status==403){
+                String p="head/actors/"+v.f.uid+"/";JournalHead current=v.fetchHead();
+                if(current.generation!=patch.optLong(p+"base",-1)){v.accept(current);throw new Deferred();}
+                boolean presence=patch.isNull(p+"decayRegion")&&(patch.isNull(p+"reactionRegion")||patch.optBoolean(p+"needsSpace"));
+                if(presence&&v.remote(v.base+"/live").optLong("poseVersion",0)!=patch.optLong(p+"presenceBase",0))throw new Deferred();
+                for(String kind:new String[]{"decay","reactions"}){
+                    String field=p+(kind.equals("decay")?"decayRegion":"reactionRegion");
+                    if(patch.has(field)&&!patch.isNull(field)&&v.remote(v.storage()+"/growth/"+kind+"/"+patch.getInt(field)).optLong("at",0)>now()-2800)throw new Deferred();
+                }
+            }throw e;
+        }
+        v.revision+=changes.size();v.sequence+=changes.size();s.inventoryVersion=Long.toString(v.revision);
         // Do not paint speculative blocks. The ordinary head/tail/region path applies confirmed changes.
         v.accept(v.fetchHead());v.syncVisible(false);
     }
@@ -129,10 +146,10 @@ final class OnlineNature {
         publish(patch,changes);if(active){reactionPending.add(region);decayRegions.add(region);}else reactionPending.remove(region);return true;
     }
     void decay(){
-        failure=null;queued=false;if(closed||s.closed||!s.foreground)return;Set<Integer> work=new HashSet<>(decayRegions);decayRegions.clear();
+        failure=null;queued=false;if(closed||s.closed||!s.foreground)return;Set<Integer> work=new LinkedHashSet<>(decayRegions);if(v.services&&work.size()>1){int first=work.iterator().next();work.clear();work.add(first);}decayRegions.removeAll(work);
         for(int region:work)try{
-            boolean materials=materialCandidate(region);if(!materials&&!candidate(region))continue;
-            v.readSync();JournalHead h=v.fetchHead();Tile tile=load(region,h,false);
+            yieldToPlayer();boolean materials=materialCandidate(region);if(!materials&&!candidate(region))continue;
+            JournalHead h=v.fetchHead();v.accept(h);Tile tile=load(region,h,false);
             if(materials&&reactions(region,h,tile))continue;
             boolean border=false;for(int y=2;y<World.H&&!border;y++)for(int z=0;z<World.D&&!border;z++)for(int x=0;x<World.W;x++)if((x<4||x>=World.W-4||z<4||z>=World.D-4)&&tile.get(x,y,z)==6){border=true;break;}
             if(border)for(int rz=Math.max(0,region/s.side-1);rz<=Math.min(s.side-1,region/s.side+1);rz++)for(int rx=Math.max(0,region%s.side-1);rx<=Math.min(s.side-1,region%s.side+1);rx++)loadTerrain(rz*s.side+rx,h);
@@ -150,7 +167,7 @@ final class OnlineNature {
                 patch.put("head/actors/"+v.f.uid+"/decayRegion",region).put("growth/decay/"+region,new JSONObject().put("at",new JSONObject().put(".sv","timestamp")));
                 publish(patch,changes);if(more)decayRegions.add(region);
             }
-        }catch(Exception e){failure=e;FirebaseRest.DIAGNOSTICS.failed("Laubprüfung · "+e.getClass().getSimpleName());/* Next join / block change retries; no permanent failure polling. */}
+        }catch(Deferred e){decayRegions.add(region);}catch(Exception e){failure=e;FirebaseRest.DIAGNOSTICS.failed("Laubprüfung · "+e.getClass().getSimpleName());/* Next join / block change retries; no permanent failure polling. */}
         schedule();
     }
 }

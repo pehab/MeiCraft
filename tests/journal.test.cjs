@@ -201,3 +201,15 @@ test('wood-to-coal phases retain nonce order, shared cadence and stable charcoal
  await env.withSecurityRulesDisabled(c=>set(ref(c.database(),storage+'/growth/reactions/0/at'),Date.now()-4000));await assertSucceeds(update(r('child',storage),reaction('child',[{x:20,y:30,z:20,type:18,nature:'charcoal',before:'a'.repeat(32),token:'b'.repeat(32)}],{base:2,seq:2,rev:3})));
  const s=(await get(r('child',storage))).val();assert.equal(s.chunks['0_1_1_1'].cells['20_30_20'].type,18);assert.equal(s.chunks['0_1_1_1'].cells['20_30_20'].nature,'charcoal');assert.equal(s.head.actors.child.inventory,cipher);
 });
+
+test('production-sized sequential coal, crystal and lava pockets survive subsequent leaf decay',async()=>{
+ await seed();let seq=0,rev=1,g=0;
+ for(let site=0;site<12;site++){
+  const cells=[];for(let dx=0;dx<(site<4?2:3);dx++)for(let dz=0;dz<2;dz++)for(let dy=0;dy<2;dy++)cells.push({x:5+site*7+dx,y:8+dy,z:20+dz,type:site<4?17:site<8?(dy===0&&((dx===0&&dz===0)||(dx===2&&dz===1))?20:0):(dy===0?15:0),token:(site*16+cells.length+1).toString(16).padStart(32,'0')});
+  const p=enrichment(cells,site,{seq,rev,base:g});for(const field of ['growthToken','growthDay','decayRegion','reactionRegion','needsSpace'])p['head/actors/parent/'+field]=null;
+  await assertSucceeds(update(r('parent',storage),p));seq+=cells.length;rev+=cells.length;g++;
+ }
+ const p=batch('parent',[{x:1,y:30,z:1,type:0}],{seq,rev,base:g});for(const field of ['resourceRegion','resourceSite','growthToken','growthDay','reactionRegion','needsSpace'])p['head/actors/parent/'+field]=null;
+ p['head/actors/parent/decayRegion']=0;p['growth/decay/0']={at:{'.sv':'timestamp'}};
+ await assertSucceeds(update(r('parent',storage),p));
+});
