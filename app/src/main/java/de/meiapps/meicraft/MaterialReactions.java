@@ -14,7 +14,7 @@ final class MaterialReactions {
     static boolean active(String tag){return tag.startsWith("wood_")||tag.startsWith("coal_")||tag.startsWith("glass_")||tag.startsWith("ore_")||tag.startsWith("ritual_");}
     static boolean authored(Space s,int x,int y,int z){String tag=s.tag(x,y,z);if(tag.equals("user")||active(tag))return true;for(int[] d:NEIGHBORS){tag=s.tag(x+d[0],y+d[1],z+d[2]);if(tag.equals("user")||active(tag))return true;}return false;}
     static int[] adjacent(Space s,int x,int y,int z,int type){for(int[] d:NEIGHBORS)if(s.get(x+d[0],y+d[1],z+d[2])==type)return new int[]{x+d[0],y+d[1],z+d[2]};return null;}
-    static boolean potential(TreeGrowth.Space s,int x,int y,int z){int b=s.get(x,y,z);if(b==Materials.COAL||b==Materials.BASALT||b==8)return near(s,x,y,z,b==Materials.COAL?15:b==Materials.BASALT?14:Materials.CRYSTAL);return (b==5||b==13||b==14)&&s.get(x,y-1,z)==15||b==15&&near(s,x,y,z,10);}
+    static boolean potential(TreeGrowth.Space s,int x,int y,int z){int b=s.get(x,y,z);if(b==4)return near(s,x,y,z,15);if(b==Materials.COAL||b==Materials.BASALT||b==8)return near(s,x,y,z,b==Materials.COAL?15:b==Materials.BASALT?14:Materials.CRYSTAL);return (b==5||b==13||b==14)&&s.get(x,y-1,z)==15||b==15&&near(s,x,y,z,10);}
     static boolean near(TreeGrowth.Space s,int x,int y,int z,int type){for(int[] d:NEIGHBORS)if(s.get(x+d[0],y+d[1],z+d[2])==type)return true;return false;}
     static String signature(Space s,int rx,int ry,int rz,int[][] cells){long h=0xcbf29ce484222325L;for(int[] p:cells)if(p[0]!=rx||p[1]!=ry||p[2]!=rz){h=(h^s.get(p[0],p[1],p[2]))*0x100000001b3L;h=(h^s.token(p[0],p[1],p[2]).hashCode())*0x100000001b3L;}return Long.toHexString(h);}
     static String phase(Space s,int x,int y,int z,String name,int limit,int[][] dependencies){String sig=signature(s,x,y,z,dependencies),tag=s.tag(x,y,z);int age=0;String[] p=tag.split("_");if(p.length==3&&p[0].equals(name)&&p[2].equals(sig))try{age=Integer.parseInt(p[1]);}catch(NumberFormatException ignored){}return age+1>=limit?"":name+"_"+(age+1)+"_"+sig;}
@@ -22,9 +22,14 @@ final class MaterialReactions {
     static List<Change> plan(Space s,boolean legacyForge,boolean requireAuthored){
         List<Change> result=new ArrayList<>();Set<String> used=new HashSet<>();
         for(int y=1;y<World.H&&result.size()<16;y++)for(int z=0;z<World.D&&result.size()<16;z++)for(int x=0;x<World.W&&result.size()<16;x++){
-            int b=s.get(x,y,z);if(b!=5&&b!=15&&b!=Materials.COAL&&b!=Materials.BASALT&&b!=8&&(!legacyForge||b!=13&&b!=14))continue;
+            int b=s.get(x,y,z);if(b!=5&&b!=15&&b!=Materials.COAL&&b!=Materials.BASALT&&b!=8&&(!legacyForge||b!=4&&b!=13&&b!=14))continue;
             if(used.contains(x+"_"+y+"_"+z))continue;String old=s.tag(x,y,z);if(b!=5&&requireAuthored&&!authored(s,x,y,z))continue;
             if(b==15&&adjacent(s,x,y,z,10)!=null){add(result,used,List.of(new Change(x,y,z,Materials.BASALT,"")),s);continue;}
+            if(legacyForge&&b==4){
+                // Match offline contact heating. Lava cooled by water in this snapshot cannot also melt sand.
+                for(int[] d:NEIGHBORS){int lx=x+d[0],ly=y+d[1],lz=z+d[2];if(s.get(lx,ly,lz)==15&&adjacent(s,lx,ly,lz,10)==null){add(result,used,List.of(new Change(x,y,z,8,"")),s);break;}}
+                continue;
+            }
             if(b==5){
                 // Only deliberately placed wood may char; old buildings and grown trunks stay protected.
                 if(!old.equals("user")&&!old.startsWith("wood_"))continue;
