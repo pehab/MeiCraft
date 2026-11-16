@@ -213,3 +213,12 @@ test('production-sized sequential coal, crystal and lava pockets survive subsequ
  p['head/actors/parent/decayRegion']=0;p['growth/decay/0']={at:{'.sv':'timestamp'}};
  await assertSucceeds(update(r('parent',storage),p));
 });
+
+test('sand-to-glass uses the existing atomic reaction journal without consuming lava or granting inventory',async()=>{
+ await seed();const before='a'.repeat(32),lava='b'.repeat(32);
+ await env.withSecurityRulesDisabled(c=>set(ref(c.database(),storage+'/chunks/0_1_1_1'),{cells:{'20_30_20':{type:4,water:false,token:before,nature:'user'},'20_29_20':{type:15,water:false,token:lava}}}));
+ const patch=reaction('child',[{x:20,y:30,z:20,type:8,before}]);
+ await assertSucceeds(update(r('child',storage),patch));const data=(await get(r('child',storage))).val();
+ assert.equal(data.chunks['0_1_1_1'].cells['20_30_20'].type,8);assert.equal(data.chunks['0_1_1_1'].cells['20_29_20'].type,15);assert.equal(data.head.actors.child.inventory,cipher);assert.match(data.journal.child[2].event,/\/8\/0\//);
+ await assertFails(update(r('child',storage),patch));
+});

@@ -120,7 +120,7 @@ final class JournalChecks {
         try{
             OnlineV6 engine=v(a);engine.start(true,"Materials",2);ready(a);v(b).start(false,"",2);ready(b);
             check(a.terrainVersion==2&&b.terrainVersion==2&&a.world.terrainVersion==2,"New online worlds persist and share generation version 2");
-            Story stock=OnlineInventory.copy(a.inventory);stock.chapter=7;stock.inventory[18]=2;stock.inventory[15]=3;stock.inventory[5]=1;stock.inventory[10]=2;stock.inventory[8]=2;stock.inventory[20]=2;engine.commit(stock,null);engine.readSync();
+            Story stock=OnlineInventory.copy(a.inventory);stock.chapter=7;stock.inventory[18]=2;stock.inventory[15]=5;stock.inventory[4]=2;stock.inventory[5]=1;stock.inventory[10]=2;stock.inventory[8]=2;stock.inventory[20]=2;engine.commit(stock,null);engine.readSync();
             check(engine.head.actors.getJSONObject("parent").getString("inventory").startsWith("2."),"New materials use the versioned authenticated inventory codec");
             engine.edit(48,44,48,15);drain(a,game);a.healthy=true;engine.edit(48,45,48,18);drain(a,game);Story before=OnlineInventory.copy(a.inventory);int poses=backend.liveReads;
             for(int i=0;i<3;i++){engine.nature.changed(0);engine.nature.decay();if(engine.nature.failure!=null)throw engine.nature.failure;test.onGl(game,()->{});}
@@ -136,9 +136,17 @@ final class JournalChecks {
             for(int i=0;i<3;i++){engine.nature.changed(0);engine.nature.decay();if(engine.nature.failure!=null)throw engine.nature.failure;test.onGl(game,()->{});}
             check(a.world.get(54,45,48)==18&&OnlineInventory.same(woodInventory,a.inventory)&&backend.liveReads==woodPoses,"wood over lava chars into collectible coal without gifts or extra pose reads");
             for(int i=0;i<4;i++){engine.nature.changed(0);engine.nature.decay();if(engine.nature.failure!=null)throw engine.nature.failure;test.onGl(game,()->{});}v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});check(a.world.get(54,45,48)==18&&b.world.get(54,45,48)==18&&a.world.get(54,44,48)==15,"fresh charcoal remains stable over lava and agrees for both players");
+            a.healthy=true;engine.edit(60,44,48,15);drain(a,game);a.healthy=true;engine.edit(60,45,48,4);drain(a,game);
+            a.healthy=true;engine.edit(95,44,60,15);drain(a,game);a.healthy=true;engine.edit(96,44,60,4);drain(a,game);
+            Story sandInventory=OnlineInventory.copy(a.inventory);int sandPoses=backend.liveReads;
+            engine.nature.changed(0);engine.nature.changed(1);engine.nature.decay();if(engine.nature.failure!=null)throw engine.nature.failure;test.onGl(game,()->{});
+            v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});
+            check(a.world.get(60,45,48)==8&&b.world.get(60,45,48)==8&&a.world.get(60,44,48)==15,"sand directly above lava becomes durable glass for both online players without consuming lava");
+            check(a.world.get(96,44,60)==8&&b.world.get(96,44,60)==8&&a.world.get(95,44,60)==15,"side contact across a region boundary also melts sand and reaches peers");
+            check(OnlineInventory.same(sandInventory,a.inventory)&&backend.liveReads==sandPoses,"sand conversion grants no inventory items and fetches no redundant player positions");
             engine.checkpoints.lease();engine.checkpoints.save(true);
         }finally{finish(a);finish(b);}
-        OnlineSession warm=session(activity,backend,invite,"parent");try{v(warm).start(false,"",2);check(warm.terrainVersion==2&&warm.world.get(95,44,48)==22&&warm.world.get(50,44,48)==19&&warm.world.get(54,45,48)==18&&warm.inventory.inventory[18]==1,"New terrain, reaction outputs and version-2 private resources survive warm restart");for(int i=0;i<3;i++){v(warm).nature.changed(0);v(warm).nature.decay();if(v(warm).nature.failure!=null)throw v(warm).nature.failure;test.onGl(game,()->{});}check(warm.world.get(54,45,48)==18,"checkpointed fresh charcoal stays collectible after restart");}finally{finish(warm);}
+        OnlineSession warm=session(activity,backend,invite,"parent");try{v(warm).start(false,"",2);check(warm.terrainVersion==2&&warm.world.get(95,44,48)==22&&warm.world.get(50,44,48)==19&&warm.world.get(54,45,48)==18&&warm.inventory.inventory[18]==1,"New terrain, reaction outputs and version-2 private resources survive warm restart");for(int i=0;i<3;i++){v(warm).nature.changed(0);v(warm).nature.decay();if(v(warm).nature.failure!=null)throw v(warm).nature.failure;test.onGl(game,()->{});}check(warm.world.get(54,45,48)==18,"checkpointed fresh charcoal stays collectible after restart");check(warm.world.get(60,45,48)==8&&warm.world.get(96,44,60)==8,"online glass produced from sand survives checkpoint and warm restart");}finally{finish(warm);}
     }
     void nature(MainActivity activity,GameView game)throws Exception{
         Backend backend=new Backend();OnlineWorld invite=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession a=session(activity,backend,invite,"parent"),b=session(activity,backend,invite,"child");

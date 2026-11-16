@@ -22,6 +22,7 @@ Kohle neben Lava brennt begrenzt an dieser Stelle; Wasser löscht sie. Sie entz�
 
 - Ab 1.0.4 wird gesetztes Holz direkt über Lava zu einem Kohleblock. Frisch entstandene Kohle bleibt zum Einsammeln geschützt; erst Abbauen und erneutes Platzieren aktiviert das Kohle-/Glutsteinrezept. Wasser unterbricht das Verkohlen. Unmarkierte alte Bauten und gewachsene Stämme bleiben erhalten.
 
+- Ab 1.0.6 wird Sand mit direktem Lavakontakt auch online zu Glas. Alle sechs Flächenseiten zählen; die Lava bleibt erhalten. Der nächste geplante Reaktionsschritt führt die Umwandlung aus. Lava, die im selben Schritt durch Wasser abkühlt, erhitzt keinen Sand mehr. Unbearbeiteter natürlicher Sand an natürlicher Lava wird beim Beitritt nicht automatisch verändert.
 - Kohle über Lava wird zu Glutstein; seitlich erhitzte Kohle verbrennt zu Luft.
 - Glas neben einem Kristall wird Kristallglas und verbraucht den Kristall.
 - Basalt neben einem Eisenblock wird poliert; Eisen bleibt als Katalysator erhalten.

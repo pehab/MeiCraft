@@ -2,9 +2,13 @@
 
 Eigenständiges Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Offline ohne Anmeldung, Werbung oder Käufe. Optional gemeinsam online bauen: Firebase speichert dafür eine anonyme Geräte-ID, Weltänderungen und Mitspielerpositionen.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 1.0.5
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 1.0.6
 
 [1.0.2 macht Glas besser sichtbar und ergänzt Glanz](docs/RELEASE-1.0.2.md). Die Texturkorrektur aus 1.0.1 bleibt enthalten; Weltdaten bleiben unverändert.
+
+## 1.0.6 · Sand wird auch online zu Glas
+
+Sand mit direktem Lavakontakt wird beim nächsten Reaktionsschritt zu Glas, auch von oben und über Bereichsgrenzen. Lava bleibt erhalten. Die Umwandlung wird gemeinsam gespeichert. [Verhalten und Update](docs/RELEASE-1.0.6.md).
 
 ## 1.0.5 · Online-Aktionen priorisieren
 
