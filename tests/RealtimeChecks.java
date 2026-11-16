@@ -40,6 +40,15 @@ final class RealtimeChecks {
         tree.apply("put","{\"path\":\"/players/one\",\"data\":null}");check(!tree.root.getJSONObject("players").has("one"),"RTDB null removes a subtree");
         tree.apply("put","{\"path\":\"/\",\"data\":null}");check(tree.root.length()==0,"Reconnect root snapshot replaces the whole local tree");
         Backend backend=new Backend();FirebaseRest f=new FirebaseRest(activity,backend);f.uid="parent";f.token="fixture-token";f.expires=System.currentTimeMillis()+3600000;
+        try(RtdbRest diagnostics=new RtdbRest(f)){
+            HttpURLConnection denied=new HttpURLConnection(new URL("https://example.invalid")){
+                public void connect(){}public void disconnect(){}public boolean usingProxy(){return false;}
+                public InputStream getErrorStream(){return new ByteArrayInputStream("{\"error\":\"Permission denied\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));}
+            };
+            try{diagnostics.check(denied,401,"fixture-token","PATCH · storage");throw new AssertionError("Expected RTDB rejection");}
+            catch(FirebaseRest.Failure expected){check(f.token.equals("fixture-token")&&expected.detail.contains("Permission denied"),"Rule rejection preserves the valid auth token and retains the structured RTDB error");}
+            check(RtdbRest.resourceName("worlds/"+"a".repeat(28)+"/"+"b".repeat(32)+"/storage/head/actors/"+"c".repeat(28)+"?auth=secret").equals("storage/head/actors/[id]"),"RTDB diagnostic path omits credentials and player/world identifiers");
+        }
         check(!f.realtimeEligible,"Injected offline Firebase clients cannot auto-start a production RTDB connection");
         OnlineSession s=new OnlineSession(activity,f,new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId()),"Parent",new OnlineSession.Listener(){public void loaded(World w,String n){}public void problem(String t,boolean fatal){}});s.modern=new OnlineV5(s);
         OnlineV5Checks v5=new OnlineV5Checks(test);
