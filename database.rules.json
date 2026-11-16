@@ -262,7 +262,7 @@
                       ".validate": false
                     },
                     "nature": {
-                      ".validate": "newData.isString() && (newData.val() == newData.parent().parent().parent().parent().parent().child('head/actors').child(auth.uid).child('last/nature').val() || newData.val() == newData.parent().parent().parent().parent().parent().child('head/actors').child(auth.uid).child('batch').child(newData.parent().child('slot').val()).child('last/nature').val())"
+                      ".validate": "(auth != null && auth.uid == $owner && root.child('worlds').child($owner).child($world).child('storage').child('control/phase').val() != 'ready') || (newData.isString() && (newData.val() == newData.parent().parent().parent().parent().parent().child('head/actors').child(auth.uid).child('last/nature').val() || newData.val() == newData.parent().parent().parent().parent().parent().child('head/actors').child(auth.uid).child('batch').child(newData.parent().child('slot').val()).child('last/nature').val()))"
                     },
                     "slot": {
                       ".validate": "newData.isString() && newData.val().matches(/^b([0-9]|1[0-5])$/)"

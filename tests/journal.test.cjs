@@ -13,6 +13,19 @@ function action(uid,seq=1,rev=2,before='',x=1,token='c'.repeat(32)){
 }
 before(async()=>{env=await initializeTestEnvironment({projectId:'demo-meicraft-journal',database:{rules:readFileSync('database.rules.json','utf8')},firestore:{rules:readFileSync('firestore.rules','utf8')}});});
 beforeEach(async()=>{await env.clearDatabase();await env.clearFirestore();});after(async()=>{if(env)await env.cleanup();});
+test('owner can import legacy cells with empty nature before a journal head exists, then resume and seal',async()=>{
+ await set(r('parent',base),{meta:{invite,side:2,closed:false},members:{parent:member,child:member}});
+ await set(r('parent',storage),{control:{phase:'importing',epoch,source:'legacy'}});
+ const path=storage+'/chunks/0_0_2_0',cell={type:2,water:false,token:'c'.repeat(32),nature:''};
+ await assertFails(set(r('child',path),{cells:{'1_44_1':cell}}));
+ await assertSucceeds(set(r('parent',path),{cells:{'1_44_1':cell}}));
+ await assertSucceeds(set(r('parent',path),{cells:{'1_44_1':cell}}));
+ assert.deepEqual((await get(r('parent',path+'/cells/1_44_1'))).val(),cell);
+ await set(r('parent',storage+'/head'),{g:0,actors:{parent:actor(),child:actor()},regions:{s0:0},chunks:{'0_0_2_0':1}});
+ await set(r('parent',storage+'/control'),{phase:'ready',epoch,source:'legacy'});
+ await assertFails(set(r('parent',path+'/cells/1_44_1/nature'),'forged'));
+ await assertSucceeds(update(r('child',storage),action('child',1,2,'c'.repeat(32),1,'f'.repeat(32))));
+});
 test('cell, resource revision, durable journal and counters commit together',async()=>{await seed();await assertSucceeds(update(r('child',storage),action('child')));const data=(await get(r('child',storage))).val();assert.equal(data.head.g,1);assert.equal(data.head.actors.child.rev,2);assert.equal(data.journal.child[2].seq,1);assert.equal(data.chunks['0_0_2_0'].cells['1_44_1'].token,'c'.repeat(32));});
 test('partial cell, inventory-only, missing journal and forged counters are rejected',async()=>{
  await seed();const a=action('child');await assertFails(set(r('child',storage+'/chunks/0_0_2_0/cells/1_44_1'),a['chunks/0_0_2_0/cells/1_44_1']));

@@ -65,6 +65,9 @@ a=actor(4);b=f"{a}.child('batch').child(newData.child('slot').val())"
 cell['.validate']='('+cell['.validate']+f") || ({a}.child('batch').exists() && $chunk == {b}.child('last/chunk').val() && $cell == {b}.child('last/key').val() && newData.child('token').val() == {b}.child('last/token').val() && newData.child('type').val() == {b}.child('last/type').val() && newData.child('water').val() == false && (data.exists() ? data.child('token').val() : '') == {b}.child('last/before').val())"
 cell['slot']={'.validate':"newData.isString() && newData.val().matches(/^b([0-9]|1[0-5])$/)"}
 a=actor(5);cell['nature']['.validate']=f"newData.isString() && (newData.val() == {a}.child('last/nature').val() || newData.val() == {a}.child('batch').child(newData.parent().child('slot').val()).child('last/nature').val())"
+# Imported legacy cells carry an empty nature before any actor last-change exists.
+importing=f"auth != null && auth.uid == $owner && {oldst}.child('control/phase').val() != 'ready'"
+cell['nature']['.validate']=f"({importing}) || ("+cell['nature']['.validate']+")"
 a=actor(3);b=f"{a}.child('batch').child(newData.child('slot').val())"
 journal['.validate']='('+journal['.validate']+f") || ({b}.exists() && $key == {b}.child('rev').val() + '' && newData.child('rev').val() == {b}.child('rev').val() && newData.child('seq').val() == {b}.child('seq').val() && newData.child('inventory').val() == {b}.child('inventory').val() && newData.child('op').val() == {a}.child('op').val() && newData.child('event').val() == {append_text(text(b),b)})"
 journal['slot']={'.validate':"newData.val().matches(/^b([0-9]|1[0-5])$/)"}
