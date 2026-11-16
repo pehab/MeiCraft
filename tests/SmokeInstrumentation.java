@@ -166,10 +166,12 @@ public final class SmokeInstrumentation extends Instrumentation {
     try{World restored=World.decode(w.encode());
     check(java.util.Arrays.equals(w.blocks,restored.blocks)&&java.util.Arrays.equals(w.nature.levels,restored.nature.levels),"nature and flowing liquids survive save/reload on the device");}catch(java.io.IOException e){throw new AssertionError(e);}
    });
-   runOnMainSync(activity::storyMenu);clickText("Flüssigkeiten fließen:");check(!game.world.nature.flowEnabled,"Story menu can pause fluid flow");clickText("Weiterbauen");
-   runOnMainSync(()->activity.paused=true);
-   float frozen=game.world.survival.time;byte[] blocks=game.world.blocks.clone();Thread.sleep(600);
-   check(game.world.survival.time==frozen&&java.util.Arrays.equals(blocks,game.world.blocks),"menus freeze nature and survival together");
+   runOnMainSync(activity::storyMenu);clickText("Flüssigkeiten fließen:");check(!game.world.nature.flowEnabled,"Story menu can pause fluid flow");
+   // Keep the real menu open; its asynchronous dismiss callback must not resume play during this assertion.
+   float[] frozen=new float[1];byte[][] blocks=new byte[1][];
+   onGl(game,()->{frozen[0]=game.world.survival.time;blocks[0]=game.world.blocks.clone();});Thread.sleep(600);
+   onGl(game,()->check(game.world.survival.time==frozen[0]&&java.util.Arrays.equals(blocks[0],game.world.blocks),"menus freeze nature and survival together"));
+   clickText("Weiterbauen");
   }finally{
    onGl(game,()->{game.replace(original);activity.world=original;});
    runOnMainSync(()->{activity.paused=false;activity.save();activity.handler.postDelayed(activity.autosave,30000);});
