@@ -20,13 +20,15 @@ Kohle neben Lava brennt begrenzt an dieser Stelle; Wasser löscht sie. Sie entz�
 
 ### Geheimreaktionen (technische Auflösung)
 
+- Ab 1.0.4 wird gesetztes Holz direkt über Lava zu einem Kohleblock. Frisch entstandene Kohle bleibt zum Einsammeln geschützt; erst Abbauen und erneutes Platzieren aktiviert das Kohle-/Glutsteinrezept. Wasser unterbricht das Verkohlen. Unmarkierte alte Bauten und gewachsene Stämme bleiben erhalten.
+
 - Kohle über Lava wird zu Glutstein; seitlich erhitzte Kohle verbrennt zu Luft.
 - Glas neben einem Kristall wird Kristallglas und verbraucht den Kristall.
 - Basalt neben einem Eisenblock wird poliert; Eisen bleibt als Katalysator erhalten.
 - Wasser an Lava kühlt diese zu Basalt. Alte Offline-Welten mit Generator 1 behalten ihre frühere Stein-Abkühlung.
 - Vorhandenes Erzschmelzen über Lava und das gedrehte/gespiegelte 2×3-Leuchtsteinritual bleiben erhalten und funktionieren jetzt auch im v6-Journal.
 
-Neue Materialreaktionen arbeiten in Drei-Sekunden-Schritten. Kohle und Kristallglas benötigen drei Schritte, Online-Erz fünf, das Online-Leuchtsteinritual drei. Offline verwendet das ursprüngliche Schmiedesystem weiterhin seine bisherigen 15 beziehungsweise acht aktiven Sekunden. Menüs pausieren die Offline-Simulation; online arbeitet nur eine aktive Sitzung. Es erfolgt kein Nachholen vergangener Offlinezeit.
+Neue Materialreaktionen arbeiten in Drei-Sekunden-Schritten. Holzverkohlung, Kohle und Kristallglas benötigen drei Schritte, Online-Erz fünf, das Online-Leuchtsteinritual drei. Offline verwendet das ursprüngliche Schmiedesystem weiterhin seine bisherigen 15 beziehungsweise acht aktiven Sekunden. Menüs pausieren die Offline-Simulation; online arbeitet nur eine aktive Sitzung. Es erfolgt kein Nachholen vergangener Offlinezeit.
 
 ## Ergänzung bestehender Online-Welten ab 1.0.3
 
@@ -36,7 +38,7 @@ Die ausdrücklich gewünschte einmalige [Rohstoffergänzung](RESOURCES-1.0.3.md)
 
 Die gespeicherte Generationsversion ist unveränderlich: fehlend/1 verwendet den bisherigen Generator, 2 ausschließlich neue Welten. Alte Weltinhalte werden beim Laden weder nachgeneriert noch ersetzt. Auch bearbeitete Zellen, deren Block inzwischen dem ursprünglichen Terrain entspricht, bleiben erhalten. Regions-Caches sind nach Generatorversion getrennt. Der alte Online-Terrain-Hash und seine Nahttests bleiben unverändert.
 
-Offlineformat 7 speichert Generatorversion, 24 Inventarplätze, Reaktionsphasen und Bearbeitungshistorie. Formate 1–6 bleiben lesbar; ihre Inventare werden mit Nullen erweitert. Ein neuer Spielstand benötigt einen aktualisierten Empfänger für den QR-Import.
+Offlineformat 8 speichert Generatorversion, 24 Inventarplätze, Reaktionsphasen, fertige Holzkohle und Bearbeitungshistorie. Formate 1–7 bleiben lesbar; ihre Inventare werden mit Nullen erweitert. Ein neuer Spielstand benötigt einen aktualisierten Empfänger für den QR-Import.
 
 Verschlüsselte Inventare ohne neue Materialien bleiben im bisherigen Format 1 (17 Zähler). Format 2 speichert 24 Zähler; Welt, UID und Revision bleiben authentifiziert. Checkpoints und Wiederherstellung unterstützen beide Formate. Neue Materialien erfordern neue Apps auf allen Geräten. `schemaRev` muss bei jeder v6-Schreibrevision aktualisiert werden; alte Clients können diese Fähigkeit nicht aus einem früheren Commit erben.
 

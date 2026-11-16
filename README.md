@@ -2,9 +2,13 @@
 
 Eigenständiges Klötzchenspiel für Android ab 8.0, mit nativer 3D-Welt, eigener Grafik und lokal gespeicherten Welten. Offline ohne Anmeldung, Werbung oder Käufe. Optional gemeinsam online bauen: Firebase speichert dafür eine anonyme Geräte-ID, Weltänderungen und Mitspielerpositionen.
 
-**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 1.0.3
+**[APK herunterladen](https://github.com/pehab/MeiCraft/releases/latest)** · Version 1.0.4
 
 [1.0.2 macht Glas besser sichtbar und ergänzt Glanz](docs/RELEASE-1.0.2.md). Die Texturkorrektur aus 1.0.1 bleibt enthalten; Weltdaten bleiben unverändert.
+
+## 1.0.4 · Holz über Lava wird Kohle
+
+Gesetztes Holz direkt über Lava verkohlt nach etwa neun aktiven Sekunden zu einem abbaubaren Kohleblock. Lava bleibt erhalten; Wasser unterbricht die Reaktion. Frische Holzkohle bleibt zum Einsammeln liegen. Offline und online, einschließlich Speichern und Wiederbeitritt. [Verhalten und Updatehinweise](docs/RELEASE-1.0.4.md).
 
 ## 1.0.3 · Rohstoffe auch in bestehenden Online-Welten
 
@@ -54,7 +58,7 @@ Im Hauptmenü liegen außerdem neue Welten, QR-Empfang, Update-Suche, Steuerung 
 
 Lava kann mehr als leuchten: Manche Materialien verändern sich, wenn man sie längere Zeit direkt über einer Quelle platziert. Glühen, Funken und die Anzeige beim Anvisieren zeigen eine begonnene Reaktion. In neuen Storywelten kann eine verfallene Glutstätte einen Hinweis liefern. Diese Möglichkeiten stehen nicht in der Rezeptliste der Werkbank.
 
-Die Reaktionen funktionieren auch in bestehenden Welten, deren Landschaft beim Laden unverändert bleibt. Seit 0.6.0 erhält Format 5 laufende Reaktionen über Laden, App-Neustart und QR-Übertragung. Der 1.0-Kandidat verwendet inzwischen Format 7 und liest weiterhin Formate 1–6. Zum Empfangen von Welten aus 0.6.0 muss das andere Gerät ebenfalls aktualisiert sein.
+Die Reaktionen funktionieren auch in bestehenden Welten, deren Landschaft beim Laden unverändert bleibt. Seit 0.6.0 erhält Format 5 laufende Reaktionen über Laden, App-Neustart und QR-Übertragung. Der 1.0-Kandidat verwendet inzwischen Format 8 und liest weiterhin Formate 1–7. Zum Empfangen von Welten aus 0.6.0 muss das andere Gerät ebenfalls aktualisiert sein.
 
 ## Kreativ und Story
 
