@@ -232,6 +232,23 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             }else particle(x+.15f+phase*.6f,y+1.05f+(float)Math.sin(t+x)*.13f,z+.5f,.045f,.045f,.045f,b==Materials.CRYSTAL?35:36);
         }
     }
+    volatile java.util.List<ResourceClues.Clue> resourceClues=java.util.Collections.emptyList();volatile String resourceHint="";
+    World clueWorld;int clueRevision=-1,clueX=-1000,clueZ=-1000;long nextClues;
+    void drawResourceClues(){
+        long now=System.nanoTime();if(world!=clueWorld){resourceClues=java.util.Collections.emptyList();resourceHint="";nextClues=0;}int x=(int)world.x/4,z=(int)world.z/4;
+        if(now>=nextClues){nextClues=now+1000000000L;OnlineSession session=view.activity.online==null?null:view.activity.online.session;
+            if(world!=clueWorld||world.revision!=clueRevision||x!=clueX||z!=clueZ){
+                resourceClues=ResourceClues.collect(world,world.x,world.z,new ResourceClues.Visible(){public boolean ready(int x,int z){return !world.online||session!=null&&session.canMove(x,z);}public boolean edited(int x,int y,int z){if(!world.online)return world.materials.touched.get(world.idx(x,y,z));if(session==null)return true;int region=OnlineWorld.sectorAt(x,z,session.side);OnlineSession.Region r=session.regions.get(region);return r==null||r.versions.containsKey(x-region%session.side*World.W+"_"+y+"_"+(z-region/session.side*World.D));}});
+                clueWorld=world;clueRevision=world.revision;clueX=x;clueZ=z;
+            }
+        }
+        resourceHint="";float nearest=36;float time=(now*1e-9f)%10000f;
+        for(ResourceClues.Clue c:resourceClues){if(Math.abs(c.y+1-world.y)>8)continue;float distance=c.distance(world.x,world.z);if(distance<nearest){nearest=distance;resourceHint=c.text();}
+            float bx=c.x+.35f,by=c.y+1.02f,bz=c.z+.35f;int tile=c.type==17?33:c.type==20?35:34;
+            particle(bx,by,bz,.14f,c.type==20?.22f:.08f,.13f,tile);particle(bx+.24f,by,bz+.14f,.09f,.07f,.10f,tile);
+            float phase=(time*.55f+c.x*.17f+c.z*.31f)%1f;if(c.type==15){particle(bx+.10f,by+.18f+phase*.8f,bz+.1f,.10f+phase*.08f,.10f,.10f+phase*.08f,3);if(phase<.3f)particle(bx+.16f,by+.12f,bz+.14f,.04f,.04f,.04f,24);}else if(c.type==20)particle(bx+.13f,by+.34f+(float)Math.sin(time*2+c.x)*.08f,bz+.08f,.045f,.045f,.045f,35);
+        }
+    }
     void drawMobs(){
         creatures.size=0;particleCount=0;
         if(world.story)for(Survival.Mob m:world.survival.mobs){float feet=m.y-1.6f,swing=(float)Math.sin(world.survival.time*5+m.x)*.1f;
@@ -249,6 +266,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             particle(x+(float)Math.sin(i+phase*5)*.24f,y+phase*.7f,z+(float)Math.cos(i+phase*4)*.24f,.055f,.055f,.055f,24);
         }
         drawVegetation();
+        drawResourceClues();
         drawLavaAtmosphere();
         drawMaterialEffects();
         drawMiningDebris();

@@ -77,8 +77,29 @@ final class JournalChecks {
             check(backend.firestore.commits.size()>fsCommits&&backend.firestore.writes<40,"Many builds are coalesced into a small number of checkpoint writes");
         }finally{finish(a);finish(b);}
         OnlineSession warm=session(activity,backend,invite,"parent");try{v(warm).start(false,"",2);ready(warm);check(warm.world.get(45,44,10)==2&&warm.inventory.inventory[2]==78,"Restart restores durable peer builds and the private inventory after a host change");}finally{finish(warm);}
-        deleteRecovery(activity,backend,invite);largeUpload(activity);resumeMigration(activity,game);nature(activity,game);materials(activity,game);
+        deleteRecovery(activity,backend,invite);largeUpload(activity);resumeMigration(activity,game);nature(activity,game);materials(activity,game);resources(activity,game);
         System.out.println("JOURNAL CHECKS: migration, zero-write builds, lost replies, ring gaps, coherent checkpoints, host takeover and warm restart verified");
+    }
+    void resources(MainActivity activity,GameView game)throws Exception{
+        Backend backend=new Backend();OnlineWorld invite=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession seed=session(activity,backend,invite,"parent");v(seed).start(true,"Resources",2);finish(seed);
+        // Model an already-migrated original world: no terrain field, no block overrides.
+        backend.firestore.docs.get("onlineWorlds/"+invite.id).getJSONObject("fields").remove("terrain");backend.firestore.docs.get("onlineWorlds/"+invite.id).getJSONObject("fields").put("seed",FirebaseRest.value(1234));backend.firestore.docs.get("onlineWorlds/"+invite.id+"/sync/v5").getJSONObject("fields").put("seed",FirebaseRest.value(1234));
+        OnlineSession a=session(activity,backend,invite,"parent"),b=session(activity,backend,invite,"child");
+        try{
+            v(a).start(false,"",2);ready(a);v(b).start(false,"",2);ready(b);OnlineV6 engine=v(a);check(a.terrainVersion==1,"resource retrofit retains the original generator of an existing migrated world");Story inventory=OnlineInventory.copy(a.inventory);
+            World original=OnlineTerrain.region(a.seed,0,2,1);ResourceRetrofit.Space clear=new ResourceRetrofit.Space(){public int get(int x,int y,int z){return original.get(x,y,z);}public boolean occupied(int x,int y,int z){return false;}public boolean touched(int x,int y,int z){return false;}};
+            java.util.List<ResourceRetrofit.Cell> vulnerable=ResourceRetrofit.plan(original,clear,0,2,0);if(!vulnerable.isEmpty()){
+                ResourceRetrofit.Cell cell=vulnerable.get(0);OnlineChange building=new OnlineChange(engine.sequence+1,0,cell.x,cell.y,cell.z,7,false,OnlineWorld.randomId(),"","parent","user");engine.commit(a.inventory,building);engine.readSync();engine.syncVisible(false);test.onGl(game,()->{});
+            }
+            backend.loseReply=true;try{engine.resources.wave();throw new AssertionError("Expected a lost resource reply");}catch(IOException expected){engine.resources=new OnlineResources(engine);}
+            int waves=0;while(engine.resources.wave()&&waves++<15)test.onGl(game,()->{});test.onGl(game,()->{});check(engine.resources.done&&waves<15,"finite resource work resumes until all region cursors are complete");
+            int coal=0,crystals=0,lava=0;JournalHead head=engine.fetchHead();for(String chunk:OnlineV5.keys(head.chunks))for(String value:JournalHead.cells(engine.remote(engine.storage()+"/chunks/"+chunk)).values()){int type=Integer.parseInt(value.split(":")[0]);if(type==17)coal++;if(type==20)crystals++;if(type==15)lava++;}
+            check(coal>0&&crystals>0&&lava>0&&OnlineInventory.same(inventory,a.inventory),"existing online world gains coal, crystal caves and lava without resource gifts or deductions");
+            if(!vulnerable.isEmpty()){ResourceRetrofit.Cell cell=vulnerable.get(0);check(a.world.get(cell.x,cell.y,cell.z)==7,"existing building blocks its deterministic resource site");}
+            v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});check(java.util.Arrays.equals(a.world.blocks,b.world.blocks),"all confirmed visible resource additions reach the second player");long generation=head.generation;int reads=backend.reads;check(!engine.resources.wave()&&backend.reads==reads&&engine.fetchHead().generation==generation,"completed worker does no further polling or enrichment");
+            engine.checkpoints.lease();engine.checkpoints.save(true);
+        }finally{finish(a);finish(b);}
+        OnlineSession warm=session(activity,backend,invite,"parent");try{v(warm).start(false,"",2);long generation=v(warm).fetchHead().generation;check(!v(warm).resources.wave()&&v(warm).fetchHead().generation==generation,"owner restart and checkpoint reload never duplicate deposits");Backend.put(backend.root,v(warm).storage()+"/resources",JSONObject.NULL);v(warm).resources=new OnlineResources(v(warm));int waves=0;while(v(warm).resources.wave()&&waves++<15){}check(waves<15&&v(warm).fetchHead().generation==generation,"checkpointed cell history reconstructs lost secondary progress without refilling deposits");}finally{finish(warm);}
     }
     void materials(MainActivity activity,GameView game)throws Exception{
         Backend backend=new Backend();OnlineWorld invite=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession a=session(activity,backend,invite,"parent"),b=session(activity,backend,invite,"child");

@@ -86,6 +86,7 @@ final class GameView {
                 center(c,w.survival.phase()+" · "+w.survival.secondsToChange()+" s · Gegner "+(w.survival.enemiesEnabled?w.survival.mobs.size():"aus"),designW-165,99,12,Color.WHITE);
                 center(c,"Leben "+w.survival.health+"/10 · "+(w.progress.sword?"Eisenschwert":"Hand"),designW-165,118,12,w.survival.health<=4?0xffff8b75:0xffffdb76);
             }
+            if(!renderer.resourceHint.isEmpty()){box(c,(designW-390)/2,barY-65,390,28,0xbb153d42);center(c,renderer.resourceHint,designW/2,barY-46,12,0xffffdc96);}
             if(statusUntil>System.currentTimeMillis()){box(c,(designW-420)/2,w.story?(w.online||designW<960?186:139):130,420,35,0xcc153d42);center(c,status,designW/2,(w.story?(w.online||designW<960?186:139):130)+23,14,Color.WHITE);}
             c.restore();
         }}

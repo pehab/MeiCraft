@@ -279,6 +279,13 @@ public final class SmokeInstrumentation extends Instrumentation {
  }
  static final String REFERENCE_FRAGMENT_SHADER="precision mediump float;uniform sampler2D uTex;uniform vec3 uFog;uniform float uAmbient;uniform vec4 uLamps[8];varying vec3 vWorld;varying vec2 vUv;varying float vLight;varying float vDistance;void main(){float brightness=uAmbient;for(int i=0;i<8;i++){brightness=max(brightness,uLamps[i].w*max(0.0,1.0-distance(vWorld,uLamps[i].xyz)/6.0));}vec3 c=texture2D(uTex,vUv).rgb*min(vLight,1.0)*(vLight>1.1?1.0:brightness);float f=smoothstep(27.0,55.0,vDistance);gl_FragColor=vec4(mix(c,uFog,f),1.0);}";
  void checkGl(String stage){int error=GLES20.glGetError();check(error==GLES20.GL_NO_ERROR,stage+" · OpenGL 0x"+Integer.toHexString(error));}
+ void testResourceClues(GameView game)throws Exception{
+  onGlAfterFrame(game,()->{
+   VoxelRenderer r=game.renderer;World previous=r.world;int count=r.particleCount,size=r.creatures.size;World fixture=World.emptyOnlineTile(0);fixture.online=false;fixture.x=24.5f;fixture.y=15.6f;fixture.z=20.5f;
+   for(int x=0;x<fixture.width;x++)for(int z=0;z<fixture.depth;z++)for(int y=1;y<=14;y++)fixture.blocks[fixture.idx(x,y,z)]=(byte)(y==14?1:3);fixture.blocks[fixture.idx(20,7,20)]=17;fixture.blocks[fixture.idx(24,6,20)]=20;fixture.blocks[fixture.idx(28,5,20)]=15;byte[] before=fixture.blocks.clone();
+   try{r.world=fixture;r.particleCount=0;r.drawResourceClues();check(r.resourceClues.size()==3&&r.particleCount>0&&r.particleCount<=36,"actual renderer emits bounded clues for coal, crystal and lava");check(r.resourceHint.contains("tiefer"),"nearby surface clue supplies a readable digging-depth hint");check(java.util.Arrays.equals(before,fixture.blocks),"rendered discovery clues never edit the world");}finally{r.world=previous;r.particleCount=count;r.creatures.size=size;}
+  });
+ }
  void testTerrainAtlas(GameView game)throws Exception{
   onGlAfterFrame(game,()->{
    VoxelRenderer renderer=game.renderer;World old=renderer.world;World fixture=World.emptyOnlineTile(0);fixture.set(20,5,20,2);fixture.set(22,5,20,8);fixture.set(24,5,20,22);byte[] original=fixture.blocks.clone();
@@ -743,6 +750,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   testWorldLibrary(activity,game);onGlAfterFrame(game,()->checkGl("after testWorldLibrary"));
   testRecentOnlineRemoval(activity);
   testTerrainAtlas(game);
+  testResourceClues(game);
   testLightingEquivalence(game);
   testSyncRequests(activity,game);
   testActiveSyncBudget(activity,game);

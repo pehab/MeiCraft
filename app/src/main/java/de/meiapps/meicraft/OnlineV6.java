@@ -10,7 +10,7 @@ import java.util.concurrent.locks.LockSupport;
 final class OnlineV6 extends OnlineV5 implements AutoCloseable {
     RtdbRest db;String base,epoch;volatile boolean activated,journalConnected,stopped;volatile String latest="";
     boolean cachePrimed=true;JournalHead head;final ExecutorService journalReader=Executors.newSingleThreadExecutor();OnlineCheckpoint checkpoints;
-    final boolean services;OnlineNature nature;
+    final boolean services;OnlineNature nature;OnlineResources resources;
     OnlineV6(OnlineSession s){this(s,true);}
     OnlineV6(OnlineSession s,boolean services){super(s);this.services=services;}
     String storage(){return base+"/storage";}
@@ -42,7 +42,7 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
         if(s.world!=null)cachePrimed=false;if(s.regionCache!=null)s.regionCache.close();s.regionCache=new OnlineRegionCache(new File(s.activity.getCacheDir(),"online-regions-v6-"+epoch+"-t"+s.terrainVersion),s.invitation.id,s.seed,s.side);
         boolean fresh=s.world==null;if(fresh){s.world=World.onlineSpace(s.seed,s.side,s.terrainVersion);World origin=OnlineTerrain.region(s.seed,0,s.side,s.terrainVersion);s.world.x=origin.x;s.world.y=origin.y;s.world.z=origin.z;s.px=origin.x;s.py=origin.y;s.pz=origin.z;}
         OnlineInventory.apply(s.world.progress,s.inventory);syncVisible(fresh);s.remember();
-        nature=new OnlineNature(this);if(services)nature.join();checkpoints=new OnlineCheckpoint(this);if(services){checkpoints.start();journalReader.execute(this::listen);}
+        nature=new OnlineNature(this);resources=new OnlineResources(this);if(services){resources.start();nature.join();}checkpoints=new OnlineCheckpoint(this);if(services){checkpoints.start();journalReader.execute(this::listen);}
     }
     void listen(){java.util.concurrent.atomic.AtomicInteger failures=new java.util.concurrent.atomic.AtomicInteger();RealtimeTree tree=new RealtimeTree();
         while(!stopped&&!s.closed){
@@ -107,7 +107,7 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
     JSONObject increment()throws JSONException{return new JSONObject().put(".sv",new JSONObject().put("increment",1));}
     void commit(Story inventory,OnlineChange c)throws Exception{
         long rev=revision+1;String uid=f.uid,eventKey=OnlineJournal.eventKey(rev),op=OnlineWorld.randomId(),prefix="head/actors/"+uid+"/",encrypted=encrypt(inventory,rev);
-        JSONObject patch=new JSONObject().put(prefix+"batch",JSONObject.NULL).put(prefix+"count",JSONObject.NULL).put(prefix+"base",JSONObject.NULL).put(prefix+"presenceBase",JSONObject.NULL).put(prefix+"growthToken",JSONObject.NULL).put(prefix+"growthDay",JSONObject.NULL).put(prefix+"decayRegion",JSONObject.NULL).put(prefix+"reactionRegion",JSONObject.NULL).put(prefix+"needsSpace",JSONObject.NULL).put("head/g",increment()).put(prefix+"schemaRev",rev).put(prefix+"rev",rev).put(prefix+"seq",sequence+(c==null?0:1)).put(prefix+"inventory",encrypted).put(prefix+"op",op).put(prefix+"eventKey",eventKey);
+        JSONObject patch=new JSONObject().put(prefix+"resourceRegion",JSONObject.NULL).put(prefix+"resourceSite",JSONObject.NULL).put(prefix+"batch",JSONObject.NULL).put(prefix+"count",JSONObject.NULL).put(prefix+"base",JSONObject.NULL).put(prefix+"presenceBase",JSONObject.NULL).put(prefix+"growthToken",JSONObject.NULL).put(prefix+"growthDay",JSONObject.NULL).put(prefix+"decayRegion",JSONObject.NULL).put(prefix+"reactionRegion",JSONObject.NULL).put(prefix+"needsSpace",JSONObject.NULL).put("head/g",increment()).put(prefix+"schemaRev",rev).put(prefix+"rev",rev).put(prefix+"seq",sequence+(c==null?0:1)).put(prefix+"inventory",encrypted).put(prefix+"op",op).put(prefix+"eventKey",eventKey);
         if(c!=null){JSONObject last=JournalBatch.last(c);
             patch.put(prefix+"last",last).put(prefix+"tail/e"+(c.sequence%16),c.encode()).put("head/regions/s"+c.region,increment()).put("head/chunks/"+OnlineJournal.chunk(c),increment()).put("chunks/"+OnlineJournal.chunk(c)+"/cells/"+c.key(),JournalBatch.cell(c,null));}
         if(c!=null){
@@ -141,5 +141,5 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
             }super.deleteWorld(success,failure);
         }catch(Exception e){s.activity.runOnUiThread(()->failure.accept("Löschen unterbrochen. Bitte erneut versuchen."));}});
     }
-    @Override public void close(){stopped=true;if(nature!=null)nature.closed=true;journalConnected=false;if(activated)FirebaseRest.DIAGNOSTICS.journal(false);if(db!=null)db.close();journalReader.shutdownNow();if(checkpoints!=null)checkpoints.close();}
+    @Override public void close(){stopped=true;if(resources!=null)resources.closed=true;if(nature!=null)nature.closed=true;journalConnected=false;if(activated)FirebaseRest.DIAGNOSTICS.journal(false);if(db!=null)db.close();journalReader.shutdownNow();if(checkpoints!=null)checkpoints.close();}
 }

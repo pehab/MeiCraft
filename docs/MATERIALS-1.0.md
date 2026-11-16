@@ -28,6 +28,10 @@ Kohle neben Lava brennt begrenzt an dieser Stelle; Wasser löscht sie. Sie entz�
 
 Neue Materialreaktionen arbeiten in Drei-Sekunden-Schritten. Kohle und Kristallglas benötigen drei Schritte, Online-Erz fünf, das Online-Leuchtsteinritual drei. Offline verwendet das ursprüngliche Schmiedesystem weiterhin seine bisherigen 15 beziehungsweise acht aktiven Sekunden. Menüs pausieren die Offline-Simulation; online arbeitet nur eine aktive Sitzung. Es erfolgt kein Nachholen vergangener Offlinezeit.
 
+## Ergänzung bestehender Online-Welten ab 1.0.3
+
+Die ausdrücklich gewünschte einmalige [Rohstoffergänzung](RESOURCES-1.0.3.md) journalisiert sichere Lagerstätten im ursprünglichen, unberührten Gestein. Sie ändert keine Generatorversion und ersetzt keine bestehenden Bauten. Dies erweitert die ursprüngliche Beschränkung auf neue Welten; Ladepfade regenerieren weiterhin keine Landschaft.
+
 ## Kompatibilität
 
 Die gespeicherte Generationsversion ist unveränderlich: fehlend/1 verwendet den bisherigen Generator, 2 ausschließlich neue Welten. Alte Weltinhalte werden beim Laden weder nachgeneriert noch ersetzt. Auch bearbeitete Zellen, deren Block inzwischen dem ursprünglichen Terrain entspricht, bleiben erhalten. Regions-Caches sind nach Generatorversion getrennt. Der alte Online-Terrain-Hash und seine Nahttests bleiben unverändert.
