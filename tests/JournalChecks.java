@@ -26,6 +26,9 @@ final class JournalChecks {
         static String etag(Object value)throws Exception{return '"'+Base64.getEncoder().encodeToString(java.security.MessageDigest.getInstance("SHA-256").digest(value.toString().getBytes(StandardCharsets.UTF_8)))+'"';}
         synchronized String request(URL url,String method,String body,String match,Holder holder)throws Exception{
             if(offline)throw new IOException("fixture RTDB offline");String path=url.getPath().substring(1,url.getPath().length()-5);Object old=get(root,path);holder.etag=etag(old);
+            String uid=URLDecoder.decode(url.getQuery(),"UTF-8").split("auth=fixture-token-",2)[1].split("&",2)[0];
+            String[] parts=path.split("/",4);String base=parts[0]+"/"+parts[1]+"/"+parts[2];
+            if(parts.length==4&&parts[3].startsWith("storage")&&!uid.equals(parts[1])&&!Boolean.TRUE.equals(get(root,base+"/members/"+uid+"/active"))){holder.status=401;return "{\"error\":\"Permission denied\"}";}
             if(match!=null&&!match.equals(holder.etag)&&!(match.equals("null_etag")&&old==JSONObject.NULL)){holder.status=412;return "{}";}
             if(method.equals("GET")){
                 reads++;if(path.endsWith("/live"))liveReads++;String query=URLDecoder.decode(url.getQuery(),"UTF-8");if(query.contains("orderBy=\"rev\"")){
@@ -53,7 +56,7 @@ final class JournalChecks {
         }
     }
     OnlineSession session(MainActivity activity,Backend backend,OnlineWorld invite,String uid)throws Exception{
-        FirebaseRest f=new FirebaseRest(activity,backend);f.uid=uid;f.token="fixture-token";f.expires=System.currentTimeMillis()+3600000;
+        FirebaseRest f=new FirebaseRest(activity,backend);f.uid=uid;f.token="fixture-token-"+uid;f.expires=System.currentTimeMillis()+3600000;
         OnlineSession s=new OnlineSession(activity,f,invite,uid,new OnlineSession.Listener(){public void loaded(World w,String n){}public void problem(String t,boolean fatal){}});s.modern=new OnlineV6(s,false);return s;
     }
     OnlineV6 v(OnlineSession s){return (OnlineV6)s.modern;}
@@ -64,12 +67,15 @@ final class JournalChecks {
     void run(MainActivity activity,GameView game)throws Exception{
         Backend backend=new Backend();OnlineWorld invite=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession a=session(activity,backend,invite,"parent"),b=session(activity,backend,invite,"child");
         try{
-            v(a).start(true,"Journal-Test",2);ready(a);stock(v(a));v(b).start(false,"",2);ready(b);stock(v(b));
+            v(a).start(true,"Journal-Test",2);ready(a);stock(v(a));
+            check(Backend.get(backend.root,"worlds/parent/"+invite.id+"/members/child")==JSONObject.NULL,"First-time guest has no pre-existing RTDB membership");
+            v(b).start(false,"",2);ready(b);stock(v(b));
+            check(Boolean.TRUE.equals(Backend.get(backend.root,v(b).base+"/members/child/active"))&&v(b).activated&&b.world!=null,"First-time guest proves membership before protected journal reads and loads the world");
             check(FirebaseRest.integer(backend.firestore.docs.get(a.base()).getJSONObject("fields"),"protocol")==6&&!backend.firestore.docs.get(a.base()).getJSONObject("fields").has("migration"),"v6 migration freezes old writers and clears its marker only after verification");
             OnlineV6 initial=v(a);long revision=initial.revision;Story untouched=OnlineInventory.copy(a.inventory);backend.conflictBackground=true;
             List<OnlineChange> stale=Collections.singletonList(new OnlineChange(initial.sequence+1,0,20,44,10,0,false,OnlineWorld.randomId(),"","parent",""));boolean deferred=false;
             try{initial.nature.publish(JournalBatch.patch(initial,stale).put("head/actors/parent/base",initial.fetchHead().generation),stale);}catch(OnlineNature.Deferred expected){deferred=true;}
-            check(deferred&&initial.revision==revision&&OnlineInventory.same(untouched,a.inventory)&&a.firebase.token.equals("fixture-token"),"A proven background generation conflict is deferred without charging resources or invalidating the valid token");
+            check(deferred&&initial.revision==revision&&OnlineInventory.same(untouched,a.inventory)&&a.firebase.token.equals("fixture-token-parent"),"A proven background generation conflict is deferred without charging resources or invalidating the valid token");
             int fsWrites=backend.firestore.writes,fsCommits=backend.firestore.commits.size();v(a).edit(10,44,10,2);drain(a,game);v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});
             check(a.inventory.inventory[2]==99&&b.world.get(10,44,10)==2&&backend.firestore.writes==fsWrites,"Immediate durable build consumes one resource and reaches peers with zero Firestore writes");
             backend.loseReply=true;v(a).edit(11,44,10,2);drain(a,game);check(!a.inventoryUncertain&&a.inventory.inventory[2]==98&&a.world.get(11,44,10)==2,"Lost RTDB response reconciles the cell and inventory exactly once");
