@@ -13,6 +13,7 @@ public final class World {
     public long seed;
     public int terrainVersion=1;
     final MaterialReactions materials=new MaterialReactions();
+    final Mechanics mechanics=new Mechanics();
     public float x=48.5f,y=27,z=48.5f,yaw=0,pitch=-.15f;
     public int selected=1;
     public boolean flying=true,story;
@@ -37,7 +38,7 @@ public final class World {
     public static int index(int x,int y,int z){return (y*D+z)*W+x;}
     public int get(int x,int y,int z){return contains(x,y,z)?blocks[idx(x,y,z)]&255:0;}
     public static boolean inside(int x,int y,int z){return x>=0&&z>=0&&y>=0&&x<W&&z<D&&y<H;}
-    public boolean set(int x,int y,int z,int type){if(!contains(x,y,z)||y==0||type<0||type>=NAMES.length)return false;blocks[idx(x,y,z)]=(byte)type;if(!online){nature.changed(x,y,z);forge.changed(this,idx(x,y,z));materials.changed(idx(x,y,z));}revision++;return true;}
+    public boolean set(int x,int y,int z,int type){if(!contains(x,y,z)||y==0||type<0||type>=NAMES.length)return false;if(!online&&get(x,y,z)!=type)mechanics.links.remove(idx(x,y,z));blocks[idx(x,y,z)]=(byte)type;if(!online){nature.changed(x,y,z);forge.changed(this,idx(x,y,z));materials.changed(idx(x,y,z));}revision++;return true;}
     public String miningProblem(int a,int b,int c){int block=get(a,b,c);if(!contains(a,b,c)||b==0)return "Das Fundament bleibt stehen.";if(block==0)return "Hier ist kein Block.";if(story&&Nature.liquid(block))return "Mit leerem Eiseneimer eine Quelle aufnehmen: − antippen.";if(story&&!progress.canMine(block))return "Dafür brauchst du: "+Story.TOOLS[Story.needed(block)];return "";}
     public boolean mine(int a,int b,int c){if(!miningProblem(a,b,c).isEmpty())return false;int block=get(a,b,c),drop=block==1?2:block==Materials.COAL_ORE?Materials.COAL:block;if(story&&block==16){if(progress.iron>=1000000)return false;progress.iron++;forge.notice="1 Eisenbarren aus Roheisen gewonnen";}else if(story&&!progress.add(drop,1))return false;boolean ok=set(a,b,c,0);if(ok)materials.touch(idx(a,b,c));return ok;}
     public boolean place(int a,int b,int c,int block){if(!contains(a,b,c)||b==0||get(a,b,c)!=0||block<=0||block>=NAMES.length||overlapsPlayer(a,b,c))return false;if(story&&(progress.inventory[block]<=0||Nature.liquid(block)&&progress.buckets>=1000000))return false;if(Nature.liquid(block)&&nature.active.cardinality()>=Nature.MAX_FLOW)return false;if(!set(a,b,c,block))return false;materials.touch(idx(a,b,c));if(block==6&&!online)nature.placedLeaves.set(idx(a,b,c));if(Nature.liquid(block))nature.source(a,b,c);if(story){progress.inventory[block]--;if(Nature.liquid(block))progress.buckets++;progress.placed=Math.min(1000000,progress.placed+1);if(block==8)progress.glassPlaced=Math.min(1000000,progress.glassPlaced+1);}return true;}
@@ -104,12 +105,12 @@ public final class World {
     public byte[] encode()throws IOException{
         if(width!=W||depth!=D)throw new IOException("Online-Welten werden in Firebase gespeichert.");
         ByteArrayOutputStream bytes=new ByteArrayOutputStream();
-        try(DataOutputStream out=new DataOutputStream(new GZIPOutputStream(bytes))){out.writeInt(0x4d454943);out.writeInt(8);out.writeLong(seed);out.writeInt(terrainVersion);out.writeFloat(x);out.writeFloat(y);out.writeFloat(z);out.writeFloat(yaw);out.writeFloat(pitch);out.writeInt(selected);out.writeBoolean(flying);out.writeInt(blocks.length);out.write(blocks);out.writeBoolean(story);out.writeInt(progress.chapter);out.writeInt(progress.iron);out.writeInt(progress.placed);out.writeInt(progress.glassPlaced);out.writeInt(progress.inventory.length);for(int count:progress.inventory)out.writeInt(count);out.writeInt(progress.buckets);out.writeBoolean(progress.sword);survival.write(out);nature.write(out);forge.write(out);nature.writeTrees(out,this);materials.write(out);}return bytes.toByteArray();
+        try(DataOutputStream out=new DataOutputStream(new GZIPOutputStream(bytes))){out.writeInt(0x4d454943);out.writeInt(9);out.writeLong(seed);out.writeInt(terrainVersion);out.writeFloat(x);out.writeFloat(y);out.writeFloat(z);out.writeFloat(yaw);out.writeFloat(pitch);out.writeInt(selected);out.writeBoolean(flying);out.writeInt(blocks.length);out.write(blocks);out.writeBoolean(story);out.writeInt(progress.chapter);out.writeInt(progress.iron);out.writeInt(progress.placed);out.writeInt(progress.glassPlaced);out.writeInt(progress.inventory.length);for(int count:progress.inventory)out.writeInt(count);out.writeInt(progress.buckets);out.writeBoolean(progress.sword);survival.write(out);nature.write(out);forge.write(out);nature.writeTrees(out,this);materials.write(out);mechanics.write(out);}return bytes.toByteArray();
     }
     private static boolean validCount(int value){return value>=0&&value<=1000000;}
     public static World decode(byte[] bytes)throws IOException{
         World w=new World();try(DataInputStream in=new DataInputStream(new GZIPInputStream(new ByteArrayInputStream(bytes)))){
-            if(in.readInt()!=0x4d454943)throw new IOException("Unbekannter Spielstand");int format=in.readInt();if(format<1||format>8)throw new IOException("Unbekannte Speicher-Version");w.seed=in.readLong();if(format>=7){w.terrainVersion=in.readInt();if(w.terrainVersion<1||w.terrainVersion>2)throw new IOException("Unbekannte Landschaftsversion");}w.x=in.readFloat();w.y=in.readFloat();w.z=in.readFloat();w.yaw=in.readFloat();w.pitch=in.readFloat();w.selected=in.readInt();w.flying=in.readBoolean();
+            if(in.readInt()!=0x4d454943)throw new IOException("Unbekannter Spielstand");int format=in.readInt();if(format<1||format>9)throw new IOException("Unbekannte Speicher-Version");w.seed=in.readLong();if(format>=7){w.terrainVersion=in.readInt();if(w.terrainVersion<1||w.terrainVersion>2)throw new IOException("Unbekannte Landschaftsversion");}w.x=in.readFloat();w.y=in.readFloat();w.z=in.readFloat();w.yaw=in.readFloat();w.pitch=in.readFloat();w.selected=in.readInt();w.flying=in.readBoolean();
             if(!Float.isFinite(w.x)||!Float.isFinite(w.y)||!Float.isFinite(w.z)||!Float.isFinite(w.yaw)||!Float.isFinite(w.pitch)||w.x<.3f||w.x>W-.3f||w.z<.3f||w.z>D-.3f||w.y<1.62f||w.y>H+16||w.selected<1||w.selected>=(format<5?16:format<7?17:NAMES.length))throw new IOException("Ungültiger Spielstand");
             if(in.readInt()!=w.blocks.length)throw new IOException("Ungültige Weltgröße");in.readFully(w.blocks);for(byte b:w.blocks)if(b<0||b>=(format<5?16:format<7?17:NAMES.length))throw new IOException("Ungültiger Block");if(format>=2){w.story=in.readBoolean();w.progress.chapter=in.readInt();w.progress.iron=in.readInt();w.progress.placed=in.readInt();w.progress.glassPlaced=in.readInt();if(w.progress.chapter<0||w.progress.chapter>7||!validCount(w.progress.iron)||!validCount(w.progress.placed)||!validCount(w.progress.glassPlaced))throw new IOException("Ungültiger Story-Fortschritt");int count=in.readInt();if(count!=(format==2?15:format<5?16:format<7?17:w.progress.inventory.length))throw new IOException("Ungültiges Inventar");for(int i=0;i<count;i++){w.progress.inventory[i]=in.readInt();if(!validCount(w.progress.inventory[i]))throw new IOException("Ungültiger Vorrat");}if(w.story)w.flying=false;}
             if(format>=3){w.progress.buckets=in.readInt();w.progress.sword=in.readBoolean();if(!validCount(w.progress.buckets))throw new IOException("Ungültige Eimer");w.survival.read(in);}else{w.survival.spawnX=w.x;w.survival.spawnZ=w.z;}
@@ -117,6 +118,7 @@ public final class World {
             w.forge.initialize(w);if(format>=5)w.forge.read(in,w);
             if(format>=6)w.nature.readTrees(in,w);else w.nature.legacyTrees(w);
             if(format>=7)w.materials.read(in,w);
+            if(format>=9)w.mechanics.read(in,w);
             if(in.read()!=-1)throw new IOException("Zusätzliche Daten");
         }return w;
     }

@@ -17,8 +17,9 @@ public final class OnlineRegionCacheTests {
         Path root=Files.createTempDirectory("meicraft-cache-test");String id="a".repeat(32);
         try(OnlineRegionCache cache=new OnlineRegionCache(root.toFile(),id,123,2)){
             check(cache.load(0)==null,"Missing cache is a normal cold join");
-            OnlineRegionCache.Snapshot source=snapshot(3000,3200);cache.save(0,source);OnlineRegionCache.Snapshot restored=cache.load(0);
+            OnlineRegionCache.Snapshot original=snapshot(3000,3200);OnlineRegionCache.Snapshot source=new OnlineRegionCache.Snapshot(original.revision,original.watermark,original.versions,original.types,original.renewable,original.heads,Map.of("1_1_0","user"));cache.save(0,source);OnlineRegionCache.Snapshot restored=cache.load(0);
             check(restored!=null&&restored.types.equals(source.types)&&restored.versions.equals(source.versions)&&restored.renewable.equals(source.renewable),"3000 complete deltas, air and renewable water survive restart");
+            check(restored.tags.equals(source.tags),"cell metadata survives a warm region restart");
             check(restored.watermark.equals(source.watermark)&&restored.revision==3200&&restored.heads.equals(source.heads),"Server snapshot nanoseconds and revision are exact");
             check(!OnlineSyncPolicy.reload(true,restored.revision,3200),"Unchanged warm join needs no block query");
             check(OnlineSyncPolicy.reload(true,restored.revision,3201),"Single offline peer revision requires delta query");

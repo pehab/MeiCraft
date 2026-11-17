@@ -27,6 +27,7 @@ final class OnlineSession implements AutoCloseable {
     volatile String owner="",name="";
     long seed,lastHeartbeat,nextAttempt;volatile long actionStarted;int failures;
     static final class Region {
+        final Map<String,String> tags=new HashMap<>();
         final int id;String watermark="";boolean generated,complete;long revision=-1,ownChanges;
         final Map<String,String> versions=new HashMap<>();final Map<String,Integer> types=new HashMap<>();final Map<String,Boolean> renewable=new HashMap<>();
         final List<OnlineChange> own=new ArrayList<>();final Map<String,Long> heads=new HashMap<>();

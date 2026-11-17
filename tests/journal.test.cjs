@@ -177,7 +177,7 @@ test('stationary keepalive needs no nature counter write; moving without increme
 });
 test('database rule generation is repeatable and retains the stationary keepalive exemption',()=>{
  const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),{execFileSync}=require('node:child_process');const folder=fs.mkdtempSync(path.join(os.tmpdir(),'meicraft-rules-')),file=path.join(folder,'database.rules.json'),source=fs.readFileSync('database.rules.json','utf8');
- try{fs.writeFileSync(file,source);for(let n=0;n<2;n++){for(const script of ['add-journal-rules.py','nature-rules.py'])execFileSync('python3',[path.resolve('scripts',script)],{cwd:folder});assert.equal(fs.readFileSync(file,'utf8'),source);}}finally{fs.rmSync(folder,{recursive:true,force:true});}
+ try{fs.writeFileSync(file,source);for(let n=0;n<2;n++){for(const script of ['add-journal-rules.py','nature-rules.py','mechanics-rules.py'])execFileSync('python3',[path.resolve('scripts',script)],{cwd:folder});assert.equal(fs.readFileSync(file,'utf8'),source);}}finally{fs.rmSync(folder,{recursive:true,force:true});}
 });
 const reaction=(uid,blocks,options={})=>({...batch(uid,blocks,options),[`head/actors/${uid}/reactionRegion`]:0,[`head/actors/${uid}/needsSpace`]:blocks.some(b=>b.type===19),'growth/reactions/0':{at:{'.sv':'timestamp'}}});
 test('material reaction atomically publishes inputs, metadata, inventory and output across chunk boundaries',async()=>{
@@ -232,4 +232,29 @@ test('sand-to-glass uses the existing atomic reaction journal without consuming 
  await assertSucceeds(update(r('child',storage),patch));const data=(await get(r('child',storage))).val();
  assert.equal(data.chunks['0_1_1_1'].cells['20_30_20'].type,8);assert.equal(data.chunks['0_1_1_1'].cells['20_29_20'].type,15);assert.equal(data.head.actors.child.inventory,cipher);assert.match(data.journal.child[2].event,/\/8\/0\//);
  await assertFails(update(r('child',storage),patch));
+});
+
+function mechanical(uid,blocks,from,options={}){
+ const p=batch(uid,blocks,options),a=`head/actors/${uid}/`;p[a+'mechanic']=true;
+ blocks.forEach((b,i)=>{p[a+'batch']['b'+i].last.from=from[i];});return p;
+}
+async function mechanismSeed(){await seed();await env.withSecurityRulesDisabled(c=>set(ref(c.database(),storage+'/chunks/0_1_1_1/cells/20_30_20'),{type:7,water:false,token:'c'.repeat(32),nature:'user'}));}
+const moveBlocks=()=>[{x:20,y:30,z:20,type:0,before:'c'.repeat(32)},{x:21,y:30,z:20,type:7,nature:'user'}];
+test('mechanic batch moves a solid without consuming or duplicating blocks',async()=>{
+ await mechanismSeed();await assertSucceeds(update(r('child',storage),mechanical('child',moveBlocks(),[-1,0])));
+ assert.equal((await get(r('child',storage+'/chunks/0_1_1_1/cells/20_30_20/type'))).val(),0);
+ assert.equal((await get(r('child',storage+'/chunks/0_1_1_1/cells/21_30_20/type'))).val(),7);
+});
+test('mechanic batches reject cloned, deleted, forged-material and stale moves atomically',async()=>{
+ await mechanismSeed();
+ await assertFails(update(r('child',storage),mechanical('child',[...moveBlocks(),{x:22,y:30,z:20,type:7,nature:'user'}],[-1,0,0])));
+ await assertFails(update(r('child',storage),mechanical('child',[moveBlocks()[0]],[-1])));
+ await assertFails(update(r('child',storage),mechanical('child',[moveBlocks()[0],{...moveBlocks()[1],type:14}],[-1,0])));
+ await assertFails(update(r('child',storage),mechanical('child',[{...moveBlocks()[0],before:'d'.repeat(32)},moveBlocks()[1]],[-1,0])));
+ assert.equal((await get(r('child',storage+'/chunks/0_1_1_1/cells/20_30_20/type'))).val(),7);
+});
+test('pose changes and omitted batch cells reject mechanic movement',async()=>{
+ await mechanismSeed();const p=mechanical('child',moveBlocks(),[-1,0]);delete p['chunks/0_1_1_1/cells/20_30_20'];await assertFails(update(r('child',storage),p));
+ await update(r('sibling',base+'/live'),{poseVersion:increment(1)});
+ await assertFails(update(r('child',storage),mechanical('child',moveBlocks(),[-1,0])));
 });

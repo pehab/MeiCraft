@@ -735,8 +735,17 @@ public final class SmokeInstrumentation extends Instrumentation {
   runOnMainSync(()->activity.paused=false);tap(game,game.hud.mineX,game.hud.actionY);runOnMainSync(()->activity.paused=true);
   CountDownLatch editDone=new CountDownLatch(1);game.gl.queueEvent(()->{synchronized(game.world){try{check(game.world.get(48,34,45)==0,"break removes targeted block");game.world.set(48,34,44,3);}catch(Throwable t){failure[0]=t;}}editDone.countDown();});check(editDone.await(30,TimeUnit.SECONDS),"break queue completed");if(failure[0]!=null)throw new AssertionError(failure[0]);
   runOnMainSync(()->activity.paused=false);tap(game,game.hud.placeX,game.hud.actionY);runOnMainSync(()->activity.paused=true);CountDownLatch placeDone=new CountDownLatch(1);game.gl.queueEvent(()->{try{synchronized(game.world){check(game.world.get(48,34,45)==9,"place adds selected block adjacent to target");game.renderer.dirty(48,45);}}catch(Throwable t){failure[0]=t;}finally{placeDone.countDown();}});check(placeDone.await(30,TimeUnit.SECONDS),"place queue completed");if(failure[0]!=null)throw new AssertionError(failure[0]);
-  runOnMainSync(()->activity.paused=false);tap(game,game.hud.barX+248,game.hud.barY+25);runOnMainSync(()->activity.paused=true);check(game.world.selected==9,"hotbar touch selects material");
-  runOnMainSync(activity::save);activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);World saved=World.decode(activity.file.readFully());check(saved.get(48,34,45)==9,"edited block written to disk");check(saved.selected==9,"selected material written to disk");
+  runOnMainSync(()->{activity.paused=false;game.hud.bar.offset=0;game.hud.bar.reveal(9);});tap(game,game.hud.barX+248,game.hud.barY+25);runOnMainSync(()->activity.paused=true);check(game.world.selected==6,"stable scrollable hotbar touch selects visible material: "+game.world.selected+" offset "+game.hud.bar.offset);
+  runOnMainSync(()->{activity.paused=false;game.hud.bar.reveal(1);game.world.selected=1;});
+  for(int i=0;i<3;i++){
+   stickEvent(game,android.view.MotionEvent.ACTION_DOWN,new int[]{7},new float[][]{{game.hud.barX+420,game.hud.barY+25}});
+   stickEvent(game,android.view.MotionEvent.ACTION_MOVE,new int[]{7},new float[][]{{game.hud.barX+20,game.hud.barY+25}});
+   stickEvent(game,android.view.MotionEvent.ACTION_UP,new int[]{7},new float[][]{{game.hud.barX+20,game.hud.barY+25}});
+  }
+  check(game.world.selected==1&&game.lookId==-1&&game.hud.bar.offset==game.hud.bar.max(),"drag reaches final materials without selecting or taking over camera input");
+  tap(game,game.hud.barX+420,game.hud.barY+25);check(game.world.selected==World.NAMES.length-1,"last textured material selectable without reading a menu");
+  runOnMainSync(()->{activity.paused=true;game.world.selected=6;game.hud.bar.reveal(6);});
+  runOnMainSync(activity::save);activity.disk.submit(()->{}).get(30,TimeUnit.SECONDS);World saved=World.decode(activity.file.readFully());check(saved.get(48,34,45)==9,"edited block written to disk");check(saved.selected==6,"selected material written to disk");
   check(java.util.Arrays.asList(context.getPackageManager().getPackageInfo(context.getPackageName(),android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions).contains("android.permission.INTERNET"),"update permission present");
   runOnMainSync(()->{synchronized(game.world){World w=game.world;w.yaw=.55f;w.pitch=-.38f;w.y=26;w.x=48.5f;w.z=48.5f;}activity.paused=false;});
   testStory(activity,game);onGlAfterFrame(game,()->checkGl("after testStory"));
