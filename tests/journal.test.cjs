@@ -13,6 +13,17 @@ function action(uid,seq=1,rev=2,before='',x=1,token='c'.repeat(32)){
 }
 before(async()=>{env=await initializeTestEnvironment({projectId:'demo-meicraft-journal',database:{rules:readFileSync('database.rules.json','utf8')},firestore:{rules:readFileSync('firestore.rules','utf8')}});});
 beforeEach(async()=>{await env.clearDatabase();await env.clearFirestore();});after(async()=>{if(env)await env.cleanup();});
+test('first-time guest must register invitation proof before reading journal storage',async()=>{
+ await seed();
+ assert.equal((await get(r('newguest',base+'/members/newguest'))).exists(),false);
+ await assertFails(get(r('newguest',storage+'/control')));
+ await assertFails(set(r('newguest',base+'/members/newguest'),{active:true,proof:'f'.repeat(32)}));
+ await assertSucceeds(set(r('newguest',base+'/members/newguest'),member));
+ assert.equal((await assertSucceeds(get(r('newguest',storage+'/control')))).val().phase,'ready');
+ await set(r('parent',base+'/members/newguest/active'),false);
+ await assertFails(get(r('newguest',storage+'/control')));
+ await assertFails(set(r('newguest',base+'/members/newguest'),member));
+});
 test('owner can import legacy cells with empty nature before a journal head exists, then resume and seal',async()=>{
  await set(r('parent',base),{meta:{invite,side:2,closed:false},members:{parent:member,child:member}});
  await set(r('parent',storage),{control:{phase:'importing',epoch,source:'legacy'}});

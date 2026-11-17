@@ -31,13 +31,14 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
         }
         if(create||protocol<6)super.start(create,name,side);
         db=new RtdbRest(f);base="worlds/"+s.owner+"/"+s.invitation.id;
+        // First-time guests must prove their invitation before reading protected storage.
+        try(OnlineRealtime presence=new OnlineRealtime(s)){presence.initialize();}
         JSONObject status=remote(storage()+"/control");
         if(protocol==6&&!migrating&&!status.optString("phase").equals("ready"))throw new IOException("Der dauerhafte RTDB-Spielstand fehlt. Kein automatischer Rückgriff auf einen älteren Firestore-Stand. Bitte Datenbank und Checkpoint prüfen.");
         if(create||protocol<6||migrating){
             if(!s.owner())throw new IOException("Die Migration läuft noch. Bitte den Weltbesitzer verbinden lassen.");new JournalMigration(this).run();
         }
         JSONObject control=remote(storage()+"/control");if(!control.getString("phase").equals("ready"))throw new IOException("Migration noch nicht abgeschlossen.");epoch=control.getString("epoch");
-        try(OnlineRealtime presence=new OnlineRealtime(s)){presence.initialize();}
         activated=true;readSync();
         if(s.world!=null)cachePrimed=false;if(s.regionCache!=null)s.regionCache.close();s.regionCache=new OnlineRegionCache(new File(s.activity.getCacheDir(),"online-regions-v6-"+epoch+"-t"+s.terrainVersion),s.invitation.id,s.seed,s.side);
         boolean fresh=s.world==null;if(fresh){s.world=World.onlineSpace(s.seed,s.side,s.terrainVersion);World origin=OnlineTerrain.region(s.seed,0,s.side,s.terrainVersion);s.world.x=origin.x;s.world.y=origin.y;s.world.z=origin.z;s.px=origin.x;s.py=origin.y;s.pz=origin.z;}
