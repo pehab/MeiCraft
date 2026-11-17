@@ -91,8 +91,26 @@ final class JournalChecks {
             check(backend.firestore.commits.size()>fsCommits&&backend.firestore.writes<40,"Many builds are coalesced into a small number of checkpoint writes");
         }finally{finish(a);finish(b);}
         OnlineSession warm=session(activity,backend,invite,"parent");try{v(warm).start(false,"",2);ready(warm);check(warm.world.get(45,44,10)==2&&warm.inventory.inventory[2]==78,"Restart restores durable peer builds and the private inventory after a host change");}finally{finish(warm);}
-        deleteRecovery(activity,backend,invite);largeUpload(activity);resumeMigration(activity,game);nature(activity,game);materials(activity,game);resources(activity,game);
+        mechanics(activity,game);deleteRecovery(activity,backend,invite);largeUpload(activity);resumeMigration(activity,game);nature(activity,game);materials(activity,game);resources(activity,game);
         System.out.println("JOURNAL CHECKS: migration, zero-write builds, lost replies, ring gaps, coherent checkpoints, host takeover and warm restart verified");
+    }
+    void mechanics(MainActivity activity,GameView game)throws Exception{
+        Backend backend=new Backend();OnlineWorld invite=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession a=session(activity,backend,invite,"parent"),b=session(activity,backend,invite,"child");
+        try{
+            v(a).start(true,"Mechanics",2);ready(a);v(b).start(false,"",2);ready(b);stock(v(a));a.px=60;a.py=40;a.pz=60;
+            World w=a.world;Story inventory=OnlineInventory.copy(a.inventory);String prefix=v(a).storage()+"/chunks/0_";
+            // Seed authored blocks above the landscape, including a two-material group across a region edge.
+            for(int[] c:new int[][]{{90,44,90,14},{94,44,90,7},{95,44,90,8}}){OnlineChange e=new OnlineChange(v(a).sequence+1,0,c[0],c[1],c[2],c[3],false,OnlineWorld.randomId(),"","parent","user");v(a).commit(a.inventory,e);v(a).readSync();v(a).syncVisible(false);test.onGl(game,()->{});}
+            Mechanics.Link link=new Mechanics.Link(new Mechanics.Block(90,44,90,14),List.of(new Mechanics.Block(94,44,90,7),new Mechanics.Block(95,44,90,8)),0,2,false);OnlineMechanics m=new OnlineMechanics(v(a));m.configureNow(link);test.onGl(game,()->{});
+            check(w.mechanics.links.containsKey(w.idx(90,44,90)),"online switch definition enters the shared region model");
+            m.toggleNow(link);test.onGl(game,()->{});v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});
+            check(w.get(94,44,90)==0&&w.get(96,44,90)==7&&w.get(97,44,90)==8&&b.world.get(97,44,90)==8,"one atomic mechanism crosses regions and reaches the peer");
+            check(OnlineInventory.same(inventory,a.inventory),"mechanical motion preserves the entire private inventory");
+            m.toggleNow(link.toggle());test.onGl(game,()->{});check(w.get(94,44,90)==7&&w.get(95,44,90)==8&&w.get(97,44,90)==0,"second activation returns the original two materials");
+            v(a).checkpoints.lease();v(a).checkpoints.save(true);
+            JSONObject saved=backend.firestore.docs.get(a.base()+"/sync/checkpoint").getJSONObject("fields");boolean marker=false;for(String id:OnlineV5.keys(OnlineV5.fields(saved,"chunks"))){String version=FirebaseRest.string(OnlineV5.fields(saved,"chunks"),id);JSONObject cells=OnlineV5.fields(backend.firestore.docs.get(a.base()+"/saved/"+version).getJSONObject("fields"),"cells");for(String key:OnlineV5.keys(cells))if(FirebaseRest.string(cells,key).contains("mech_"))marker=true;}check(marker,"checkpoint retains mechanism definition with its switch cell");
+        }finally{finish(a);finish(b);}
+        OnlineSession warm=session(activity,backend,invite,"parent");try{v(warm).start(false,"",2);test.onGl(game,()->{});check(warm.world.mechanics.links.containsKey(warm.world.idx(90,44,90)),"warm region cache retains switch metadata after reconnect");}finally{finish(warm);}
     }
     void resources(MainActivity activity,GameView game)throws Exception{
         Backend backend=new Backend();OnlineWorld invite=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession seed=session(activity,backend,invite,"parent");v(seed).start(true,"Resources",2);finish(seed);

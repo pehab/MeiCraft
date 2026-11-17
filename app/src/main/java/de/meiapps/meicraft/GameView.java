@@ -8,7 +8,7 @@ import android.widget.FrameLayout;
 
 final class GameView {
     final FrameLayout root;
-    final MainActivity activity; final GLSurfaceView gl;final VoxelRenderer renderer;final Hud hud;
+    final MainActivity activity; final MechanicsController mechanics;final GLSurfaceView gl;final VoxelRenderer renderer;final Hud hud;
     volatile World world,renderedWorld;
     volatile int[] target;
     volatile float forward,strafe,vertical;
@@ -17,15 +17,15 @@ final class GameView {
     float velocityY;boolean grounded;
     int moveId=-1,lookId=-1,verticalId=-1,mineId=-1;float lookX,lookY,knobX,knobY,mineTime;int[] miningTarget;volatile String status="";volatile long statusUntil;
     static final int[] COLORS={0,0xff79b94f,0xff986a45,0xff8c9397,0xffdfcd91,0xff9c7246,0xff47944d,0xffbd6954,0xffb9e1e8,0xffbf955f,0xff3c9dbd,0xffffdb76,0xffe8f4f7,0xffaa8b77,0xffbac4ca,0xffff6624,0xff634a42,0xff6c7077,0xff242832,0xff474c57,0xff69d8e8,0xfff4a54a,0xffb9b4f5,0xff626d83};
-    GameView(MainActivity activity,World world){this.activity=activity;root=new FrameLayout(activity);this.world=world;
+    GameView(MainActivity activity,World world){this.activity=activity;mechanics=new MechanicsController(activity);root=new FrameLayout(activity);this.world=world;
         gl=new GLSurfaceView(activity);gl.setEGLContextClientVersion(2);gl.setPreserveEGLContextOnPause(true);renderer=new VoxelRenderer(this);gl.setRenderer(renderer);root.addView(gl,new FrameLayout.LayoutParams(-1,-1));hud=new Hud(activity);root.addView(hud,new FrameLayout.LayoutParams(-1,-1));root.setKeepScreenOn(true);
     }
     Context getContext(){return activity;}
-    void replace(World next){clearInput();world=next;velocityY=0;target=null;}
-    void clearInput(){synchronized(inputLock){forward=strafe=vertical=turnX=turnY=miningProgress=0;mineHeld=false;moveId=lookId=verticalId=mineId=-1;knobX=knobY=0;}endMining();}
+    void replace(World next){mechanics.cancel();hud.bar.selected=-1;clearInput();world=next;velocityY=0;target=null;}
+    void clearInput(){synchronized(inputLock){forward=strafe=vertical=turnX=turnY=miningProgress=0;mineHeld=false;hud.barId=-1;moveId=lookId=verticalId=mineId=-1;knobX=knobY=0;}endMining();}
     void endMining(){mineHeld=false;miningProgress=0;gl.queueEvent(()->{mineTime=0;miningTarget=null;});}
     void message(String text){status=text;statusUntil=System.currentTimeMillis()+1800;}
-    void edit(boolean place){gl.queueEvent(()->{World w=world;synchronized(w){int[] hit=w.ray(6);if(hit==null){message("Näher an einen Block herangehen");return;}if(!place&&Nature.liquid(w.get(hit[0],hit[1],hit[2]))){if(w.online){OnlineSession session=activity.online==null?null:activity.online.session;if(session!=null)session.edit(hit[0],hit[1],hit[2],0);return;}message(w.scoopLiquid(hit[0],hit[1],hit[2]));renderer.dirty(hit[0],hit[2]);return;}int x=hit[place?3:0],y=hit[place?4:1],z=hit[place?5:2];if(place&&w.overlapsPlayer(x,y,z)){message("Hier stehst du selbst");return;}if(place&&w.story&&w.progress.inventory[w.selected]==0){message("Erst "+World.NAMES[w.selected]+" sammeln oder herstellen");return;}if(w.online){OnlineSession session=activity.online==null?null:activity.online.session;if(session!=null)session.edit(x,y,z,place?w.selected:0);return;}int minedBlock=place?0:w.get(x,y,z);if(place?w.place(x,y,z,w.selected):w.mine(x,y,z)){renderer.dirty(x,z);if(!place)renderer.miningDebris(x,y,z,minedBlock);}else message(place?"Hier kannst du keinen Block setzen":w.miningProblem(x,y,z));}});}
+    void edit(boolean place){gl.queueEvent(()->{World w=world;synchronized(w){int[] hit=w.ray(6);if(mechanics.capture(w,hit))return;if(hit==null){message("Näher an einen Block herangehen");return;}if(!place&&Nature.liquid(w.get(hit[0],hit[1],hit[2]))){if(w.online){OnlineSession session=activity.online==null?null:activity.online.session;if(session!=null)session.edit(hit[0],hit[1],hit[2],0);return;}message(w.scoopLiquid(hit[0],hit[1],hit[2]));renderer.dirty(hit[0],hit[2]);return;}int x=hit[place?3:0],y=hit[place?4:1],z=hit[place?5:2];if(place&&w.overlapsPlayer(x,y,z)){message("Hier stehst du selbst");return;}if(place&&w.story&&w.progress.inventory[w.selected]==0){message("Erst "+World.NAMES[w.selected]+" sammeln oder herstellen");return;}if(w.online){OnlineSession session=activity.online==null?null:activity.online.session;if(session!=null)session.edit(x,y,z,place?w.selected:0);return;}int minedBlock=place?0:w.get(x,y,z);if(place?w.place(x,y,z,w.selected):w.mine(x,y,z)){renderer.dirty(x,z);if(!place)renderer.miningDebris(x,y,z,minedBlock);}else message(place?"Hier kannst du keinen Block setzen":w.miningProblem(x,y,z));}});}
     void mining(float dt){World w=world;if(!w.story||!mineHeld){mineTime=0;miningTarget=null;miningProgress=0;return;}if(!w.online&&w.survival.attack(w)){mineTime=0;miningTarget=null;miningProgress=0;return;}int[] hit=w.ray(6);if(hit!=null&&Nature.liquid(w.get(hit[0],hit[1],hit[2]))){if(mineTime==0){if(w.online){OnlineSession session=activity.online==null?null:activity.online.session;if(session!=null)session.edit(hit[0],hit[1],hit[2],0);}else{message(w.scoopLiquid(hit[0],hit[1],hit[2]));renderer.dirty(hit[0],hit[2]);}}mineTime+=dt;miningProgress=0;return;}if(hit==null){mineTime=0;miningTarget=null;miningProgress=0;return;}String problem=w.miningProblem(hit[0],hit[1],hit[2]);if(!problem.isEmpty()){mineTime=0;miningProgress=0;miningTarget=null;if(statusUntil<System.currentTimeMillis())message(problem);return;}
         if(miningTarget==null||hit[0]!=miningTarget[0]||hit[1]!=miningTarget[1]||hit[2]!=miningTarget[2]){mineTime=0;miningTarget=hit;}
         mineTime+=dt;float duration=w.progress.seconds(w.get(hit[0],hit[1],hit[2]));miningProgress=Math.min(1,mineTime/duration);
@@ -53,7 +53,8 @@ final class GameView {
     }
     final class Hud extends View {
         final Paint p=new Paint(3);final RectF rect=new RectF();float scale=1,offsetX,offsetY;float joyX=111,joyY=390,designW=960,designH=540,mineX=826,placeX=897,actionY=300,upX=897,downX=826,flyY=390,barX=260,barY=472,paletteX=716;
-        Hud(Context context){super(context);}
+        final MaterialBar bar=new MaterialBar();int barId=-1;final Bitmap atlas;final Rect tile=new Rect();final RectF icon=new RectF();
+        Hud(Context context){super(context);Bitmap image=null;try(java.io.InputStream in=context.getAssets().open("blocks.png")){image=BitmapFactory.decodeStream(in);}catch(java.io.IOException ignored){}atlas=image;}
         void box(Canvas c,float x,float y,float w,float h,int color){p.setColor(color);rect.set(x,y,x+w,y+h);c.drawRoundRect(rect,13,13,p);}
         void text(Canvas c,String s,float x,float y,float size,int color){p.setColor(color);p.setTextSize(size);p.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));c.drawText(s,x,y,p);}
         void center(Canvas c,String s,float x,float y,float size,int color){p.setTextSize(size);text(c,s,x-p.measureText(s)/2,y,size,color);}
@@ -69,6 +70,7 @@ final class GameView {
         @Override protected void onDraw(Canvas c){World drawing=world;if(drawing==null)return;synchronized(drawing){super.onDraw(c);layoutHud();c.save();c.translate(offsetX,offsetY);c.scale(scale,scale);
             box(c,20,16,221,55,0xbb153d42);text(c,"meiCraft",34,41,23,0xffffdb76);text(c,world.online?"ONLINE · "+Story.TOOLS[world.progress.tool()]:world.story?"STORY · "+Story.TOOLS[world.progress.tool()]:"OFFLINE · KREATIV",35,59,11,0xffd1e8e6);
             box(c,designW-93,18,72,49,0xcc153d42);center(c,"☰",designW-57,51,25,Color.WHITE);
+            box(c,designW-180,18,72,49,mechanics.stage>0?0xfff6d16c:0xcc153d42);center(c,"⚙",designW-144,51,27,mechanics.stage>0?0xff153d42:Color.WHITE);
             World w=world;int[] hit=target;
             OnlineSession online=activity.online==null?null:activity.online.session;if(w.online&&online!=null){box(c,20,80,340,32,0xbb153d42);text(c,online.loading||online.streaming?"Umgebung wird nachgeladen …":online.healthy?(online.side*World.W)+" × "+(online.side*World.D)+" · X "+(int)w.x+" / Z "+(int)w.z:"Verbindung unterbrochen · Bauen pausiert",30,101,12,Color.WHITE);drawWorldMap(c,online);for(VoxelRenderer.PlayerLabel label:renderer.playerLabels){float xx=(label.x-offsetX)/scale,yy=(label.y-offsetY)/scale;center(c,label.name,xx,yy,12,Color.WHITE);}}
             {box(c,250,18,80,49,w.story&&w.progress.ready()?0xfff6d16c:0xcc153d42);center(c,w.online?"WERKBANK":"STORY",290,49,w.online?11:14,w.story&&w.progress.ready()?0xff153d42:Color.WHITE);if(w.story&&!w.online){float yy=w.online||designW<960?122:80;box(c,20,yy,designW<960?500:410,48,0xbb153d42);text(c,w.progress.goal(),31,yy+20,12,Color.WHITE);text(c,"− halten: abbauen · STORY: Auftrag / Rezepte",31,yy+38,11,0xffd1e8e6);}}
@@ -78,7 +80,8 @@ final class GameView {
             button(c,mineX,actionY,"−",w.story&&w.survival.aimed(w)!=null?"ANGRIFF":hit!=null&&Nature.liquid(w.get(hit[0],hit[1],hit[2]))?"EIMER":"ABBAUEN");button(c,placeX,actionY,"+","SETZEN");
             button(c,upX,flyY,"↑",w.flying?"HOCH":"SPRUNG");if(w.flying)button(c,downX,flyY,"↓","RUNTER");
             if(w.story&&miningProgress>0){p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(3);p.setColor(0xffffd26b);rect.set(cx-18,cy-18,cx+18,cy+18);c.drawArc(rect,-90,360*miningProgress,false,p);p.setStyle(Paint.Style.FILL);}
-            int first=hotbarFirst();for(int j=0;j<8;j++){int b=first+j;float xx=barX+j*56;box(c,xx,barY,49,52,b==w.selected?0xfff6d16c:0xbb193c43);box(c,xx+9,barY+8,31,27,COLORS[b]);center(c,""+(w.story?w.progress.inventory[b]:b),xx+24.5f,barY+45,10,b==w.selected?0xff193c43:Color.WHITE);}
+            if(bar.selected!=w.selected)bar.reveal(w.selected);c.save();c.clipRect(barX,barY,barX+448,barY+54);for(int b=1;b<World.NAMES.length;b++){float xx=barX+(b-1)*56-bar.offset;if(xx+49<barX||xx>barX+448)continue;box(c,xx,barY,49,52,b==w.selected?0xfff6d16c:0xbb193c43);if(atlas!=null){int t=(b>=17?Materials.tile(b):b==16?21:b==13?16:b==14?17:b==15?18:b==1?13:b);tile.set(t*32,0,t*32+32,32);icon.set(xx+8,barY+6,xx+41,barY+35);p.setFilterBitmap(false);c.drawBitmap(atlas,tile,icon,p);}else box(c,xx+9,barY+8,31,27,COLORS[b]);center(c,""+(w.story?w.progress.inventory[b]:b),xx+24.5f,barY+45,10,b==w.selected?0xff193c43:Color.WHITE);}
+            c.restore();if(bar.offset>0)center(c,"‹",barX+4,barY+33,22,Color.WHITE);if(bar.offset<bar.max())center(c,"›",barX+444,barY+33,22,Color.WHITE);
             box(c,paletteX,barY,49,52,0xbb193c43);center(c,"…",paletteX+24,barY+32,25,Color.WHITE);
             center(c,World.NAMES[w.selected]+(w.story?" ("+w.progress.inventory[w.selected]+")":"")+"  ·  "+(w.flying?"Fliegen":"Laufen"),designW/2,barY-14,14,Color.WHITE);
             if(w.story&&!w.online){
@@ -86,6 +89,7 @@ final class GameView {
                 center(c,w.survival.phase()+" · "+w.survival.secondsToChange()+" s · Gegner "+(w.survival.enemiesEnabled?w.survival.mobs.size():"aus"),designW-165,99,12,Color.WHITE);
                 center(c,"Leben "+w.survival.health+"/10 · "+(w.progress.sword?"Eisenschwert":"Hand"),designW-165,118,12,w.survival.health<=4?0xffff8b75:0xffffdb76);
             }
+            if(mechanics.stage>0){box(c,(designW-440)/2,barY-100,440,30,0xdd153d42);center(c,mechanics.hint()+" · "+mechanics.blocks.size()+"/7",designW/2,barY-80,13,0xffffdb76);}
             if(!renderer.resourceHint.isEmpty()){box(c,(designW-390)/2,barY-65,390,28,0xbb153d42);center(c,renderer.resourceHint,designW/2,barY-46,12,0xffffdc96);}
             if(statusUntil>System.currentTimeMillis()){box(c,(designW-420)/2,w.story?(w.online||designW<960?186:139):130,420,35,0xcc153d42);center(c,status,designW/2,(w.story?(w.online||designW<960?186:139):130)+23,14,Color.WHITE);}
             c.restore();
@@ -99,7 +103,7 @@ final class GameView {
             center(c,"WELTKARTE",left+size/2,top+size+16,10,Color.WHITE);
 
         }
-        int hotbarFirst(){return world.selected<=8?1:world.selected<=12?5:Math.max(1,Math.min(World.NAMES.length-8,world.selected-4));}
+        int hotbarFirst(){return 1+(int)(bar.offset/56);}
         void joystick(Canvas c,float x,float y,float dx,float dy,String label){
             p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(0x88ffffff);c.drawCircle(x,y,68,p);p.setStyle(Paint.Style.FILL);p.setColor(0x55122d34);c.drawCircle(x,y,66,p);p.setColor(0x99ffffff);c.drawCircle(x+dx,y+dy,27,p);center(c,label,x,y+90,10,0xffe1eeee);
         }
@@ -111,17 +115,18 @@ final class GameView {
             if(action==MotionEvent.ACTION_CANCEL){clearInput();return true;}
             if(activity.paused){clearInput();return true;}
             if(action==MotionEvent.ACTION_DOWN||action==MotionEvent.ACTION_POINTER_DOWN){
+                if(x>=designW-180&&x<=designW-108&&y>=18&&y<67){mechanics.use();return true;}
                 if(x>=250&&x<=330&&y>=18&&y<67){clearInput();if(world.online&&activity.online!=null)activity.online.workbench();else if(world.story)activity.storyMenu();else activity.chooseMode();return true;}
                 if(x>designW-100&&y<78){clearInput();activity.menu();return true;}
-                if(y>=barY&&y<=barY+58&&x>=barX&&x<barX+448){int b=hotbarFirst()+(int)((x-barX)/56);synchronized(world){world.selected=b;}return true;}
+                if(y>=barY&&y<=barY+58&&x>=barX&&x<barX+448&&barId<0){if(bar.selected!=world.selected)bar.reveal(world.selected);barId=id;bar.down(x-barX);return true;}
                 if(x>=paletteX&&x<=paletteX+49&&y>=barY){clearInput();activity.palette();return true;}
-                if(at(x,y,mineX,actionY,33)){if(world.story){mineId=id;mineHeld=true;}else edit(false);return true;}if(at(x,y,placeX,actionY,33)){edit(true);return true;}
+                if(at(x,y,mineX,actionY,33)){if(world.story&&mechanics.stage==0){mineId=id;mineHeld=true;}else edit(false);return true;}if(at(x,y,placeX,actionY,33)){edit(true);return true;}
                 if(at(x,y,upX,flyY,34)||world.flying&&at(x,y,downX,flyY,34)){verticalId=id;vertical=x>(upX+downX)/2?1:-1;return true;}
                 if(x<240&&y>(designH==540?250:designH/2)&&moveId<0){moveId=id;updateMove(x,y);return true;}
                 if(lookId<0){lookId=id;lookX=x;lookY=y;return true;}
             }
-            if(action==MotionEvent.ACTION_MOVE){for(int n=0;n<event.getPointerCount();n++){int pointer=event.getPointerId(n);float a=(event.getX(n)-ox)/s,b=(event.getY(n)-oy)/s;if(pointer==moveId)updateMove(a,b);if(pointer==lookId){synchronized(inputLock){turnX+=a-lookX;turnY+=b-lookY;}lookX=a;lookY=b;}if(pointer==mineId&&!at(a,b,mineX,actionY,60)){endMining();}}}
-            if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_POINTER_UP){if(id==moveId){moveId=-1;forward=strafe=0;knobX=knobY=0;}if(id==lookId)lookId=-1;if(id==mineId){mineId=-1;endMining();}if(id==verticalId){verticalId=-1;vertical=0;}}
+            if(action==MotionEvent.ACTION_MOVE){for(int n=0;n<event.getPointerCount();n++){int pointer=event.getPointerId(n);float a=(event.getX(n)-ox)/s,b=(event.getY(n)-oy)/s;if(pointer==barId)bar.move(a-barX);if(pointer==moveId)updateMove(a,b);if(pointer==lookId){synchronized(inputLock){turnX+=a-lookX;turnY+=b-lookY;}lookX=a;lookY=b;}if(pointer==mineId&&!at(a,b,mineX,actionY,60)){endMining();}}}
+            if(action==MotionEvent.ACTION_UP||action==MotionEvent.ACTION_POINTER_UP){if(id==barId){int material=bar.up(x-barX);if(material>0){synchronized(world){world.selected=material;}bar.selected=material;}barId=-1;}if(id==moveId){moveId=-1;forward=strafe=0;knobX=knobY=0;}if(id==lookId)lookId=-1;if(id==mineId){mineId=-1;endMining();}if(id==verticalId){verticalId=-1;vertical=0;}}
             if(action==MotionEvent.ACTION_UP)performClick();
             return true;
         }

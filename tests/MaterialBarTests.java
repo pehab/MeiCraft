@@ -1,0 +1,5 @@
+package de.meiapps.meicraft;
+public final class MaterialBarTests {
+ static int checks;static void check(boolean ok,String message){checks++;if(!ok)throw new AssertionError(message);}
+ public static void main(String[] args){MaterialBar bar=new MaterialBar();bar.reveal(1);bar.down(25);check(bar.up(25)==1,"first material tapped");bar.down(400);bar.move(0);check(bar.up(0)==-1,"drag never selects");check(bar.offset==400,"drag scrolls independently of selection");bar.down(400);bar.move(-1000);bar.up(-1000);check(bar.offset==bar.max(),"end clamps");bar.down(420);check(bar.up(420)==World.NAMES.length-1,"last material available without a menu");bar.down(10);bar.move(2000);check(bar.up(2000)==-1&&bar.offset==0,"reverse drag clamps without selecting");for(int i=1;i<World.NAMES.length;i++){bar.reveal(i);float x=(i-1)*56-bar.offset+20;bar.down(x);check(bar.up(x)==i,"every material reachable");}bar.down(10);bar.move(12);check(bar.up(12)>0,"finger jitter stays a tap");System.out.println("PASS: "+checks+" material bar gesture checks");}
+}
