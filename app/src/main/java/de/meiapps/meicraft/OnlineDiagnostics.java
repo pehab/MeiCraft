@@ -9,7 +9,7 @@ public final class OnlineDiagnostics {
     private final long started=System.currentTimeMillis();
     private long requests,failures,documents,writes,deletes,receivedBytes,sentBytes,mergedPositions,ownRegionSkips;
     private final long[] actionTimes=new long[256];
-    private long actionCount,maxAction,cachedRegions,cachedBlocks,tailBlocks,liveEvents,liveWrites,checkpointCount,checkpointGeneration,checkpointDocuments;private boolean live,journalActive,journal;
+    private long actionCount,maxAction,cachedRegions,cachedBlocks,tailBlocks,liveEvents,liveWrites,checkpointCount,checkpointGeneration,checkpointDocuments;private long mechanismRetries,mechanismConflicts,sharedCheckpoint=-1;private String checkpointState="noch nicht geprüft",treeState="noch nicht geprüft";private boolean live,journalActive,journal;
     private final Map<String,Long> operations=new LinkedHashMap<>();
     private final ArrayDeque<String> errors=new ArrayDeque<>();
     public static String clean(String text,String... secrets){
@@ -29,6 +29,11 @@ public final class OnlineDiagnostics {
     }
     public synchronized void journal(boolean connected){journalActive=true;journal=connected;}
     public synchronized void checkpoint(long generation,long documents){checkpointCount++;checkpointGeneration=generation;checkpointDocuments+=documents;}
+    public synchronized void treeState(String state){treeState=clean(state);}
+    public synchronized void mechanismConflict(){mechanismConflicts++;}
+    public synchronized void mechanismRetry(){mechanismRetries++;}
+    public synchronized void checkpointState(String state){checkpointState=clean(state);}
+    public synchronized void sharedCheckpoint(long generation){sharedCheckpoint=Math.max(sharedCheckpoint,generation);}
     public synchronized void realtime(boolean connected){live=connected;}
     public synchronized void realtimeEvent(){liveEvents++;}
     public synchronized void realtimeWrite(){liveWrites++;}
@@ -48,6 +53,9 @@ public final class OnlineDiagnostics {
     public synchronized String report(){
         StringBuilder out=new StringBuilder("meiCraft Online-Diagnose\n");
         out.append("Kohärente Firestore-Checkpoints: ").append(checkpointCount).append(" · letzter Journal-Stand: ").append(checkpointGeneration).append(" · gesicherte Dokumente: ").append(checkpointDocuments).append("\n");
+        out.append("Baumwachstum: ").append(treeState).append("\n");
+        out.append("Checkpoint-Host: ").append(checkpointState).append(" · gemeinsamer gesicherter Stand: ").append(sharedCheckpoint<0?"unbekannt":Long.toString(sharedCheckpoint)).append("\n");
+        out.append("Mechanik: automatisch wiederholte Konflikte: ").append(mechanismRetries).append(" · nachgewiesene Regel-/Positionskonflikte: ").append(mechanismConflicts).append("\n");
         if(journalActive)out.append("RTDB-Journal: ").append(journal?"verbunden":"nicht verbunden").append("\n");
         out.append("RTDB-Livekanal: ").append(live?"verbunden":"nicht verbunden").append(" · Ereignisse: ").append(liveEvents).append(" · bestätigte RTDB-Writes: ").append(liveWrites).append("\nFirestore-Dokumentzähler enthalten keine RTDB-Operationen.\n");
         out.append("Laufzeit seit App-Start: ").append((System.currentTimeMillis()-started)/60000).append(" min\n")

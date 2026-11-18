@@ -9,7 +9,7 @@ a['mechanic']={'.validate':"newData.isBoolean() && newData.val() == true && newD
 old="root.child('worlds').child($owner).child($world).child('storage')"
 actor='newData.parent().parent()';last="newData.child('last')"
 # Keep all existing inventory revision, nonce, journal, generation and pose fences.
-for i in range(16):
+for i in range(19):
  node=a['batch'][f'b{i}'];expr=node['.validate']
  needle=f"({actor}.child('resourceRegion').exists() || {actor}.child('reactionRegion').exists()"
  assert needle in expr
@@ -20,12 +20,12 @@ for i in range(16):
  ref=f"{last}.child('from')";typ=f"{last}.child('type').val()"
  check=f"{ref}.isNumber() && {ref}.val() % 1 == 0 && {last}.child('water').val() == false && (({typ} == 0 && {ref}.val() == -1) || ({typ} > 0 && {ref}.val() >= 0 && {ref}.val() < {actor}.child('count').val() && {old_source}.child('type').val() == {typ} && {typ} != 6 && {typ} != 10 && {typ} != 15))"
  # Distinct sources forbid copying one original solid into several destinations.
- for j in range(16):
+ for j in range(19):
   if i!=j:check+=f" && ({typ} == 0 || {actor}.child('count').val() <= {j} || {ref}.val() != {actor}.child('batch/b{j}/last/from').val())"
  # Every original solid in the mutation must have exactly one destination: no loss or duplication.
- refs=' || '.join(f"({actor}.child('count').val() > {j} && {actor}.child('batch/b{j}/last/from').val() == {i})" for j in range(16))
+ refs=' || '.join(f"({actor}.child('count').val() > {j} && {actor}.child('batch/b{j}/last/from').val() == {i})" for j in range(19))
  check+=f" && (!{old_cell}.exists() || {old_cell}.child('type').val() == 0 || ({refs}))"
  # Permutations cannot consume a natural block which has no durable source cell.
- check+=f" && ({last}.child('nature').val() == '' || {last}.child('nature').val() == 'user' || {last}.child('nature').val().matches(/^mech_[A-Za-z0-9_-]{{20,100}}$/))"
+ check+=f" && ({last}.child('nature').val() == '' || {last}.child('nature').val() == 'user' || {last}.child('nature').val().matches(/^mech_[A-Za-z0-9_-]{{20,116}}$/))"
  node['.validate']=expr+f" && (!{actor}.child('mechanic').exists() || ({check}))"
 p.write_text(json.dumps(d,indent=2)+'\n')

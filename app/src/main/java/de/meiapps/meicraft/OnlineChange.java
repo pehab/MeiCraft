@@ -22,7 +22,7 @@ final class OnlineChange {
         try{
             String[] p=text.split("/",-1),xyz=p[2].split("_");if((p.length!=7&&p.length!=8)||xyz.length!=3)throw new IllegalArgumentException();
             OnlineChange c=new OnlineChange(Long.parseLong(p[0]),Integer.parseInt(p[1]),Integer.parseInt(xyz[0]),Integer.parseInt(xyz[1]),Integer.parseInt(xyz[2]),Integer.parseInt(p[3]),p[4].equals("1"),p[5],p[6],actor,p.length==8?p[7]:"");
-            if(!(c.nature.matches("mech_[A-Za-z0-9_-]{20,100}")||c.nature.matches("(leaf|decor|user|charcoal|(wood|coal|glass|ore|ritual)_[0-9]_[a-f0-9]{1,16}|tree_[0-3]_[0-9]{1,8}_[0-9]{1,16})?"))||c.sequence<1||c.region<0||c.region>8||!OnlineWorld.validBlock(c.x,c.y,c.z,c.type)||!p[4].matches("[01]")||!c.token.matches("[a-f0-9]{32}")||!c.before.matches("([a-f0-9]{32})?")||c.token.equals(c.before)||!text.equals(c.encode()))throw new IllegalArgumentException();
+            if(!(c.nature.matches("mech_[A-Za-z0-9_-]{20,116}")||c.nature.matches("(leaf|decor|user|charcoal|(wood|coal|glass|ore|ritual)_[0-9]_[a-f0-9]{1,16}|tree_[0-3]_[0-9]{1,8}_[0-9]{1,16})?"))||c.sequence<1||c.region<0||c.region>8||!OnlineWorld.validBlock(c.x,c.y,c.z,c.type)||!p[4].matches("[01]")||!c.token.matches("[a-f0-9]{32}")||!c.before.matches("([a-f0-9]{32})?")||c.token.equals(c.before)||!text.equals(c.encode()))throw new IllegalArgumentException();
             return c;
         }catch(RuntimeException e){throw new IOException("Ungültige Änderungsfolge.",e);}
     }

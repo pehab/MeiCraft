@@ -63,6 +63,19 @@ public final class SmokeInstrumentation extends Instrumentation {
   for(int i=0;i<node.getChildCount();i++)if(scrollForward(node.getChild(i)))return true;return false;
  }
  void awaitSlot(MainActivity activity,int slot)throws Exception{for(int n=0;n<100&&(activity.slot!=slot||activity.world.story!=(slot==1)||activity.paused);n++)Thread.sleep(50);check(activity.slot==slot&&activity.world.story==(slot==1)&&!activity.paused,"selected world slot is active "+slot);}
+ void testMechanicsEditor(MainActivity activity,GameView game)throws Exception{
+  phase="mechanics editor";World w=game.world;MechanicsController editor=game.mechanics;boolean paused=activity.paused;float yaw=w.yaw,pitch=w.pitch;
+  Mechanics.Link link=new Mechanics.Link(new Mechanics.Block(30,35,30,14),java.util.List.of(new Mechanics.Block(31,35,30,7),new Mechanics.Block(32,35,30,7)),0,1,false,"UiTesttor");
+  int key=w.idx(30,35,30);Mechanics.Link previous;
+  synchronized(w){previous=w.mechanics.links.put(key,link);}
+  try{
+   runOnMainSync(()->{editor.cancel();editor.editing=w;editor.stage=2;editor.button=link.button;editor.blocks.addAll(link.blocks);editor.draftName=link.name;editor.saving=true;editor.completed(w,editor.draftVersion,new java.io.IOException("fixture save failure"));});
+   check(editor.stage==2&&!editor.saving&&editor.blocks.size()==2,"failed online setup preserves the selected switch and group");clickText("Auswahl behalten");check(editor.stage==2&&editor.blocks.size()==2,"keeping a failed draft returns to the same selection");
+   runOnMainSync(()->{editor.cancel();editor.removeMenu();});clickText("UiTesttor");clickText("In der Welt markieren");onGl(game,()->{});
+   check(editor.highlights.size()==3&&editor.highlightUntil>System.currentTimeMillis(),"management selection marks the named switch and its two blocks");
+   check(Math.abs(w.yaw-yaw)>.001f||Math.abs(w.pitch-pitch)>.001f,"showing a mechanism aims the camera toward its switch without teleporting");
+  }finally{runOnMainSync(()->{editor.cancel();activity.paused=paused;});onGl(game,()->{synchronized(w){if(previous==null)w.mechanics.links.remove(key);else w.mechanics.links.put(key,previous);w.yaw=yaw;w.pitch=pitch;}});}
+ }
  void testStory(MainActivity activity,GameView game)throws Exception{
   runOnMainSync(()->{activity.getPreferences(0).edit().putBoolean("storyIntroduced",true).apply();activity.switchMode(1);});awaitSlot(activity,1);
   check(!game.world.flying&&game.world.progress.tool()==0,"new story starts walking without tools");check(game.world.get(30,30,30)!=11,"story does not reuse creative blocks");
@@ -749,6 +762,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   check(java.util.Arrays.asList(context.getPackageManager().getPackageInfo(context.getPackageName(),android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions).contains("android.permission.INTERNET"),"update permission present");
   runOnMainSync(()->{synchronized(game.world){World w=game.world;w.yaw=.55f;w.pitch=-.38f;w.y=26;w.x=48.5f;w.z=48.5f;}activity.paused=false;});
   testStory(activity,game);onGlAfterFrame(game,()->checkGl("after testStory"));
+  testMechanicsEditor(activity,game);
   testSurvival(activity,game);onGlAfterFrame(game,()->checkGl("after testSurvival"));
    testNature(activity,game);onGlAfterFrame(game,()->checkGl("after testNature"));
    testForge(activity,game);onGlAfterFrame(game,()->checkGl("after testForge"));

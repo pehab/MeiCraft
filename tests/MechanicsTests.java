@@ -18,6 +18,14 @@ public final class MechanicsTests {
   rejected(()->new Mechanics.Link(link.button,List.of(link.button),0,1,false));rejected(()->new Mechanics.Link(link.button,link.blocks,0,5,false));rejected(()->new Mechanics.Link(link.button,List.of(new Mechanics.Block(20,10,20,10)),0,1,false));
   w.set(10,10,10,0);check(w.mechanics.links.isEmpty(),"mining a switch removes its local connection");
   for(String bad:List.of("mech_!",link.encode()+"A","mech_"+"a".repeat(101))){boolean failed=false;try{Mechanics.decode(bad);}catch(IOException expected){failed=true;}check(failed,"invalid metadata rejected");}
+  World namedWorld=NatureTests.flat(false);namedWorld.set(10,10,10,14);namedWorld.set(20,10,20,7);namedWorld.x=21.5f;namedWorld.y=11.6f;namedWorld.z=20.5f;
+  Mechanics.Link named=new Mechanics.Link(new Mechanics.Block(10,10,10,14),List.of(new Mechanics.Block(20,10,20,7)),0,1,false,"Geheimtür");
+  namedWorld.mechanics.install(namedWorld,named);check(namedWorld.mechanics.links.size()==1,"configuration is allowed while the builder stands in the path");rejected(()->namedWorld.mechanics.apply(namedWorld,named));
+  check(Mechanics.decode(named.encode()).name.equals("Geheimtür")&&Mechanics.decode(named.toggle().encode()).name.equals("Geheimtür"),"shared name survives roundtrip and toggle");
+  check(World.decode(namedWorld.encode()).mechanics.links.values().iterator().next().name.equals("Geheimtür"),"name survives offline save and load");
+  List<Mechanics.Block> nine=new ArrayList<>();for(int i=0;i<9;i++)nine.add(new Mechanics.Block(20,10+i,20,7));Mechanics.Link longest=new Mechanics.Link(named.button,nine,0,1,false,"ÄÄÄÄÄÄÄÄÄÄ");check(longest.encode().matches("mech_[A-Za-z0-9_-]{20,116}"),"longest named nine-block marker fits existing database rules");check(Mechanics.decode(longest.encode()).name.equals(longest.name),"bounded unicode name is canonical");
+  rejected(()->new Mechanics.Link(named.button,nine,0,1,false,"Ä".repeat(11)));
+  World door=NatureTests.flat(false);door.x=60;door.z=60;door.set(10,10,10,14);List<Mechanics.Block> panel=new ArrayList<>();for(int y=0;y<3;y++)for(int z=0;z<3;z++){Mechanics.Block b=new Mechanics.Block(20,10+y,20+z,7);panel.add(b);door.set(b.x,b.y,b.z,b.type);}Mechanics.Link gate=new Mechanics.Link(named.button,panel,0,1,false,"3x3 Tür");door.mechanics.install(door,gate);byte[] original=door.blocks.clone();door.mechanics.apply(door,gate);for(Mechanics.Block b:panel)check(door.get(b.x+1,b.y,b.z)==7&&door.get(b.x,b.y,b.z)==0,"each cell of a 3x3 door moves");door.mechanics.apply(door,gate.toggle());check(Arrays.equals(original,door.blocks),"3x3 door returns without loss");List<Mechanics.Block> ten=new ArrayList<>(panel);ten.add(new Mechanics.Block(20,14,20,7));rejected(()->new Mechanics.Link(named.button,ten,0,1,false));
   System.out.println("PASS: "+checks+" reversible mechanics, collision, inventory and persistence checks");
  }
 }
