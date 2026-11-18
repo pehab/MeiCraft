@@ -10,6 +10,7 @@ import java.util.concurrent.locks.LockSupport;
 final class OnlineV6 extends OnlineV5 implements AutoCloseable {
     RtdbRest db;String base,epoch;volatile boolean activated,journalConnected,stopped;volatile String latest="";
     boolean cachePrimed=true;JournalHead head;final ExecutorService journalReader=Executors.newSingleThreadExecutor();OnlineCheckpoint checkpoints;
+    final OnlineMechanics mechanisms=new OnlineMechanics(this);
     final boolean services;OnlineNature nature;OnlineResources resources;
     OnlineV6(OnlineSession s){this(s,true);}
     OnlineV6(OnlineSession s,boolean services){super(s);this.services=services;}
@@ -114,7 +115,8 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
         super.cell(r,tile,x,y,z,type,water,token);metadata(r,x,y,z,type,tag);
     }
     JSONObject increment()throws JSONException{return new JSONObject().put(".sv",new JSONObject().put("increment",1));}
-    void commit(Story inventory,OnlineChange c)throws Exception{
+    void commit(Story inventory,OnlineChange c)throws Exception{commit(inventory,c,"");}
+    void commit(Story inventory,OnlineChange c,String operation)throws Exception{
         long rev=revision+1;String uid=f.uid,eventKey=OnlineJournal.eventKey(rev),op=OnlineWorld.randomId(),prefix="head/actors/"+uid+"/",encrypted=encrypt(inventory,rev);
         JSONObject patch=new JSONObject().put(prefix+"mechanic",JSONObject.NULL).put(prefix+"resourceRegion",JSONObject.NULL).put(prefix+"resourceSite",JSONObject.NULL).put(prefix+"batch",JSONObject.NULL).put(prefix+"count",JSONObject.NULL).put(prefix+"base",JSONObject.NULL).put(prefix+"presenceBase",JSONObject.NULL).put(prefix+"growthToken",JSONObject.NULL).put(prefix+"growthDay",JSONObject.NULL).put(prefix+"decayRegion",JSONObject.NULL).put(prefix+"reactionRegion",JSONObject.NULL).put(prefix+"needsSpace",JSONObject.NULL).put("head/g",increment()).put(prefix+"schemaRev",rev).put(prefix+"rev",rev).put(prefix+"seq",sequence+(c==null?0:1)).put(prefix+"inventory",encrypted).put(prefix+"op",op).put(prefix+"eventKey",eventKey);
         if(c!=null){JSONObject last=JournalBatch.last(c);
@@ -125,7 +127,7 @@ final class OnlineV6 extends OnlineV5 implements AutoCloseable {
             else patch.put(saplingPath,JSONObject.NULL);
         }
         patch.put("journal/"+uid+"/"+eventKey,new JSONObject().put("rev",rev).put("seq",sequence+(c==null?0:1)).put("inventory",encrypted).put("op",op).put("event",c==null?"":c.encode()));
-        db.request("PATCH",storage(),patch);
+        if(operation.isEmpty())db.request("PATCH",storage(),patch);else db.request("PATCH",storage(),patch,operation);
     }
     long day(){return Math.floorDiv(System.currentTimeMillis()+db.serverOffset,TreeGrowth.DAY);}
     String designation(int type,int x,int y,int z){if(type!=6)return "user";World w=s.world;boolean single=w!=null&&w.get(x+1,y,z)!=6&&w.get(x-1,y,z)!=6&&w.get(x,y,z+1)!=6&&w.get(x,y,z-1)!=6&&w.get(x,y+1,z)!=6;return single&&(w.get(x,y-1,z)==1||w.get(x,y-1,z)==2)?"tree_0_"+day()+"_"+(System.currentTimeMillis()+db.serverOffset):"decor";}

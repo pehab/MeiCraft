@@ -42,12 +42,14 @@ final class RtdbRest implements AutoCloseable {
     static final class Version {final Object value;final String etag;Version(Object value,String etag){this.value=value;this.etag=etag;}}
     Version version(String path)throws Exception{return exchange("GET",path,null,null,true);}
     void compare(String path,Object value,String etag)throws Exception{exchange("PUT",path,value,etag,false);}
-    private Version exchange(String method,String path,Object value,String etag,boolean version)throws Exception{
+    Object request(String method,String path,Object value,String context)throws Exception{return exchange(method,path,value,null,false,context).value;}
+    private Version exchange(String method,String path,Object value,String etag,boolean version)throws Exception{return exchange(method,path,value,etag,version,"");}
+    private Version exchange(String method,String path,Object value,String etag,boolean version,String context)throws Exception{
         HttpURLConnection c;try{c=open(path,null);}catch(FirebaseRest.Failure e){throw e;}catch(IOException e){throw new IOException("RTDB-Verbindung unterbrochen. Erneuter Versuch folgt.",e);}boolean success=false;FirebaseRest.DIAGNOSTICS.request("RTDB · "+method);
         try{
             if(method.equals("PATCH")){c.setRequestMethod("POST");c.setRequestProperty("X-HTTP-Method-Override","PATCH");}else c.setRequestMethod(method);if(etag!=null)c.setRequestProperty("if-match",etag);if(version)c.setRequestProperty("X-Firebase-ETag","true");
             if(value!=null){byte[] body=value.toString().getBytes(StandardCharsets.UTF_8);c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json; charset=UTF-8");c.setFixedLengthStreamingMode(body.length);FirebaseRest.DIAGNOSTICS.sent(body.length);try(OutputStream out=c.getOutputStream()){out.write(body);}}
-            check(c,c.getResponseCode(),URLDecoder.decode(c.getURL().getQuery().substring(5).split("&",2)[0],"UTF-8"),method+" · "+resourceName(path));Object result;
+            check(c,c.getResponseCode(),URLDecoder.decode(c.getURL().getQuery().substring(5).split("&",2)[0],"UTF-8"),(context.isEmpty()?"":context+" · ")+method+" · "+resourceName(path));Object result;
             try(InputStream in=c.getInputStream()){byte[] body=FirebaseRest.read(in);FirebaseRest.DIAGNOSTICS.received(body.length);result=body.length==0?JSONObject.NULL:new JSONTokener(new String(body,StandardCharsets.UTF_8)).nextValue();}
             long date=c.getHeaderFieldDate("Date",0);if(date>0)serverOffset=date-System.currentTimeMillis();
             success=true;if(!method.equals("GET"))FirebaseRest.DIAGNOSTICS.realtimeWrite();return new Version(result,c.getHeaderField("ETag"));

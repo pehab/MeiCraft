@@ -18,6 +18,13 @@ public final class MechanicsTests {
   rejected(()->new Mechanics.Link(link.button,List.of(link.button),0,1,false));rejected(()->new Mechanics.Link(link.button,link.blocks,0,5,false));rejected(()->new Mechanics.Link(link.button,List.of(new Mechanics.Block(20,10,20,10)),0,1,false));
   w.set(10,10,10,0);check(w.mechanics.links.isEmpty(),"mining a switch removes its local connection");
   for(String bad:List.of("mech_!",link.encode()+"A","mech_"+"a".repeat(101))){boolean failed=false;try{Mechanics.decode(bad);}catch(IOException expected){failed=true;}check(failed,"invalid metadata rejected");}
+  World namedWorld=NatureTests.flat(false);namedWorld.set(10,10,10,14);namedWorld.set(20,10,20,7);namedWorld.x=21.5f;namedWorld.y=11.6f;namedWorld.z=20.5f;
+  Mechanics.Link named=new Mechanics.Link(new Mechanics.Block(10,10,10,14),List.of(new Mechanics.Block(20,10,20,7)),0,1,false,"Geheimtür");
+  namedWorld.mechanics.install(namedWorld,named);check(namedWorld.mechanics.links.size()==1,"configuration is allowed while the builder stands in the path");rejected(()->namedWorld.mechanics.apply(namedWorld,named));
+  check(Mechanics.decode(named.encode()).name.equals("Geheimtür")&&Mechanics.decode(named.toggle().encode()).name.equals("Geheimtür"),"shared name survives roundtrip and toggle");
+  check(World.decode(namedWorld.encode()).mechanics.links.values().iterator().next().name.equals("Geheimtür"),"name survives offline save and load");
+  List<Mechanics.Block> seven=new ArrayList<>();for(int i=0;i<7;i++)seven.add(new Mechanics.Block(20,10+i,20,7));Mechanics.Link longest=new Mechanics.Link(named.button,seven,0,1,false,"ÄÄÄÄÄÄÄÄÄÄ");check(longest.encode().matches("mech_[A-Za-z0-9_-]{20,100}"),"longest named seven-block marker fits existing database rules");check(Mechanics.decode(longest.encode()).name.equals(longest.name),"bounded unicode name is canonical");
+  rejected(()->new Mechanics.Link(named.button,seven,0,1,false,"Ä".repeat(11)));
   System.out.println("PASS: "+checks+" reversible mechanics, collision, inventory and persistence checks");
  }
 }

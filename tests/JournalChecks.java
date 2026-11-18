@@ -12,7 +12,7 @@ final class JournalChecks {
     final SmokeInstrumentation test;JournalChecks(SmokeInstrumentation test){this.test=test;}
     void check(boolean ok,String message){test.check(ok,message);}
     static final class Backend implements FirebaseRest.ConnectionFactory {
-        int failCheckpointPage=-1,checkpointPages;boolean failReady,conflictBackground;
+        int failCheckpointPage=-1,checkpointPages,mechanismConflicts;boolean failReady,conflictBackground,denyMechanics;final List<String> chunkReads=new ArrayList<>();
         final OnlineV5Checks.Store firestore=new OnlineV5Checks.Store(){
             @Override synchronized JSONObject commit(JSONObject body)throws Exception{boolean saved=false;JSONArray w=body.getJSONArray("writes");for(int i=0;i<w.length();i++)if(w.getJSONObject(i).has("update")&&w.getJSONObject(i).getJSONObject("update").getString("name").contains("/saved/"))saved=true;if(saved&&++checkpointPages==failCheckpointPage)throw new FirebaseRest.Failure(429);return super.commit(body);}
         };JSONObject root=new JSONObject();int writes,reads,liveReads;boolean loseReply,offline;long clockOffset;
@@ -31,12 +31,18 @@ final class JournalChecks {
             if(parts.length==4&&parts[3].startsWith("storage")&&!uid.equals(parts[1])&&!Boolean.TRUE.equals(get(root,base+"/members/"+uid+"/active"))){holder.status=401;return "{\"error\":\"Permission denied\"}";}
             if(match!=null&&!match.equals(holder.etag)&&!(match.equals("null_etag")&&old==JSONObject.NULL)){holder.status=412;return "{}";}
             if(method.equals("GET")){
-                reads++;if(path.endsWith("/live"))liveReads++;String query=URLDecoder.decode(url.getQuery(),"UTF-8");if(query.contains("orderBy=\"rev\"")){
+                reads++;if(path.contains("/storage/chunks/"))chunkReads.add(path);if(path.endsWith("/live"))liveReads++;String query=URLDecoder.decode(url.getQuery(),"UTF-8");if(query.contains("orderBy=\"rev\"")){
                     JSONObject filtered=new JSONObject();double start=query.contains("startAt=")?Double.parseDouble(query.split("startAt=")[1].split("&")[0]):0,end=Double.parseDouble(query.split("endAt=")[1].split("&")[0]);
                     if(old instanceof JSONObject)for(String key:OnlineV5.keys((JSONObject)old)){JSONObject e=((JSONObject)old).getJSONObject(key);long rev=e.getLong("rev");if(rev>=start&&rev<=end)filtered.put(key,e);}return filtered.length()==0?"null":filtered.toString();
                 }return old.toString();
             }
             JSONObject next=new JSONObject(root.toString());Object value=body.isEmpty()?JSONObject.NULL:new JSONTokener(body).nextValue();if(failReady&&path.endsWith("/storage/control")&&value instanceof JSONObject&&((JSONObject)value).optString("phase").equals("ready")){failReady=false;throw new IOException("fixture migration interrupted before activation");}long now=System.currentTimeMillis()+clockOffset;
+            if(method.equals("PATCH")&&value instanceof JSONObject&&((JSONObject)value).optBoolean("head/actors/"+uid+"/mechanic")){
+                JSONObject patch=(JSONObject)value;String prefix="head/actors/"+uid+"/";
+                if(mechanismConflicts>0){mechanismConflicts--;Object pose=get(root,base+"/live/poseVersion");put(root,base+"/live/poseVersion",(pose instanceof Number?((Number)pose).longValue():0)+1);}
+                Object pose=get(root,base+"/live/poseVersion");long version=pose instanceof Number?((Number)pose).longValue():0;
+                if(denyMechanics||patch.optLong(prefix+"presenceBase",0)!=version||patch.optLong(prefix+"base",-1)!=((JSONObject)get(root,base+"/storage/head")).getLong("g")){holder.status=401;return "{\"error\":\"Permission denied\"}";}
+            }
             if(conflictBackground&&method.equals("PATCH")&&value instanceof JSONObject&&((JSONObject)value).has("head/actors/parent/base")){
                 conflictBackground=false;JSONObject head=(JSONObject)get(root,path+"/head");head.put("g",head.getLong("g")+1);holder.status=401;return "{\"error\":\"Permission denied\"}";
             }
@@ -101,12 +107,18 @@ final class JournalChecks {
             World w=a.world;Story inventory=OnlineInventory.copy(a.inventory);String prefix=v(a).storage()+"/chunks/0_";
             // Seed authored blocks above the landscape, including a two-material group across a region edge.
             for(int[] c:new int[][]{{90,44,90,14},{94,44,90,7},{95,44,90,8}}){OnlineChange e=new OnlineChange(v(a).sequence+1,0,c[0],c[1],c[2],c[3],false,OnlineWorld.randomId(),"","parent","user");v(a).commit(a.inventory,e);v(a).readSync();v(a).syncVisible(false);test.onGl(game,()->{});}
-            Mechanics.Link link=new Mechanics.Link(new Mechanics.Block(90,44,90,14),List.of(new Mechanics.Block(94,44,90,7),new Mechanics.Block(95,44,90,8)),0,2,false);OnlineMechanics m=new OnlineMechanics(v(a));m.configureNow(link);test.onGl(game,()->{});
+            Mechanics.Link link=new Mechanics.Link(new Mechanics.Block(90,44,90,14),List.of(new Mechanics.Block(94,44,90,7),new Mechanics.Block(95,44,90,8)),0,2,false,"Gartentor");OnlineMechanics m=new OnlineMechanics(v(a));m.configureNow(link);test.onGl(game,()->{});
             check(w.mechanics.links.containsKey(w.idx(90,44,90)),"online switch definition enters the shared region model");
-            m.toggleNow(link);test.onGl(game,()->{});v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});
+            backend.chunkReads.clear();new OnlineMechanics(v(a)).new Snapshot(link,false,true);
+            check(backend.chunkReads.size()==2&&backend.chunkReads.stream().allMatch(path->path.endsWith("/0_5_2_5")||path.endsWith("/1_0_2_5")),"mechanism snapshot reads only its two swept-space chunks");
+            backend.mechanismConflicts=1;m.toggleNow(link);test.onGl(game,()->{});v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});
             check(w.get(94,44,90)==0&&w.get(96,44,90)==7&&w.get(97,44,90)==8&&b.world.get(97,44,90)==8,"one atomic mechanism crosses regions and reaches the peer");
             check(OnlineInventory.same(inventory,a.inventory),"mechanical motion preserves the entire private inventory");
-            m.toggleNow(link.toggle());test.onGl(game,()->{});check(w.get(94,44,90)==7&&w.get(95,44,90)==8&&w.get(97,44,90)==0,"second activation returns the original two materials");
+            check(b.world.mechanics.links.get(b.world.idx(90,44,90)).name.equals("Gartentor"),"mechanism name is shared with the second player");
+            backend.loseReply=true;m.toggleNow(link.toggle());test.onGl(game,()->{});check(w.get(94,44,90)==7&&w.get(95,44,90)==8&&w.get(97,44,90)==0,"second activation returns the original two materials");
+            backend.denyMechanics=true;int writes=backend.writes;boolean denied=false;try{m.toggleNow(link);}catch(FirebaseRest.Failure expected){denied=true;}backend.denyMechanics=false;check(denied&&backend.writes==writes,"unproven permission failures are not retried or disguised as successful movement");
+            Mechanics.Link renamed=new Mechanics.Link(link.button,link.blocks,link.direction,link.distance,false,"Hintertür");
+            m.rename(link,renamed,null);drain(a,game);link=renamed;check(w.mechanics.links.get(w.idx(90,44,90)).name.equals("Hintertür"),"renaming updates the durable switch metadata");
             v(a).checkpoints.lease();v(a).checkpoints.save(true);
             JSONObject saved=backend.firestore.docs.get(a.base()+"/sync/checkpoint").getJSONObject("fields");boolean marker=false;for(String id:OnlineV5.keys(OnlineV5.fields(saved,"chunks"))){String version=FirebaseRest.string(OnlineV5.fields(saved,"chunks"),id);JSONObject cells=OnlineV5.fields(backend.firestore.docs.get(a.base()+"/saved/"+version).getJSONObject("fields"),"cells");for(String key:OnlineV5.keys(cells))if(FirebaseRest.string(cells,key).contains("mech_"))marker=true;}check(marker,"checkpoint retains mechanism definition with its switch cell");
         }finally{finish(a);finish(b);}
@@ -181,9 +193,12 @@ final class JournalChecks {
             engine.edit(48,30,48,6);drain(a,game);JSONObject record=(JSONObject)Backend.get(backend.root,engine.storage()+"/growth/saplings/0/48_30_48");check(record.getInt("stage")==0&&a.world.get(48,30,48)==6,"Player planting atomically registers a leaf sapling");
             int inventory=a.inventory.inventory[6];long start=engine.day();
             for(int stage=1;stage<=3;stage++){
-                engine.db.serverOffset=stage*TreeGrowth.DAY;engine.nature.daily();test.onGl(game,()->{});record=(JSONObject)Backend.get(backend.root,engine.storage()+"/growth/saplings/0/48_30_48");check(record.getInt("stage")==stage&&record.getLong("lastGrowthDay")==start+stage,"Daily worker commits stage "+stage+" with UTC cursor");
+                engine.db.serverOffset=stage*TreeGrowth.DAY;
+                if(stage==2){Backend.put(backend.root,engine.base+"/live/players/child",new JSONObject().put("sector",0).put("x",48.5).put("y",33.6).put("z",48.5).put("t",System.currentTimeMillis()+engine.db.serverOffset));engine.nature.daily();JSONObject blocked=(JSONObject)Backend.get(backend.root,engine.storage()+"/growth/saplings/0/48_30_48");check(blocked.getInt("stage")==1&&engine.nature.pendingTrees,"blocked second growth stage remains eligible after the scan finishes");Backend.put(backend.root,engine.base+"/live/players/child",JSONObject.NULL);}
+                engine.nature.daily();test.onGl(game,()->{});record=(JSONObject)Backend.get(backend.root,engine.storage()+"/growth/saplings/0/48_30_48");check(record.getInt("stage")==stage&&record.getLong("lastGrowthDay")==start+stage,"Daily worker commits stage "+stage+" with UTC cursor");
                 long generation=engine.fetchHead().generation;engine.nature.daily();check(engine.fetchHead().generation==generation,"Same-day login cannot grow again");
             }
+            engine.nature.dailyStep();int quiet=backend.reads;engine.nature.checkDay();check(quiet==backend.reads,"completed tree/day checks create no periodic network polling");
             v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});check(b.world.get(48,33,48)==5&&b.world.get(49,34,48)==6&&a.inventory.inventory[6]==inventory,"Whole grown tree reaches peer with unchanged inventory");
             engine.checkpoints.lease();engine.checkpoints.save(true);JSONObject checkpoint=backend.firestore.docs.get(a.base()+"/sync/checkpoint").getJSONObject("fields");boolean provenance=false;for(String id:OnlineV5.keys(OnlineV5.fields(checkpoint,"chunks"))){String path=a.base()+"/saved/"+FirebaseRest.string(OnlineV5.fields(checkpoint,"chunks"),id);JSONObject cells=OnlineV5.fields(backend.firestore.docs.get(path).getJSONObject("fields"),"cells");if(cells.has("48_30_48"))provenance=FirebaseRest.string(cells,"48_30_48").contains(":tree_3_");}check(provenance,"Checkpoint retains root stage and crown provenance");
             for(int y=30;y<=33;y++){a.healthy=true;engine.edit(48,y,48,0);drain(a,game);check(a.world.get(48,y,48)==0,"Trunk harvest committed at height "+y+"; "+FirebaseRest.DIAGNOSTICS.report());}

@@ -10,7 +10,7 @@ import java.util.concurrent.*;
 final class OnlineCheckpoint implements AutoCloseable {
     final OnlineV6 v;final OnlineSession s;final FirebaseRest f;final RtdbRest db;
     final ScheduledExecutorService renewal=Executors.newSingleThreadScheduledExecutor(),writer=Executors.newSingleThreadScheduledExecutor();
-    volatile boolean stopped,held;volatile String leaseToken="";volatile JSONObject manifestDocument;long savedAt,lastAttempt,lastMaintenance,nextRetry;int failures;boolean wasForeground=true;
+    volatile boolean stopped,held;volatile String leaseToken="";volatile JSONObject manifestDocument;long savedAt,lastAttempt,lastMaintenance,nextRetry,lastSharedCheck;int failures;boolean wasForeground=true;
     OnlineCheckpoint(OnlineV6 v)throws Exception{this.v=v;s=v.s;f=v.f;db=new RtdbRest(f);}
     String manifest(){return s.base()+"/sync/checkpoint";}
     void start(){renewal.scheduleWithFixedDelay(this::lease,0,5,TimeUnit.SECONDS);writer.scheduleWithFixedDelay(this::tick,1,5,TimeUnit.SECONDS);}
@@ -19,10 +19,10 @@ final class OnlineCheckpoint implements AutoCloseable {
         if(stopped||s.closed||!s.foreground)return;
         try{
             RtdbRest.Version version=db.version(v.storage()+"/lease");JSONObject old=version.value instanceof JSONObject?(JSONObject)version.value:new JSONObject();
-            if(!OnlineJournal.Lease.claim(old.optString("uid"),f.uid,old.optLong("until"),now())){held=false;return;}
+            if(!OnlineJournal.Lease.claim(old.optString("uid"),f.uid,old.optLong("until"),now())){held=false;FirebaseRest.DIAGNOSTICS.checkpointState("anderes Gerät sichert");if(System.nanoTime()-lastSharedCheck>60000000000L){lastSharedCheck=System.nanoTime();Object shared=db.request("GET",v.storage()+"/checkpoint",null);if(shared instanceof JSONObject)FirebaseRest.DIAGNOSTICS.sharedCheckpoint(((JSONObject)shared).optLong("g",-1));}return;}
             String token=held&&!leaseToken.isEmpty()?leaseToken:OnlineWorld.randomId();JSONObject next=new JSONObject().put("uid",f.uid).put("token",token).put("until",now()+OnlineJournal.Lease.LENGTH);
-            if(version.etag==null)throw new IOException("Host-Lease ohne ETag.");db.compare(v.storage()+"/lease",next,version.etag);boolean newlyHeld=!held;held=true;leaseToken=token;if(newlyHeld)manifestDocument=null;
-        }catch(Exception e){held=false;}
+            if(version.etag==null)throw new IOException("Host-Lease ohne ETag.");db.compare(v.storage()+"/lease",next,version.etag);boolean newlyHeld=!held;held=true;leaseToken=token;if(newlyHeld)manifestDocument=null;FirebaseRest.DIAGNOSTICS.checkpointState("dieses Gerät sichert");
+        }catch(Exception e){held=false;FirebaseRest.DIAGNOSTICS.checkpointState("Übernahme fehlgeschlagen · "+(e instanceof FirebaseRest.Failure?"HTTP "+((FirebaseRest.Failure)e).status:e.getClass().getSimpleName()));}
     }
     boolean valid()throws Exception{JSONObject lease=(JSONObject)db.request("GET",v.storage()+"/lease",null);return held&&OnlineJournal.Lease.valid(lease.optString("uid"),f.uid,lease.optLong("until"),now())&&leaseToken.equals(lease.optString("token"));}
     void tick(){
@@ -68,7 +68,7 @@ final class OnlineCheckpoint implements AutoCloseable {
         JSONObject committed=f.write(s.base()+"/uploads/"+upload,FirebaseRest.fields("state","committed"),new String[]{"state"},new JSONObject().put("updateTime",stageVersion),false);
         try{f.commit(new JSONArray().put(publish).put(committed));}catch(Exception e){manifestDocument=null;throw e;}
         manifestDocument=f.get(manifest());savedAt=System.nanoTime();failures=0;nextRetry=0;if(!FirebaseRest.string(fields(manifestDocument),"upload").equals(upload))return;
-        FirebaseRest.DIAGNOSTICS.checkpoint(h.generation,pages.size());
+        FirebaseRest.DIAGNOSTICS.checkpoint(h.generation,pages.size());FirebaseRest.DIAGNOSTICS.sharedCheckpoint(h.generation);
         try{db.request("PUT",v.storage()+"/checkpoint",new JSONObject().put("g",h.generation).put("actors",actorRevs).put("token",upload));prune(actorRevs);recoverAbandoned();lastMaintenance=System.nanoTime();}catch(Exception e){FirebaseRest.DIAGNOSTICS.failed("Checkpoint bestätigt · Bereinigung wird erneut versucht · "+e.getClass().getSimpleName());}
     }
     void collectGarbage(JSONObject old)throws Exception{

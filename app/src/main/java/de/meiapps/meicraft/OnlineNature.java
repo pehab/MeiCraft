@@ -6,29 +6,35 @@ import java.util.concurrent.*;
 
 /** Event-driven nature work on the session's serial worker; no idle timer or extra stream. */
 final class OnlineNature {
-    final OnlineV6 v;final OnlineSession s;boolean queued,closed;Exception failure;final Set<Integer> decayRegions=new LinkedHashSet<>(),reactionPending=new HashSet<>();
+    final OnlineV6 v;final OnlineSession s;boolean queued,closed,dayWatchStarted,pendingTrees,dailyRetryQueued;long checkedDay=-1,nextTreeCheck;Exception failure;final Set<Integer> decayRegions=new LinkedHashSet<>(),reactionPending=new HashSet<>();
     final Map<Integer,World> terrain=new HashMap<>();final Map<Integer,Map<String,String>> cellCache=new HashMap<>();final Map<String,Long> counters=new HashMap<>();
     OnlineNature(OnlineV6 v){this.v=v;s=v.s;}
     static final class Deferred extends Exception {private static final long serialVersionUID=1L;}
     void yieldToPlayer()throws Deferred{if(s.pending||v.services&&System.nanoTime()-s.actionStarted<250000000L)throw new Deferred();}
-    void join(){s.worker.execute(()->{dailyStep();for(int id:s.readyRegions)decayRegions.add(id);schedule();});}
-    void dailyStep(){if(closed||s.closed||!s.foreground)return;try{yieldToPlayer();daily();}catch(Deferred e){if(v.services)s.worker.schedule(this::dailyStep,250,TimeUnit.MILLISECONDS);}catch(Exception e){FirebaseRest.DIAGNOSTICS.failed("Baumprüfung · "+e.getClass().getSimpleName());}}
+    void join(){s.worker.execute(()->{dailyStep();for(int id:s.readyRegions)decayRegions.add(id);schedule();if(v.services&&!dayWatchStarted){dayWatchStarted=true;s.worker.scheduleWithFixedDelay(this::checkDay,60,60,TimeUnit.SECONDS);}});}
+    void checkDay(){if(!closed&&!s.closed&&s.foreground&&(checkedDay!=v.day()||pendingTrees&&now()>=nextTreeCheck))dailyStep();}
+    void dailyStep(){if(closed||s.closed||!s.foreground)return;try{yieldToPlayer();daily();checkedDay=v.day();nextTreeCheck=now()+60000;}catch(Deferred e){if(v.services&&!dailyRetryQueued){dailyRetryQueued=true;s.worker.schedule(()->{dailyRetryQueued=false;dailyStep();},500,TimeUnit.MILLISECONDS);}}catch(Exception e){pendingTrees=true;nextTreeCheck=now()+60000;checkedDay=v.day();FirebaseRest.DIAGNOSTICS.failed("Baumprüfung · "+e.getClass().getSimpleName());}}
     void changed(int region){decayRegions.add(region);schedule();}
     void schedule(){if(!v.services||queued||closed||s.closed||decayRegions.isEmpty())return;queued=true;s.worker.schedule(this::decay,3,TimeUnit.SECONDS);}
     long now(){return System.currentTimeMillis()+v.db.serverOffset;}
     void daily()throws Exception{
         String path=v.storage()+"/growth/run";RtdbRest.Version version=v.db.version(path);JSONObject old=v.object(version.value);long day=v.day();
-        if(old.optLong("day",-1)==day&&(old.optBoolean("done")||old.optLong("until")>now()&&!old.optString("uid").equals(v.f.uid)))return;
+        pendingTrees=false;
+        if(old.optLong("day",-1)==day&&old.optLong("until")>now()&&!old.optString("uid").equals(v.f.uid)){pendingTrees=true;return;}
+        // Completion belongs to each tree/day, not to a once-only world scan. Previously blocked trees remain due.
+        repairIndex();JSONObject saplings=v.remote(v.storage()+"/growth/saplings");boolean due=false;
+        for(String region:OnlineV5.keys(saplings))for(String key:OnlineV5.keys(saplings.getJSONObject(region))){JSONObject record=saplings.getJSONObject(region).getJSONObject(key);if(record.optInt("stage",0)<3&&record.optLong("lastGrowthDay",day)<day)due=true;}
+        if(old.optLong("day",-1)==day&&old.optBoolean("done")&&!due)return;
         String token=old.optLong("day",-1)==day&&old.optString("uid").equals(v.f.uid)&&!old.optBoolean("done")?old.getString("token"):OnlineWorld.randomId();JSONObject run=new JSONObject().put("day",day).put("uid",v.f.uid).put("token",token).put("until",now()+15000).put("done",false);
-        try{v.db.compare(path,run,version.etag);}catch(FirebaseRest.Failure e){if(e.status==412||e.status==401||e.status==403)return;throw e;}
-        repairIndex();JSONObject saplings=v.remote(v.storage()+"/growth/saplings");
+        try{v.db.compare(path,run,version.etag);}catch(FirebaseRest.Failure e){if(e.status==412){pendingTrees=true;return;}throw e;}
+        saplings=v.remote(v.storage()+"/growth/saplings");
         for(String region:OnlineV5.keys(saplings))for(String key:OnlineV5.keys(saplings.getJSONObject(region))){
             if(closed||s.closed)return;yieldToPlayer();
             JSONObject known=saplings.getJSONObject(region).getJSONObject(key);
             if(known.optInt("stage",0)>=3||known.optLong("lastGrowthDay",-1)>=day)continue;
             // Renew only while processing actual trees. A killed client can be replaced on the next join.
             run.put("until",now()+15000);v.db.request("PUT",path,run);
-            grow(Integer.parseInt(region),key,day,token);
+            pendingTrees|=grow(Integer.parseInt(region),key,day,token);
         }
         run.put("done",true).put("until",0);v.db.request("PUT",path,run);v.readSync();v.syncVisible(false);
     }
@@ -80,15 +86,15 @@ final class OnlineNature {
     Tile load(int region,JournalHead head,boolean positions)throws Exception{
         loadTerrain(region,head);return new Tile(terrain.get(region),cellCache.get(region),positions?v.remote(v.base+"/live"):new JSONObject(),region,s);
     }
-    void grow(int region,String key,long day,String lease)throws Exception{
+    boolean grow(int region,String key,long day,String lease)throws Exception{
         for(int retry=0;retry<3;retry++){
             JournalHead h=v.fetchHead();v.accept(h);Tile tile=load(region,h);JSONObject record=v.remote(v.storage()+"/growth/saplings/"+region+"/"+key);
-            int stage=record.optInt("stage",-1);if(stage<0||stage>=3||record.optLong("lastGrowthDay",day)>=day)return;
+            int stage=record.optInt("stage",-1);if(stage<0||stage>=3||record.optLong("lastGrowthDay",day)>=day)return false;
             String[] xyz=key.split("_");int x=Integer.parseInt(xyz[0]),y=Integer.parseInt(xyz[1]),z=Integer.parseInt(xyz[2]);
             // Old registrations are accepted only while the original planted leaf still exists.
-            if(stage>0&&!tile.nature(xyzKey(key,stage)).equals("leaf"))return;
-            if(record.has("token")&&!record.getString("token").equals(tile.nonce(key)))return;
-            List<TreeGrowth.Block> plan=TreeGrowth.stage(x,y,z,stage,tile);if(plan.isEmpty())return;
+            if(stage>0&&!tile.nature(xyzKey(key,stage)).equals("leaf")){FirebaseRest.DIAGNOSTICS.treeState("Wachstumsspitze verändert · Stufe "+stage);return false;}
+            if(record.has("token")&&!record.getString("token").equals(tile.nonce(key))){FirebaseRest.DIAGNOSTICS.treeState("Stamm verändert · Stufe "+stage);return false;}
+            List<TreeGrowth.Block> plan=TreeGrowth.stage(x,y,z,stage,tile);if(plan.isEmpty()){FirebaseRest.DIAGNOSTICS.treeState("Wachstumsplatz blockiert · Stufe "+stage+" · erneute Prüfung folgt");return true;}
             String nature="tree_"+(stage+1)+"_"+day+"_"+record.optLong("plantedAt",now());
             List<OnlineChange> changes=new ArrayList<>();
             // The root also carries durable provenance, backed up with its normal chunk.
@@ -97,14 +103,15 @@ final class OnlineNature {
             JSONObject patch=JournalBatch.patch(v,changes);String p="head/actors/"+v.f.uid+"/";
             patch.put(p+"base",h.generation).put(p+"growthToken",lease).put(p+"growthDay",day).put(p+"presenceBase",tile.presenceVersion);
             patch.put("growth/saplings/"+region+"/"+key,new JSONObject().put("stage",stage+1).put("lastGrowthDay",day).put("plantedAt",record.optLong("plantedAt",now())).put("token",changes.get(0).token));
-            try{publish(patch,changes);return;}catch(FirebaseRest.Failure e){if(e.status!=401&&e.status!=403)throw e;}
-        }
+            publish(patch,changes);FirebaseRest.DIAGNOSTICS.treeState("Baum gewachsen · Stufe "+(stage+1));return false;
+        }return true;
     }
     String xyzKey(String key,int stage){String[] xyz=key.split("_");return xyz[0]+"_"+(Integer.parseInt(xyz[1])+stage)+"_"+xyz[2];}
     OnlineChange change(int region,int x,int y,int z,int type,Tile tile,int offset,String nature){return new OnlineChange(v.sequence+offset+1,region,x,y,z,type,false,OnlineWorld.randomId(),tile.nonce(x+"_"+y+"_"+z),v.f.uid,nature);}
     void publish(JSONObject patch,List<OnlineChange> changes)throws Exception{
         yieldToPlayer();
-        try{v.db.request("PATCH",v.storage(),patch);}catch(FirebaseRest.Failure e){
+        String actor="head/actors/"+v.f.uid+"/";String operation=!patch.isNull(actor+"growthToken")?"Baumwachstum":!patch.isNull(actor+"reactionRegion")?"Materialreaktion":"Laubzerfall";
+        try{v.db.request("PATCH",v.storage(),patch,operation);}catch(FirebaseRest.Failure e){
             if(e.status==401||e.status==403){
                 String p="head/actors/"+v.f.uid+"/";JournalHead current=v.fetchHead();
                 if(current.generation!=patch.optLong(p+"base",-1)){v.accept(current);throw new Deferred();}

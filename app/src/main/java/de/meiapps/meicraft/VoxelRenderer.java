@@ -119,7 +119,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             }
             GLES20.glUniform1f(glassPass,0f);GLES20.glDepthMask(true);GLES20.glDisable(GLES20.GL_BLEND);
             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER,0);GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER,0);
-            drawMobs();view.target=world.ray(6);if(world.survival.aimed(world)==null)outline(view.target);for(int[] selected:view.mechanics.highlights)outline(selected);view.hud.postInvalidate();
+            drawMobs();view.target=world.ray(6);if(world.survival.aimed(world)==null)outline(view.target);if(view.mechanics.highlightUntil>System.currentTimeMillis())for(int[] selected:view.mechanics.highlights)outline(selected);view.hud.postInvalidate();
             if(sample)metrics.frame(System.nanoTime()-now,interval,drawn,culled);
         }
     }
