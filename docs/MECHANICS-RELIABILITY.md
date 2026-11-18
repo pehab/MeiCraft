@@ -2,6 +2,8 @@
 
 ## Mechanik
 
+Bis zu neun Blöcke können als Gruppe ausgewählt werden, etwa für eine 3×3-Tür. Auch eine vollständige Verschiebung (19 geänderte Zellen einschließlich Schalter) bleibt atomar. Der 16-Ereignis-Livering bleibt kompatibel; ältere Ereignisse stehen weiterhin im dauerhaften Journal.
+
 - Ein Schaltvorgang liest nur die Chunks des Schalters und der tatsächlich überstrichenen Bewegung, statt sämtliche Änderungen ganzer Bereiche herunterzuladen. Ein sitzungsgebundener Cache wird anhand der bestätigten Chunk-Zähler geprüft. Das senkt die Zahl der Anfragen besonders in stark bebauten Welten.
 - Nachgewiesene Welt-/Positionskonflikte werden höchstens dreimal neu geplant. Unbekannte Berechtigungsfehler werden nicht als harmlose Konflikte ausgegeben. Nonces, atomare Blockpermutation und die serverseitige Positionssperre bleiben aktiv.
 - Eine verlorene Antwort wird über die bestätigte Aktionskennung abgeglichen. Eine bereits gespeicherte Bewegung wird nicht ein zweites Mal ausgeführt.

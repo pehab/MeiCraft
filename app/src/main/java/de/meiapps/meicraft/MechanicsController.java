@@ -17,8 +17,8 @@ final class MechanicsController {
         if(hit==null){activity.game.message("Näher an einen Block herangehen");return true;}
         try{Mechanics.Block b=new Mechanics.Block(hit[0],hit[1],hit[2],w.get(hit[0],hit[1],hit[2]));Mechanics.valid(b);
             if(stage==1){if(w.mechanics.links.containsKey(w.idx(b.x,b.y,b.z)))throw new IllegalArgumentException("Hier gibt es bereits einen Schalter. Bitte in der Verwaltung auswählen.");button=b;stage=2;}
-            else{if(b.key().equals(button.key()))throw new IllegalArgumentException("Der Schalter bleibt stehen");int found=-1;for(int i=0;i<blocks.size();i++)if(blocks.get(i).key().equals(b.key()))found=i;if(found>=0)blocks.remove(found);else{if(blocks.size()==Mechanics.MAX_BLOCKS)throw new IllegalArgumentException("Höchstens sieben Blöcke");blocks.add(b);}}
-            List<int[]> marks=new ArrayList<>();marks.add(new int[]{button.x,button.y,button.z});for(Mechanics.Block c:blocks)marks.add(new int[]{c.x,c.y,c.z});highlights=marks;highlightUntil=Long.MAX_VALUE;activity.game.message(blocks.size()+" / 7 Blöcke · ⚙ zum Fertigstellen");
+            else{if(b.key().equals(button.key()))throw new IllegalArgumentException("Der Schalter bleibt stehen");int found=-1;for(int i=0;i<blocks.size();i++)if(blocks.get(i).key().equals(b.key()))found=i;if(found>=0)blocks.remove(found);else{if(blocks.size()==Mechanics.MAX_BLOCKS)throw new IllegalArgumentException("Höchstens neun Blöcke");blocks.add(b);}}
+            List<int[]> marks=new ArrayList<>();marks.add(new int[]{button.x,button.y,button.z});for(Mechanics.Block c:blocks)marks.add(new int[]{c.x,c.y,c.z});highlights=marks;highlightUntil=Long.MAX_VALUE;activity.game.message(blocks.size()+" / 9 Blöcke · ⚙ zum Fertigstellen");
         }catch(IllegalArgumentException e){activity.game.message(e.getMessage());}return true;
     }
     void open(){World w=activity.world;if(w==null)return;if(saving){activity.game.message("Einrichtung wird gespeichert …");return;}activity.paused=true;activity.game.clearInput();

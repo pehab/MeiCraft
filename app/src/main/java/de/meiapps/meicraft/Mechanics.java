@@ -5,7 +5,7 @@ import java.util.*;
 
 /** Small reversible translations. Plans validate the entire swept space before changing a cell. */
 final class Mechanics {
-    static final int MAX_BLOCKS=7,MAX_DISTANCE=4;
+    static final int MAX_BLOCKS=9,MAX_DISTANCE=4;
     static final int[][] DIRECTIONS={{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
     static final String[] LABELS={"→ Rechts (+X)","← Links (−X)","↑ Hoch","↓ Runter","↘ Vor (+Z)","↖ Zurück (−Z)"};
     final Map<Integer,Link> links=new LinkedHashMap<>();
@@ -37,7 +37,7 @@ final class Mechanics {
     static void writeBlock(DataOutputStream out,Block b)throws IOException{out.writeShort(b.x);out.writeByte(b.y);out.writeShort(b.z);out.writeByte(b.type);}
     static Block readBlock(DataInputStream in)throws IOException{return new Block(in.readUnsignedShort(),in.readUnsignedByte(),in.readUnsignedShort(),in.readUnsignedByte());}
     static Link decode(String text)throws IOException{
-        try{if(text==null||!text.matches("mech_[A-Za-z0-9_-]{20,100}"))throw new IllegalArgumentException();try(DataInputStream in=new DataInputStream(new ByteArrayInputStream(Base64.getUrlDecoder().decode(text.substring(5))))){int version=in.readUnsignedByte();if(version!=1&&version!=2)throw new IllegalArgumentException();int direction=in.readUnsignedByte(),distance=in.readUnsignedByte();boolean moved=in.readBoolean();Block button=readBlock(in);int count=in.readUnsignedByte();if(count<1||count>MAX_BLOCKS)throw new IllegalArgumentException();List<Block> blocks=new ArrayList<>();for(int i=0;i<count;i++)blocks.add(readBlock(in));Link link=new Link(button,blocks,direction,distance,moved,version==2?in.readUTF():"");if(in.read()!=-1||!text.equals(link.encode()))throw new IllegalArgumentException();return link;}}catch(RuntimeException e){throw new IOException("Ungültige Mechanik",e);}
+        try{if(text==null||!text.matches("mech_[A-Za-z0-9_-]{20,116}"))throw new IllegalArgumentException();try(DataInputStream in=new DataInputStream(new ByteArrayInputStream(Base64.getUrlDecoder().decode(text.substring(5))))){int version=in.readUnsignedByte();if(version!=1&&version!=2)throw new IllegalArgumentException();int direction=in.readUnsignedByte(),distance=in.readUnsignedByte();boolean moved=in.readBoolean();Block button=readBlock(in);int count=in.readUnsignedByte();if(count<1||count>MAX_BLOCKS)throw new IllegalArgumentException();List<Block> blocks=new ArrayList<>();for(int i=0;i<count;i++)blocks.add(readBlock(in));Link link=new Link(button,blocks,direction,distance,moved,version==2?in.readUTF():"");if(in.read()!=-1||!text.equals(link.encode()))throw new IllegalArgumentException();return link;}}catch(RuntimeException e){throw new IOException("Ungültige Mechanik",e);}
     }
     interface Space {int get(int x,int y,int z);boolean inside(int x,int y,int z);boolean occupied(int x,int y,int z);}
     static List<Block> plan(Link link,Space space){

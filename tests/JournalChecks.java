@@ -109,8 +109,8 @@ final class JournalChecks {
             for(int[] c:new int[][]{{90,44,90,14},{94,44,90,7},{95,44,90,8}}){OnlineChange e=new OnlineChange(v(a).sequence+1,0,c[0],c[1],c[2],c[3],false,OnlineWorld.randomId(),"","parent","user");v(a).commit(a.inventory,e);v(a).readSync();v(a).syncVisible(false);test.onGl(game,()->{});}
             Mechanics.Link link=new Mechanics.Link(new Mechanics.Block(90,44,90,14),List.of(new Mechanics.Block(94,44,90,7),new Mechanics.Block(95,44,90,8)),0,2,false,"Gartentor");OnlineMechanics m=new OnlineMechanics(v(a));m.configureNow(link);test.onGl(game,()->{});
             check(w.mechanics.links.containsKey(w.idx(90,44,90)),"online switch definition enters the shared region model");
-            backend.chunkReads.clear();new OnlineMechanics(v(a)).new Snapshot(link,false,true);
-            check(backend.chunkReads.size()==2&&backend.chunkReads.stream().allMatch(path->path.endsWith("/0_5_2_5")||path.endsWith("/1_0_2_5")),"mechanism snapshot reads only its two swept-space chunks");
+            backend.chunkReads.clear();OnlineMechanics.Snapshot snapshot=new OnlineMechanics(v(a)).new Snapshot(link,false,true);
+            check(snapshot.chunks.equals(new HashSet<>(List.of("0_5_2_5","1_0_2_5")))&&backend.chunkReads.size()==1&&backend.chunkReads.get(0).endsWith("/0_5_2_5"),"mechanism snapshot covers only its two swept-space chunks and skips the empty chunk download");
             backend.mechanismConflicts=1;m.toggleNow(link);test.onGl(game,()->{});v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});
             check(w.get(94,44,90)==0&&w.get(96,44,90)==7&&w.get(97,44,90)==8&&b.world.get(97,44,90)==8,"one atomic mechanism crosses regions and reaches the peer");
             check(OnlineInventory.same(inventory,a.inventory),"mechanical motion preserves the entire private inventory");
@@ -119,6 +119,13 @@ final class JournalChecks {
             backend.denyMechanics=true;int writes=backend.writes;boolean denied=false;try{m.toggleNow(link);}catch(FirebaseRest.Failure expected){denied=true;}backend.denyMechanics=false;check(denied&&backend.writes==writes,"unproven permission failures are not retried or disguised as successful movement");
             Mechanics.Link renamed=new Mechanics.Link(link.button,link.blocks,link.direction,link.distance,false,"Hintertür");
             m.rename(link,renamed,null);drain(a,game);link=renamed;check(w.mechanics.links.get(w.idx(90,44,90)).name.equals("Hintertür"),"renaming updates the durable switch metadata");
+            List<Mechanics.Block> panel=new ArrayList<>();
+            for(int y=44;y<47;y++)for(int z=80;z<83;z++)panel.add(new Mechanics.Block(80,y,z,7));
+            List<Mechanics.Block> seeded=new ArrayList<>(panel);Mechanics.Block doorSwitch=new Mechanics.Block(75,44,80,14);seeded.add(doorSwitch);
+            for(Mechanics.Block cell:seeded){v(a).commit(a.inventory,new OnlineChange(v(a).sequence+1,0,cell.x,cell.y,cell.z,cell.type,false,OnlineWorld.randomId(),"","parent","user"));v(a).readSync();}
+            Mechanics.Link door=new Mechanics.Link(doorSwitch,panel,0,1,false,"3x3 Tür");m.configureNow(door);m.toggleNow(door);test.onGl(game,()->{});v(b).readSync();v(b).syncVisible(false);test.onGl(game,()->{});
+            for(Mechanics.Block cell:panel)check(w.get(cell.x,cell.y,cell.z)==0&&w.get(cell.x+1,cell.y,cell.z)==7&&b.world.get(cell.x+1,cell.y,cell.z)==7,"nine-block door reaches both players despite wrapping the live ring");
+            m.toggleNow(door.toggle());test.onGl(game,()->{});for(Mechanics.Block cell:panel)check(w.get(cell.x,cell.y,cell.z)==7&&w.get(cell.x+1,cell.y,cell.z)==0,"nine-block door returns every block");
             v(a).checkpoints.lease();v(a).checkpoints.save(true);
             JSONObject saved=backend.firestore.docs.get(a.base()+"/sync/checkpoint").getJSONObject("fields");boolean marker=false;for(String id:OnlineV5.keys(OnlineV5.fields(saved,"chunks"))){String version=FirebaseRest.string(OnlineV5.fields(saved,"chunks"),id);JSONObject cells=OnlineV5.fields(backend.firestore.docs.get(a.base()+"/saved/"+version).getJSONObject("fields"),"cells");for(String key:OnlineV5.keys(cells))if(FirebaseRest.string(cells,key).contains("mech_"))marker=true;}check(marker,"checkpoint retains mechanism definition with its switch cell");
         }finally{finish(a);finish(b);}
