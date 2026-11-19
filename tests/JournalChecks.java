@@ -103,7 +103,7 @@ final class JournalChecks {
     void mechanics(MainActivity activity,GameView game)throws Exception{
         Backend backend=new Backend();OnlineWorld invite=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession a=session(activity,backend,invite,"parent"),b=session(activity,backend,invite,"child");
         try{
-            v(a).start(true,"Mechanics",2);ready(a);v(b).start(false,"",2);ready(b);stock(v(a));a.px=60;a.py=40;a.pz=60;
+            v(a).start(true,"Mechanics",2);ready(a);v(b).start(false,"",2);ready(b);check(a.inventory.tool()==4&&b.inventory.tool()==4&&a.inventory.furnace()&&a.world.progress.tool()==4,"new online owner and guest start with tools in inventory and rendering state");stock(v(a));a.px=60;a.py=40;a.pz=60;
             World w=a.world;Story inventory=OnlineInventory.copy(a.inventory);String prefix=v(a).storage()+"/chunks/0_";
             // Seed authored blocks above the landscape, including a two-material group across a region edge.
             for(int[] c:new int[][]{{90,44,90,14},{94,44,90,7},{95,44,90,8}}){OnlineChange e=new OnlineChange(v(a).sequence+1,0,c[0],c[1],c[2],c[3],false,OnlineWorld.randomId(),"","parent","user");v(a).commit(a.inventory,e);v(a).readSync();v(a).syncVisible(false);test.onGl(game,()->{});}

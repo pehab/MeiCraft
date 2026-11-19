@@ -37,7 +37,7 @@ final class OnlineSession implements AutoCloseable {
     final Map<Integer,Region> regions=new HashMap<>();
     volatile OnlineRegionCache regionCache;
     volatile Set<Integer> readyRegions=Collections.emptySet();
-    volatile Story inventory=new Story();String inventoryVersion="";boolean inventoryUncertain;
+    volatile Story inventory=OnlineInventory.withTools(new Story());String inventoryVersion="";boolean inventoryUncertain;
     volatile float px,py,pz,angle;int visibleX=Integer.MIN_VALUE,visibleZ=Integer.MIN_VALUE;
     float lastX=Float.NaN,lastY,lastZ,lastAngle;
     OnlineSession(MainActivity activity,FirebaseRest firebase,OnlineWorld invitation,String playerName,Listener listener){this.activity=activity;this.firebase=firebase;this.invitation=invitation;this.playerName=OnlineWorld.playerName(playerName);this.listener=listener;}
@@ -231,7 +231,7 @@ final class OnlineSession implements AutoCloseable {
         if(items.length()!=17&&items.length()!=state.inventory.length)throw new IOException("Ungültiges Online-Inventar.");
         for(int i=0;i<items.length();i++)state.inventory[i]=items.getJSONObject(i).getInt("integerValue");
         state.chapter=FirebaseRest.integer(d,"chapter");state.iron=FirebaseRest.integer(d,"iron");state.placed=FirebaseRest.integer(d,"placed");state.glassPlaced=FirebaseRest.integer(d,"glassPlaced");state.buckets=FirebaseRest.integer(d,"buckets");state.sword=d.getJSONObject("sword").getBoolean("booleanValue");
-        if(!OnlineInventory.valid(state))throw new IOException("Ungültiges Online-Inventar.");return state;
+        if(!OnlineInventory.valid(state))throw new IOException("Ungültiges Online-Inventar.");return OnlineInventory.withTools(state);
     }
     void loadInventory(boolean create)throws Exception{
         if(modern!=null){modern.readSync();return;}
