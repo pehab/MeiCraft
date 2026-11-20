@@ -284,3 +284,11 @@ test('a completed scan can revisit yesterday’s stage-1 tree without permitting
  for(let y=27;y<30;y++)for(let z=20;z<23;z++){assert.equal(data.chunks['0_1_1_1'].cells[`20_${y}_${z}`].type,0);assert.equal(data.chunks['0_1_1_1'].cells[`21_${y}_${z}`].type,7);}
  await env.clearDatabase();await seed();await assertFails(update(r('child',storage),batch('child',blocks))); // larger batches require a resource-conserving mechanic
 });
+
+test('RTDB REST encodes densely numbered sapling regions as an array with null gaps',async()=>{
+ await seed();const record={stage:1,lastGrowthDay:utcDay()-5,plantedAt:Date.now()-5*86400000,token:'c'.repeat(32)};
+ await env.withSecurityRulesDisabled(c=>set(ref(c.database(),storage+'/growth/saplings'),{'0':{'48_30_48':record},'2':{'10_30_20':record}}));
+ const {createMockUserToken}=require('@firebase/util');const auth=createMockUserToken({sub:'child',user_id:'child'},'demo-meicraft-journal');
+ const response=await fetch(`http://${process.env.FIREBASE_DATABASE_EMULATOR_HOST}/${storage}/growth/saplings.json?ns=demo-meicraft-journal&auth=${encodeURIComponent(auth)}`);assert.equal(response.status,200);const wire=await response.json();assert.ok(Array.isArray(wire));assert.equal(wire[1],null);
+ const value=(await get(r('child',storage+'/growth/saplings'))).val();assert.ok(Array.isArray(value));assert.equal(value.length,3);assert.equal(value[1]??null,null);assert.equal(value[2]['10_30_20'].stage,1);
+});
