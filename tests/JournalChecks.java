@@ -34,7 +34,8 @@ final class JournalChecks {
                 reads++;if(path.contains("/storage/chunks/"))chunkReads.add(path);if(path.endsWith("/live"))liveReads++;String query=URLDecoder.decode(url.getQuery(),"UTF-8");if(query.contains("orderBy=\"rev\"")){
                     JSONObject filtered=new JSONObject();double start=query.contains("startAt=")?Double.parseDouble(query.split("startAt=")[1].split("&")[0]):0,end=Double.parseDouble(query.split("endAt=")[1].split("&")[0]);
                     if(old instanceof JSONObject)for(String key:OnlineV5.keys((JSONObject)old)){JSONObject e=((JSONObject)old).getJSONObject(key);long rev=e.getLong("rev");if(rev>=start&&rev<=end)filtered.put(key,e);}return filtered.length()==0?"null":filtered.toString();
-                }return old.toString();
+                }if(path.endsWith("/growth/saplings")&&old instanceof JSONObject){JSONObject regions=(JSONObject)old;int max=-1;boolean numeric=true;for(String region:OnlineV5.keys(regions)){if(!region.matches("[0-8]")){numeric=false;break;}max=Math.max(max,Integer.parseInt(region));}if(numeric&&max>=0&&max<regions.length()*2){JSONArray array=new JSONArray();for(int i=0;i<=max;i++)array.put(regions.opt(Integer.toString(i)));return array.toString();}}
+                return old.toString();
             }
             JSONObject next=new JSONObject(root.toString());Object value=body.isEmpty()?JSONObject.NULL:new JSONTokener(body).nextValue();if(failReady&&path.endsWith("/storage/control")&&value instanceof JSONObject&&((JSONObject)value).optString("phase").equals("ready")){failReady=false;throw new IOException("fixture migration interrupted before activation");}long now=System.currentTimeMillis()+clockOffset;
             if(method.equals("PATCH")&&value instanceof JSONObject&&((JSONObject)value).optBoolean("head/actors/"+uid+"/mechanic")){
@@ -192,6 +193,12 @@ final class JournalChecks {
         OnlineSession warm=session(activity,backend,invite,"parent");try{v(warm).start(false,"",2);check(warm.terrainVersion==2&&warm.world.get(95,44,48)==22&&warm.world.get(50,44,48)==19&&warm.world.get(54,45,48)==18&&warm.inventory.inventory[18]==1,"New terrain, reaction outputs and version-2 private resources survive warm restart");for(int i=0;i<3;i++){v(warm).nature.changed(0);v(warm).nature.decay();if(v(warm).nature.failure!=null)throw v(warm).nature.failure;test.onGl(game,()->{});}check(warm.world.get(54,45,48)==18,"checkpointed fresh charcoal stays collectible after restart");check(warm.world.get(60,45,48)==8&&warm.world.get(96,44,60)==8,"online glass produced from sand survives checkpoint and warm restart");}finally{finish(warm);}
     }
     void nature(MainActivity activity,GameView game)throws Exception{
+        JSONObject tree=new JSONObject().put("48_30_48",new JSONObject().put("stage",1));JSONArray dense=new JSONArray().put(tree).put(JSONObject.NULL).put(tree);
+        JSONObject normalized=OnlineNature.saplingRegions(dense,3);check(normalized.has("0")&&!normalized.has("1")&&normalized.has("2"),"dense numeric regions retain keys and skip RTDB null gaps");
+        JSONObject sparse=new JSONObject().put("8",tree);check(OnlineNature.saplingRegions(sparse,3).getJSONObject("8").has("48_30_48"),"sparse high region object remains readable");
+        check(OnlineNature.saplingRegions(JSONObject.NULL,3).length()==0&&OnlineNature.saplingRegions(new JSONArray(),3).length()==0,"absent and empty sapling lists are harmless");
+        for(Object invalid:List.of(Boolean.TRUE,new JSONArray().put(7),new JSONObject().put("9",tree),new JSONObject().put("0",new JSONArray()))){boolean denied=false;try{OnlineNature.saplingRegions(invalid,3);}catch(IOException expected){denied=true;}check(denied,"malformed numeric-region data is rejected without modifying trees");}
+
         Backend backend=new Backend();OnlineWorld invite=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession a=session(activity,backend,invite,"parent"),b=session(activity,backend,invite,"child");
         try{
             OnlineV6 engine=v(a);engine.start(true,"Nature",2);ready(a);v(b).start(false,"",2);ready(b);
@@ -200,7 +207,7 @@ final class JournalChecks {
             engine.edit(48,30,48,6);drain(a,game);JSONObject record=(JSONObject)Backend.get(backend.root,engine.storage()+"/growth/saplings/0/48_30_48");check(record.getInt("stage")==0&&a.world.get(48,30,48)==6,"Player planting atomically registers a leaf sapling");
             int inventory=a.inventory.inventory[6];long start=engine.day();
             for(int stage=1;stage<=3;stage++){
-                engine.db.serverOffset=stage*TreeGrowth.DAY;
+                engine.nature=new OnlineNature(engine);engine.db.serverOffset=stage*TreeGrowth.DAY;
                 if(stage==2){Backend.put(backend.root,engine.base+"/live/players/child",new JSONObject().put("sector",0).put("x",48.5).put("y",33.6).put("z",48.5).put("t",System.currentTimeMillis()+engine.db.serverOffset));engine.nature.daily();JSONObject blocked=(JSONObject)Backend.get(backend.root,engine.storage()+"/growth/saplings/0/48_30_48");check(blocked.getInt("stage")==1&&engine.nature.pendingTrees,"blocked second growth stage remains eligible after the scan finishes");Backend.put(backend.root,engine.base+"/live/players/child",JSONObject.NULL);}
                 engine.nature.daily();test.onGl(game,()->{});record=(JSONObject)Backend.get(backend.root,engine.storage()+"/growth/saplings/0/48_30_48");check(record.getInt("stage")==stage&&record.getLong("lastGrowthDay")==start+stage,"Daily worker commits stage "+stage+" with UTC cursor");
                 long generation=engine.fetchHead().generation;engine.nature.daily();check(engine.fetchHead().generation==generation,"Same-day login cannot grow again");

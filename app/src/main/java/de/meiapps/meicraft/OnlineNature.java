@@ -1,42 +1,56 @@
 package de.meiapps.meicraft;
 
 import org.json.*;
+import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 
 /** Event-driven nature work on the session's serial worker; no idle timer or extra stream. */
 final class OnlineNature {
     final OnlineV6 v;final OnlineSession s;boolean queued,closed,dayWatchStarted,pendingTrees,dailyRetryQueued;long checkedDay=-1,nextTreeCheck;Exception failure;final Set<Integer> decayRegions=new LinkedHashSet<>(),reactionPending=new HashSet<>();
+    String treePhase="Start";
     final Map<Integer,World> terrain=new HashMap<>();final Map<Integer,Map<String,String>> cellCache=new HashMap<>();final Map<String,Long> counters=new HashMap<>();
     OnlineNature(OnlineV6 v){this.v=v;s=v.s;}
     static final class Deferred extends Exception {private static final long serialVersionUID=1L;}
     void yieldToPlayer()throws Deferred{if(s.pending||v.services&&System.nanoTime()-s.actionStarted<250000000L)throw new Deferred();}
     void join(){s.worker.execute(()->{dailyStep();for(int id:s.readyRegions)decayRegions.add(id);schedule();if(v.services&&!dayWatchStarted){dayWatchStarted=true;s.worker.scheduleWithFixedDelay(this::checkDay,60,60,TimeUnit.SECONDS);}});}
     void checkDay(){if(!closed&&!s.closed&&s.foreground&&(checkedDay!=v.day()||pendingTrees&&now()>=nextTreeCheck))dailyStep();}
-    void dailyStep(){if(closed||s.closed||!s.foreground)return;try{yieldToPlayer();daily();checkedDay=v.day();nextTreeCheck=now()+60000;}catch(Deferred e){if(v.services&&!dailyRetryQueued){dailyRetryQueued=true;s.worker.schedule(()->{dailyRetryQueued=false;dailyStep();},500,TimeUnit.MILLISECONDS);}}catch(Exception e){pendingTrees=true;nextTreeCheck=now()+60000;checkedDay=v.day();FirebaseRest.DIAGNOSTICS.failed("Baumprüfung · "+e.getClass().getSimpleName());}}
+    void dailyStep(){if(closed||s.closed||!s.foreground)return;try{yieldToPlayer();treePhase="Tagesprüfung starten";FirebaseRest.DIAGNOSTICS.treeState("Prüfung läuft");daily();checkedDay=v.day();nextTreeCheck=now()+60000;}catch(Deferred e){if(v.services&&!dailyRetryQueued){dailyRetryQueued=true;s.worker.schedule(()->{dailyRetryQueued=false;dailyStep();},500,TimeUnit.MILLISECONDS);}}catch(Exception e){pendingTrees=true;nextTreeCheck=now()+60000;checkedDay=v.day();String reason="Baumprüfung · "+treePhase+" · "+e.getClass().getSimpleName()+" · "+OnlineDiagnostics.clean(e.getMessage(),v.f.uid,s.invitation.id);FirebaseRest.DIAGNOSTICS.treeState("Fehlgeschlagen · "+reason);FirebaseRest.DIAGNOSTICS.failed(reason);}}
     void changed(int region){decayRegions.add(region);schedule();}
     void schedule(){if(!v.services||queued||closed||s.closed||decayRegions.isEmpty())return;queued=true;s.worker.schedule(this::decay,3,TimeUnit.SECONDS);}
     long now(){return System.currentTimeMillis()+v.db.serverOffset;}
     void daily()throws Exception{
-        String path=v.storage()+"/growth/run";RtdbRest.Version version=v.db.version(path);JSONObject old=v.object(version.value);long day=v.day();
+        treePhase="Wachstumssperre lesen";String path=v.storage()+"/growth/run";RtdbRest.Version version=v.db.version(path);JSONObject old=v.object(version.value);long day=v.day();
         pendingTrees=false;
-        if(old.optLong("day",-1)==day&&old.optLong("until")>now()&&!old.optString("uid").equals(v.f.uid)){pendingTrees=true;return;}
+        if(old.optLong("day",-1)==day&&old.optLong("until")>now()&&!old.optString("uid").equals(v.f.uid)){pendingTrees=true;FirebaseRest.DIAGNOSTICS.treeState("Anderes Gerät prüft Bäume");return;}
         // Completion belongs to each tree/day, not to a once-only world scan. Previously blocked trees remain due.
-        repairIndex();JSONObject saplings=v.remote(v.storage()+"/growth/saplings");boolean due=false;
+        treePhase="Baumindex prüfen";repairIndex();treePhase="Pflanzungen lesen";JSONObject saplings=saplings();boolean due=false;
         for(String region:OnlineV5.keys(saplings))for(String key:OnlineV5.keys(saplings.getJSONObject(region))){JSONObject record=saplings.getJSONObject(region).getJSONObject(key);if(record.optInt("stage",0)<3&&record.optLong("lastGrowthDay",day)<day)due=true;}
-        if(old.optLong("day",-1)==day&&old.optBoolean("done")&&!due)return;
+        if(old.optLong("day",-1)==day&&old.optBoolean("done")&&!due){FirebaseRest.DIAGNOSTICS.treeState("Heute keine Bäume fällig");return;}
         String token=old.optLong("day",-1)==day&&old.optString("uid").equals(v.f.uid)&&!old.optBoolean("done")?old.getString("token"):OnlineWorld.randomId();JSONObject run=new JSONObject().put("day",day).put("uid",v.f.uid).put("token",token).put("until",now()+15000).put("done",false);
-        try{v.db.compare(path,run,version.etag);}catch(FirebaseRest.Failure e){if(e.status==412){pendingTrees=true;return;}throw e;}
-        saplings=v.remote(v.storage()+"/growth/saplings");
+        treePhase="Wachstumssperre übernehmen";try{v.db.compare(path,run,version.etag);}catch(FirebaseRest.Failure e){if(e.status==412){pendingTrees=true;return;}throw e;}
+        saplings=saplings();
         for(String region:OnlineV5.keys(saplings))for(String key:OnlineV5.keys(saplings.getJSONObject(region))){
             if(closed||s.closed)return;yieldToPlayer();
             JSONObject known=saplings.getJSONObject(region).getJSONObject(key);
             if(known.optInt("stage",0)>=3||known.optLong("lastGrowthDay",-1)>=day)continue;
             // Renew only while processing actual trees. A killed client can be replaced on the next join.
             run.put("until",now()+15000);v.db.request("PUT",path,run);
-            pendingTrees|=grow(Integer.parseInt(region),key,day,token);
+            treePhase="Wachstumsstufe prüfen und speichern";pendingTrees|=grow(Integer.parseInt(region),key,day,token);
         }
-        run.put("done",true).put("until",0);v.db.request("PUT",path,run);v.readSync();v.syncVisible(false);
+        treePhase="Tagesprüfung abschließen";run.put("done",true).put("until",0);v.db.request("PUT",path,run);v.readSync();v.syncVisible(false);
+    }
+    JSONObject saplings()throws Exception{return saplingRegions(v.db.request("GET",v.storage()+"/growth/saplings",null),s.side);}
+    // RTDB serializes dense integer keys (0..8) as JSON arrays; sparse maps remain objects.
+    // Keep the stored region keys unchanged and normalize only this bounded secondary index.
+    static JSONObject saplingRegions(Object raw,int side)throws Exception{
+        JSONObject regions=new JSONObject();int limit=side*side;
+        if(raw==JSONObject.NULL)return regions;
+        if(raw instanceof JSONArray){JSONArray array=(JSONArray)raw;if(array.length()>limit)throw new IOException("Baumindex außerhalb der Welt");for(int i=0;i<array.length();i++)if(!array.isNull(i))regions.put(Integer.toString(i),array.get(i));}
+        else if(raw instanceof JSONObject)regions=(JSONObject)raw;
+        else throw new IOException("Ungültiger Baumindex: Objekt oder Bereichsliste erwartet");
+        for(String key:OnlineV5.keys(regions))if(!key.matches("[0-8]")||Integer.parseInt(key)>=limit||!(regions.get(key) instanceof JSONObject))throw new IOException("Ungültiger Bereich im Baumindex");
+        return regions;
     }
     void repairIndex()throws Exception{
         if(Boolean.TRUE.equals(v.db.request("GET",v.storage()+"/growth/indexReady",null)))return;
