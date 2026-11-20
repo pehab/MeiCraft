@@ -30,9 +30,9 @@ public final class World {
     World(long seed,boolean story,boolean caves,int terrain){this();terrainVersion=terrain;this.seed=seed;this.story=story;flying=!story;selected=story?2:1;generate();if(terrainVersion>=2)MaterialTerrain.decorate(this,0,0,false);nature.capture(this);survival.spawnX=x;survival.spawnZ=z;if(caves){nature.addCaves(this);if(story)Forge.ruin(this);}forge.initialize(this);}
     private World(){this(W,D);}
     private World(int width,int depth){this.width=width;this.depth=depth;blocks=new byte[width*H*depth];}
-    static World onlineSpace(long seed,int side){if(side!=2&&side!=3)throw new IllegalArgumentException("Invalid online world size");World world=new World(W*side,D*side);world.seed=seed;world.online=true;world.story=true;world.flying=false;world.selected=2;world.nature.flowEnabled=false;world.survival.enemiesEnabled=false;return world;}
+    static World onlineSpace(long seed,int side){if(side!=2&&side!=3)throw new IllegalArgumentException("Invalid online world size");World world=new World(W*side,D*side);world.seed=seed;world.online=true;world.story=true;world.progress.onlineTools=true;world.flying=false;world.selected=2;world.nature.flowEnabled=false;world.survival.enemiesEnabled=false;return world;}
     static World onlineSpace(long seed,int side,int terrain){World w=onlineSpace(seed,side);w.terrainVersion=terrain;return w;}
-    static World emptyOnlineTile(long seed){World world=new World();world.seed=seed;world.online=true;world.story=true;world.flying=false;world.selected=2;world.nature.flowEnabled=false;world.survival.enemiesEnabled=false;return world;}
+    static World emptyOnlineTile(long seed){World world=new World();world.seed=seed;world.online=true;world.story=true;world.progress.onlineTools=true;world.flying=false;world.selected=2;world.nature.flowEnabled=false;world.survival.enemiesEnabled=false;return world;}
     public int idx(int x,int y,int z){return (y*depth+z)*width+x;}
     public boolean contains(int x,int y,int z){return x>=0&&z>=0&&y>=0&&x<width&&z<depth&&y<H;}
     public static int index(int x,int y,int z){return (y*D+z)*W+x;}

@@ -14,6 +14,7 @@ public final class OnlineInventoryCipherTests {
         for(int position:new int[]{2,20,80,160}){char[] changed=payload.toCharArray();changed[position]=changed[position]=='A'?'B':'A';denied(cipher,new String(changed),"world-a","player-a",19);}
         denied(cipher,payload.substring(1),"world-a","player-a",19);denied(cipher,payload+"A","world-a","player-a",19);
         Story invalid=new Story();invalid.inventory[2]=-1;boolean failed=false;try{cipher.encrypt(invalid,"world-a","player-a",0);}catch(java.io.IOException expected){failed=true;}check(failed,"Malformed inventories never enter the opaque shared field");
+        Story legacy=new Story();legacy.chapter=1;legacy.inventory[5]=7;legacy.buckets=2;String old=cipher.encrypt(legacy,"world-a","player-a",22);Story joined=cipher.decrypt(old,"world-a","player-a",22);check(joined.tool()==4&&joined.furnace()&&OnlineInventory.same(legacy,joined),"Existing early-game inventory gains tools while every stored resource and progress field is preserved");
         System.out.println("PASS: "+checks+" private inventory encryption and authentication contracts");
     }
 }

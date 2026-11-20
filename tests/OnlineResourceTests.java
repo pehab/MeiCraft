@@ -8,7 +8,7 @@ public final class OnlineResourceTests {
     public static void main(String[] args)throws Exception{
         World tile=OnlineTerrain.region(123,0,3);
         check(tile.online&&tile.story&&!tile.flying,"Online starts walking with finite resources");
-        check(Arrays.stream(tile.progress.inventory).sum()==0&&tile.progress.tool()==0,"No free blocks or tools");
+        check(Arrays.stream(tile.progress.inventory).sum()==0&&tile.progress.tool()==4&&tile.progress.furnace(),"Online terrain has tools and stations but no free materials");
         int ores=0,glow=0;for(byte block:tile.blocks){if(block==13)ores++;if(block==11)glow++;}
         check(ores>0&&glow>0,"Online terrain supplies iron and glowstone");
         Story p=new Story();check(!OnlineInventory.place(p,2).isEmpty(),"Empty inventory cannot build");
@@ -27,6 +27,14 @@ public final class OnlineResourceTests {
         check(OnlineInventory.place(liquid,10).isEmpty()&&liquid.inventory[10]==0&&liquid.buckets==1,"Pour returns empty bucket");
         check(OnlineInventory.valid(p),"Valid inventory accepted");p.inventory[1]=-1;check(!OnlineInventory.valid(p),"Negative inventory rejected");
 
+        Story online=OnlineInventory.withTools(new Story());check(online.tool()==4&&online.furnace()&&!online.ready()&&!online.claim()&&online.chapter==0,"Online tools bypass story tasks without rewriting saved progress");
+        for(int block=1;block<World.NAMES.length;block++)check(online.canMine(block),"Every material is unlocked online");
+        online.inventory[5]=1;online.craft(0);check(online.inventory[9]==4&&online.inventory[5]==0,"Online workbench is ready but recipes still consume materials");
+        online.inventory[4]=2;online.inventory[5]=1;online.craft(2);check(online.inventory[8]==2&&online.inventory[4]==0&&online.inventory[5]==0,"Online furnace is ready without crafting progression");
+        check(OnlineInventory.harvest(online,15).isEmpty()&&OnlineInventory.harvest(online,10).isEmpty()&&online.buckets==0,"Reusable online bucket scoops both liquids without crafting or consuming buckets");
+        check(OnlineInventory.place(online,15).isEmpty()&&online.inventory[15]==0&&online.buckets==0,"Pouring still consumes carried liquid and does not mint buckets");
+        Story restored=OnlineInventory.copy(online);check(restored.onlineTools&&restored.tool()==4,"Transaction copies retain online tools");
+        Story offline=new Story();check(offline.tool()==0&&!offline.furnace()&&!offline.canMine(3),"Offline story still begins without tools");
         World wide=World.onlineSpace(123,3);check(wide.width==288&&wide.depth==288,"One continuous 288 by 288 world");
         OnlineInventory.install(wide,tile,0,3);World neighbor=OnlineTerrain.region(123,1,3);OnlineInventory.install(wide,neighbor,1,3);
         check(wide.get(96,8,30)==neighbor.get(0,8,30),"Neighbor data uses continuous coordinates");
