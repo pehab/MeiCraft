@@ -57,7 +57,7 @@ final class OnlineMechanics {
         for(int attempt=0;attempt<3;attempt++){
             Snapshot snap;try{snap=new Snapshot(link,false,true);}catch(Conflict e){if(attempt==2)throw e;FirebaseRest.DIAGNOSTICS.mechanismRetry();continue;}
             String current=snap.tag(link.button);
-            if(automatic){if(!current.equals(link.encode())&&!current.equals(link.toggle().encode()))return;link=Mechanics.decode(current);if(!link.pressure||snap.pressed(link)==link.moved)return;}
+            if(automatic){if(!current.equals(link.encode())&&!current.equals(link.toggle().encode()))return;link=Mechanics.decode(current);if(!link.pressure||s.world.mechanics.pressureTimer.desired(link,snap.pressed(link),System.nanoTime()/1000000L)==link.moved)return;}
             else{if(current.equals(link.toggle().encode())){refresh();return;}if(!current.equals(link.encode()))throw new IOException("Schalter inzwischen geändert. Bitte erneut auswählen.");}
             JSONObject patch=movement(link,snap);String prefix="head/actors/"+v.f.uid+"/",op=patch.getString(prefix+"op");
             try{v.db.request("PATCH",v.storage(),patch,automatic?"Druckplatte":"Mechanik schalten");refresh();return;}catch(IOException e){

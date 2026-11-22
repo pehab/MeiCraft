@@ -91,8 +91,8 @@ final class OnlineController {
     void menu(){
         OnlineSession current=session;if(current==null||activity.busy)return;activity.paused=true;activity.game.clearInput();
         List<String> actions=new ArrayList<>(Arrays.asList("Weiterbauen","Baumaterial wählen","Werkbank / Werkzeuge","Spieler / Einladung","Online-Welt verlassen"));
-        actions.add("Online-Diagnose");actions.add("Mechanik");actions.add("Spielmodus · "+(activity.game.lookOnly?"Umschauen":"Bauen"));if(current.owner())actions.add("Online-Welt löschen");
-        new AlertDialog.Builder(activity).setTitle(current.name+" · Online").setItems(actions.toArray(new String[0]),(d,n)->{if(n==1)activity.handler.post(activity::palette);else if(n==2)activity.handler.post(this::workbench);else if(n==3)activity.handler.post(this::players);else if(n==4)activity.handler.post(this::leave);else if(n==5)activity.handler.post(this::diagnostics);else if(n==6)activity.handler.post(activity.game.mechanics::open);else if(n==7)activity.handler.post(activity.game::playMode);else if(n==8)activity.handler.post(()->confirmDelete(current));}).setOnDismissListener(d->activity.resumePlay()).show();
+        actions.add("Online-Diagnose");actions.add("Mechanik");actions.add("Spielmodus · "+(activity.game.lookOnly?"Umschauen":"Bauen"));actions.add("Anzeigehilfen · "+(activity.game.showPlayerHints?"an":"aus"));if(current.owner())actions.add("Online-Welt löschen");
+        new AlertDialog.Builder(activity).setTitle(current.name+" · Online").setItems(actions.toArray(new String[0]),(d,n)->{if(n==1)activity.handler.post(activity::palette);else if(n==2)activity.handler.post(this::workbench);else if(n==3)activity.handler.post(this::players);else if(n==4)activity.handler.post(this::leave);else if(n==5)activity.handler.post(this::diagnostics);else if(n==6)activity.handler.post(activity.game.mechanics::open);else if(n==7)activity.handler.post(activity.game::playMode);else if(n==8)activity.handler.post(activity.game::visibilitySettings);else if(n==9)activity.handler.post(()->confirmDelete(current));}).setOnDismissListener(d->activity.resumePlay()).show();
     }
     void diagnostics(){
         activity.paused=true;activity.game.clearInput();
@@ -139,7 +139,7 @@ final class OnlineController {
     void players(){
         activity.paused=true;activity.game.clearInput();
         OnlineSession current=session;if(current==null)return;
-        List<OnlineSession.Player> list=new ArrayList<>(current.players);String[] names=new String[list.size()];for(int i=0;i<names.length;i++){OnlineSession.Player p=list.get(i);names[i]=p.name+(p.uid.equals(current.owner)?" · Besitzer":"")+" · "+(int)(p.sector%current.side*World.W+p.x)+" / "+(int)(p.sector/current.side*World.D+p.z);}
+        List<OnlineSession.Player> list=new ArrayList<>(current.players);String[] names=new String[list.size()];for(int i=0;i<names.length;i++){OnlineSession.Player p=list.get(i);names[i]=p.name+(p.uid.equals(current.owner)?" · Besitzer":"")+(activity.game.showPlayerHints?" · "+(int)(p.sector%current.side*World.W+p.x)+" / "+(int)(p.sector/current.side*World.D+p.z):"");}
         AlertDialog.Builder dialog=new AlertDialog.Builder(activity).setTitle("Mitspieler · "+(current.healthy?"verbunden":"Verbindung unterbrochen")).setItems(names,(d,n)->{
             OnlineSession.Player player=list.get(n);if(current.owner()&&!player.uid.equals(current.owner))new AlertDialog.Builder(activity).setTitle(player.name+" entfernen?").setMessage("Diese anonyme Geräte-ID bleibt auch mit der bisherigen Einladung gesperrt.").setPositiveButton("Entfernen",(dd,nn)->current.ban(player.uid)).setNegativeButton("Abbrechen",null).show();
         }).setNegativeButton("Zurück",null).setOnDismissListener(d->activity.resumePlay());

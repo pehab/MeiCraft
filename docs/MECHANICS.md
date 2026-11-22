@@ -40,3 +40,9 @@ Keine laufende Abfrage nur für Mechaniken: Konfiguration und Betätigung nutzen
 Im Pausenmenü unter **Spielmodus** zwischen **Bauen** und **Umschauen** wechseln. Die Einstellung gilt für dieses Gerät und wird beim Neustart beibehalten. Umschauen verhindert direktes Setzen, Abbauen, Angreifen und Aufnehmen von Flüssigkeiten. Laufen, Springen und Umsehen sowie alle Mechaniken bleiben aktiv. Sowohl Druckplatten als auch über ⚙ betätigte Schalter lassen sich für versteckte Türen nutzen. Der Modus ist eine persönliche Bedienungssperre; andere Spieler können ihren eigenen Modus wählen.
 
 Version 1.2.0 verwendet für Druckplatten und mehrere Schalter erweiterte Mechanik-Metadaten. Vor der gemeinsamen Nutzung alle Geräte aktualisieren und die RTDB-Regeln von 1.2.0 einspielen. Vorhandene Mechaniken bleiben unverändert lesbar. Firestore-Regeln und Indizes ändern sich nicht.
+
+## Anzeigehilfen und Schließverzögerung
+
+Unter **Anzeigehilfen** Karte und Namen über Spielerfiguren gemeinsam ein- oder ausblenden. Das gilt unabhängig vom Spielmodus und wird auf dem Gerät gespeichert. Ausgeblendete Anzeigehilfen verbergen außerdem Positionsangaben in der Spielerliste. Die Figuren bleiben in der Welt sichtbar, und alle Mechaniken bleiben aktiv. Jeder Mitspieler wählt die Einstellung auf seinem Gerät.
+
+Bei der Einrichtung einer Druckplatte anschließend **Sofort**, **2 Sekunden** oder **5 Sekunden** wählen. In der Verwaltung ist dieselbe Einstellung unter **Schließverzögerung** erreichbar. Die Wartezeit beginnt erst, wenn keine verbundene Platte mehr belegt ist. Eine neue Belegung verwirft den Countdown; das nächste Verlassen startet die volle Wartezeit neu. Der Rückweg wird auch nach Ablauf auf Hindernisse und Spieler geprüft. Ein neu beigetretenes Gerät beginnt vorsichtshalber eine volle Wartezeit, wenn es eine offene, unbelegte Tür vorfindet. Die Wartezeit selbst erzeugt keine Netzwerkabfragen.

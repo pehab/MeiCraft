@@ -10,7 +10,7 @@ final class GameView {
     final FrameLayout root;
     final MainActivity activity; final MechanicsController mechanics;final GLSurfaceView gl;final VoxelRenderer renderer;final Hud hud;
     volatile World world,renderedWorld;
-    volatile boolean lookOnly;
+    volatile boolean lookOnly,showPlayerHints=true;
     volatile int[] target;
     volatile float forward,strafe,vertical;
     volatile float turnX,turnY,miningProgress;volatile boolean mineHeld;
@@ -18,12 +18,14 @@ final class GameView {
     float velocityY;boolean grounded;
     int moveId=-1,lookId=-1,verticalId=-1,mineId=-1;float lookX,lookY,knobX,knobY,mineTime;int[] miningTarget;volatile String status="";volatile long statusUntil;
     static final int[] COLORS={0,0xff79b94f,0xff986a45,0xff8c9397,0xffdfcd91,0xff9c7246,0xff47944d,0xffbd6954,0xffb9e1e8,0xffbf955f,0xff3c9dbd,0xffffdb76,0xffe8f4f7,0xffaa8b77,0xffbac4ca,0xffff6624,0xff634a42,0xff6c7077,0xff242832,0xff474c57,0xff69d8e8,0xfff4a54a,0xffb9b4f5,0xff626d83};
-    GameView(MainActivity activity,World world){this.activity=activity;mechanics=new MechanicsController(activity);root=new FrameLayout(activity);this.world=world;lookOnly=activity.getSharedPreferences("play-settings",0).getBoolean("lookOnly",false);
+    GameView(MainActivity activity,World world){this.activity=activity;mechanics=new MechanicsController(activity);root=new FrameLayout(activity);this.world=world;lookOnly=activity.getSharedPreferences("play-settings",0).getBoolean("lookOnly",false);showPlayerHints=activity.getSharedPreferences("play-settings",0).getBoolean("showPlayerHints",true);
         gl=new GLSurfaceView(activity);gl.setEGLContextClientVersion(2);gl.setPreserveEGLContextOnPause(true);renderer=new VoxelRenderer(this);gl.setRenderer(renderer);root.addView(gl,new FrameLayout.LayoutParams(-1,-1));hud=new Hud(activity);root.addView(hud,new FrameLayout.LayoutParams(-1,-1));root.setKeepScreenOn(true);
     }
     Context getContext(){return activity;}
     void setLookOnly(boolean enabled){lookOnly=enabled;clearInput();activity.getSharedPreferences("play-settings",0).edit().putBoolean("lookOnly",enabled).apply();message(enabled?"Umschauen · Mechaniken bleiben aktiv":"Bauen und Abbauen wieder aktiv");}
     void playMode(){activity.paused=true;clearInput();new android.app.AlertDialog.Builder(activity).setTitle("Spielmodus").setSingleChoiceItems(new String[]{"Bauen · Blöcke setzen und abbauen","Umschauen · nur bewegen, Mechaniken aktiv"},lookOnly?1:0,(d,n)->{setLookOnly(n==1);d.dismiss();}).setNegativeButton("Zurück",null).setOnDismissListener(d->activity.resumePlay()).show();}
+    void setPlayerHints(boolean enabled){showPlayerHints=enabled;renderer.playerLabels=java.util.Collections.emptyList();activity.getSharedPreferences("play-settings",0).edit().putBoolean("showPlayerHints",enabled).apply();message(enabled?"Karte und Spielernamen sichtbar":"Versteckspiel · Karte und Spielernamen ausgeblendet");}
+    void visibilitySettings(){activity.paused=true;clearInput();new android.app.AlertDialog.Builder(activity).setTitle("Anzeigehilfen").setSingleChoiceItems(new String[]{"Anzeigen · Weltkarte und Spielernamen","Ausblenden · Versteckspielen"},showPlayerHints?0:1,(d,n)->{setPlayerHints(n==0);d.dismiss();}).setNegativeButton("Zurück",null).setOnDismissListener(d->activity.resumePlay()).show();}
     void replace(World next){mechanics.cancel();hud.bar.selected=-1;clearInput();world=next;velocityY=0;target=null;}
     void clearInput(){synchronized(inputLock){forward=strafe=vertical=turnX=turnY=miningProgress=0;mineHeld=false;hud.barId=-1;moveId=lookId=verticalId=mineId=-1;knobX=knobY=0;}endMining();}
     void endMining(){mineHeld=false;miningProgress=0;gl.queueEvent(()->{mineTime=0;miningTarget=null;});}
@@ -75,7 +77,7 @@ final class GameView {
             box(c,designW-93,18,72,49,0xcc153d42);center(c,"☰",designW-57,51,25,Color.WHITE);
             box(c,designW-180,18,72,49,mechanics.stage>0?0xfff6d16c:0xcc153d42);center(c,"⚙",designW-144,51,27,mechanics.stage>0?0xff153d42:Color.WHITE);
             World w=world;int[] hit=target;
-            OnlineSession online=activity.online==null?null:activity.online.session;if(w.online&&online!=null){box(c,20,80,340,32,0xbb153d42);text(c,online.loading||online.streaming?"Umgebung wird nachgeladen …":online.healthy?(online.side*World.W)+" × "+(online.side*World.D)+" · X "+(int)w.x+" / Z "+(int)w.z:"Verbindung unterbrochen · Bauen pausiert",30,101,12,Color.WHITE);drawWorldMap(c,online);for(VoxelRenderer.PlayerLabel label:renderer.playerLabels){float xx=(label.x-offsetX)/scale,yy=(label.y-offsetY)/scale;center(c,label.name,xx,yy,12,Color.WHITE);}}
+            OnlineSession online=activity.online==null?null:activity.online.session;if(w.online&&online!=null){box(c,20,80,340,32,0xbb153d42);text(c,online.loading||online.streaming?"Umgebung wird nachgeladen …":online.healthy?(online.side*World.W)+" × "+(online.side*World.D)+" · X "+(int)w.x+" / Z "+(int)w.z:"Verbindung unterbrochen · Bauen pausiert",30,101,12,Color.WHITE);drawWorldMap(c,online);if(showPlayerHints)for(VoxelRenderer.PlayerLabel label:renderer.playerLabels){float xx=(label.x-offsetX)/scale,yy=(label.y-offsetY)/scale;center(c,label.name,xx,yy,12,Color.WHITE);}}
             {box(c,250,18,80,49,w.story&&w.progress.ready()?0xfff6d16c:0xcc153d42);center(c,w.online?"WERKBANK":"STORY",290,49,w.online?11:14,w.story&&w.progress.ready()?0xff153d42:Color.WHITE);if(w.story&&!w.online){float yy=w.online||designW<960?122:80;box(c,20,yy,designW<960?500:410,48,0xbb153d42);text(c,w.progress.goal(),31,yy+20,12,Color.WHITE);text(c,"− halten: abbauen · STORY: Auftrag / Rezepte",31,yy+38,11,0xffd1e8e6);}}
             if(hit!=null){box(c,(designW-266)/2,designW<960?82:20,266,31,0x99152c32);center(c,(w.nature.spring(hit[0],hit[1],hit[2])?"Lavaquelle · nachfüllbar":w.nature.stream(hit[0],hit[1],hit[2])?World.NAMES[w.get(hit[0],hit[1],hit[2])]+" · fließend":World.NAMES[w.get(hit[0],hit[1],hit[2])]+(w.forge.heat(hit[0],hit[1],hit[2])>0?" · glüht "+Math.round(w.forge.heat(hit[0],hit[1],hit[2])*100)+" %":"")),designW/2,designW<960?103:41,15,Color.WHITE);}
             float cx=(getWidth()/2f-offsetX)/scale,cy=(getHeight()/2f-offsetY)/scale;p.setColor(0xddffffff);p.setStrokeWidth(2);c.drawLine(cx-10,cy,cx-3,cy,p);c.drawLine(cx+3,cy,cx+10,cy,p);c.drawLine(cx,cy-10,cx,cy-3,p);c.drawLine(cx,cy+3,cx,cy+10,p);
@@ -98,6 +100,7 @@ final class GameView {
             c.restore();
         }}
         void drawWorldMap(Canvas c,OnlineSession online){
+            if(!showPlayerHints)return;
             float size=90,left=designW-size-20,top=82,cell=size/online.side;
             box(c,left-6,top-6,size+12,size+32,0xcc153d42);
             for(int z=0;z<online.side;z++)for(int x=0;x<online.side;x++){p.setColor(z*online.side+x==online.sector?0xff709c59:0xff365e51);c.drawRect(left+x*cell+1,top+z*cell+1,left+(x+1)*cell-1,top+(z+1)*cell-1,p);}

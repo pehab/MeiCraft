@@ -108,8 +108,8 @@ public final class MainActivity extends Activity {
  void menu(){
   if(online!=null&&online.active()){online.menu();return;}
   if(homeVisible){moveTaskToBack(true);return;}if(paused||busy)return;if(world==null){showHome();return;}paused=true;game.clearInput();
-  new AlertDialog.Builder(this).setTitle(active.label()).setItems(new String[]{"Weiterbauen","Spielstand speichern","Baumaterial wählen",world.story?"Story und Werkbank":world.flying?"Laufen statt fliegen":"Fliegen statt laufen","Hauptmenü","Mechanik","Spielmodus · "+(game.lookOnly?"Umschauen":"Bauen")},(d,n)->{
-   switch(n){case 1:save(true);break;case 2:handler.post(this::palette);break;case 3:if(world.story)handler.post(this::storyMenu);else{synchronized(world){world.flying=!world.flying;}game.velocityY=0;}break;case 4:handler.post(this::showHome);break;case 5:handler.post(game.mechanics::open);break;case 6:handler.post(game::playMode);break;default:break;}
+  new AlertDialog.Builder(this).setTitle(active.label()).setItems(new String[]{"Weiterbauen","Spielstand speichern","Baumaterial wählen",world.story?"Story und Werkbank":world.flying?"Laufen statt fliegen":"Fliegen statt laufen","Hauptmenü","Mechanik","Spielmodus · "+(game.lookOnly?"Umschauen":"Bauen"),"Anzeigehilfen · "+(game.showPlayerHints?"an":"aus")},(d,n)->{
+   switch(n){case 1:save(true);break;case 2:handler.post(this::palette);break;case 3:if(world.story)handler.post(this::storyMenu);else{synchronized(world){world.flying=!world.flying;}game.velocityY=0;}break;case 4:handler.post(this::showHome);break;case 5:handler.post(game.mechanics::open);break;case 6:handler.post(game::playMode);break;case 7:handler.post(game::visibilitySettings);break;default:break;}
   }).setOnDismissListener(d->resumePlay()).show();
  }
  void manageWorlds(){worldPicker(false);}
