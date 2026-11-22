@@ -17,7 +17,7 @@ final class OnlineMechanics {
     void configure(Mechanics.Link link,Completion done){submit(()->configureNow(link),done);}
     void toggle(Mechanics.Link link){submit(()->toggleNow(link),null);}
     void rename(Mechanics.Link link,Mechanics.Link named,Completion done){submit(()->{
-        Snapshot snap=new Snapshot(link,true,false);if(!snap.tag(link.button).equals(link.encode()))throw new IOException("Schalter inzwischen geändert. Bitte erneut auswählen.");
+        Snapshot snap=new Snapshot(named,true,false);for(Mechanics.Block b:named.buttons)if(snap.get(b.x,b.y,b.z)!=b.type)throw new IOException("Ein Schalter wurde verändert");if(!snap.tag(link.button).equals(link.encode()))throw new IOException("Schalter inzwischen geändert. Bitte erneut auswählen.");
         try{v.commit(s.inventory,change(link.button,named.encode(),snap,1),"Mechanik umbenennen");}catch(IOException e){Snapshot check=new Snapshot(link,true,false);if(!check.tag(link.button).equals(named.encode()))throw e;}refresh();
     },done);}
     void remove(Mechanics.Link link){remove(link,null);}
@@ -47,13 +47,20 @@ final class OnlineMechanics {
             refresh();return;
         }catch(Conflict e){if(attempt==2)throw e;FirebaseRest.DIAGNOSTICS.mechanismRetry();}
     }
-    void toggleNow(Mechanics.Link link)throws Exception{
+    boolean pressure(Mechanics.Link link,Runnable retry){
+        if(s.closed||!s.foreground||!s.healthy||s.loading||s.pending)return false;
+        if(!s.beginAction())return false;
+        s.worker.execute(()->{try{toggleNow(link,true);}catch(IllegalArgumentException e){/* Wait for a changed world/pose before retrying a blocked path. */}catch(Exception e){retry.run();FirebaseRest.DIAGNOSTICS.failed("Druckplatte · "+e.getClass().getSimpleName());}finally{s.pending=false;}});return true;
+    }
+    void toggleNow(Mechanics.Link link)throws Exception{toggleNow(link,false);}
+    void toggleNow(Mechanics.Link link,boolean automatic)throws Exception{
         for(int attempt=0;attempt<3;attempt++){
             Snapshot snap;try{snap=new Snapshot(link,false,true);}catch(Conflict e){if(attempt==2)throw e;FirebaseRest.DIAGNOSTICS.mechanismRetry();continue;}
-            String current=snap.tag(link.button);if(current.equals(link.toggle().encode())){refresh();return;}
-            if(!current.equals(link.encode()))throw new IOException("Schalter inzwischen geändert. Bitte erneut auswählen.");
+            String current=snap.tag(link.button);
+            if(automatic){if(!current.equals(link.encode())&&!current.equals(link.toggle().encode()))return;link=Mechanics.decode(current);if(!link.pressure||snap.pressed(link)==link.moved)return;}
+            else{if(current.equals(link.toggle().encode())){refresh();return;}if(!current.equals(link.encode()))throw new IOException("Schalter inzwischen geändert. Bitte erneut auswählen.");}
             JSONObject patch=movement(link,snap);String prefix="head/actors/"+v.f.uid+"/",op=patch.getString(prefix+"op");
-            try{v.db.request("PATCH",v.storage(),patch,"Mechanik schalten");refresh();return;}catch(IOException e){
+            try{v.db.request("PATCH",v.storage(),patch,automatic?"Druckplatte":"Mechanik schalten");refresh();return;}catch(IOException e){
                 JournalHead now=v.fetchHead();JSONObject actor=now.actors.optJSONObject(v.f.uid);
                 // A lost reply must not repeat a committed toggle or debit the inventory again.
                 if(actor!=null&&op.equals(actor.optString("op"))){refresh();return;}
@@ -74,8 +81,8 @@ final class OnlineMechanics {
     final class Snapshot implements Mechanics.Space {
         final JournalHead head;final JSONObject presence;final Map<String,String> cells=new HashMap<>();final Set<String> chunks=new LinkedHashSet<>();
         Snapshot(Mechanics.Link link,boolean buttonOnly,boolean positions)throws Exception{
-            JournalHead before=v.fetchHead();List<Mechanics.Block> required=new ArrayList<>();if(!buttonOnly)required.addAll(link.blocks);required.add(link.button);int[] d=Mechanics.DIRECTIONS[link.direction];
-            for(Mechanics.Block b:required)for(int n=0;n<=(b==link.button?0:link.distance);n++){
+            JournalHead before=v.fetchHead();List<Mechanics.Block> required=new ArrayList<>();if(!buttonOnly)required.addAll(link.blocks);required.addAll(link.buttons);int[] d=Mechanics.DIRECTIONS[link.direction];
+            for(Mechanics.Block b:required)for(int n=0;n<=(link.buttons.contains(b)?0:link.distance);n++){
                 int x=b.x+d[0]*n,y=b.y+d[1]*n,z=b.z+d[2]*n;int region=OnlineWorld.sectorAt(x,z,s.side);
                 if(region<0||y<1||y>=World.H||!s.readyRegions.contains(region))throw new IOException("Erst den gesamten Bewegungsbereich laden");
                 terrain.computeIfAbsent(region,id->OnlineTerrain.region(s.seed,id,s.side,s.terrainVersion));chunks.add(chunk(x,y,z));
@@ -91,6 +98,11 @@ final class OnlineMechanics {
         String tag(Mechanics.Block b){String raw=cells.get(key(b.x,b.y,b.z));if(raw==null)return "";String[] values=raw.split(":",4);return values.length>3?values[3]:"";}
         public int get(int x,int y,int z){if(!inside(x,y,z))return 0;String raw=cells.get(key(x,y,z));if(raw!=null)return Integer.parseInt(raw.split(":",2)[0]);int r=OnlineWorld.sectorAt(x,z,s.side);World tile=terrain.get(r);return tile==null?0:tile.get(x%World.W,y,z%World.D);}
         public boolean inside(int x,int y,int z){return y>0&&y<World.H&&x>=0&&z>=0&&x<s.side*World.W&&z<s.side*World.D&&chunks.contains(chunk(x,y,z));}
+        boolean pressed(Mechanics.Link link){
+            JSONObject players=JournalHead.object(presence,"players");for(String uid:OnlineV5.keys(players)){JSONObject p=players.optJSONObject(uid);if(p==null||p.optLong("t")<System.currentTimeMillis()+v.db.serverOffset-8000)continue;int region=p.optInt("sector",-1);if(region<0||region>=s.side*s.side)continue;
+                if(Mechanics.pressed(link,this,(float)p.optDouble("x")+region%s.side*World.W,(float)p.optDouble("y"),(float)p.optDouble("z")+region/s.side*World.D))return true;}
+            return false;
+        }
         public boolean occupied(int x,int y,int z){if(x+1>s.px-.28f&&x<s.px+.28f&&y+1>s.py-1.6f&&y<s.py+.15f&&z+1>s.pz-.28f&&z<s.pz+.28f)return true;JSONObject players=JournalHead.object(presence,"players");for(String uid:OnlineV5.keys(players)){JSONObject p=players.optJSONObject(uid);if(p==null||p.optLong("t")<System.currentTimeMillis()+v.db.serverOffset-10000)continue;float px=(float)p.optDouble("x")+p.optInt("sector")%s.side*World.W,py=(float)p.optDouble("y"),pz=(float)p.optDouble("z")+p.optInt("sector")/s.side*World.D;if(x+1>px-.28f&&x<px+.28f&&y+1>py-1.6f&&y<py+.15f&&z+1>pz-.28f&&z<pz+.28f)return true;}return false;}
     }
 }

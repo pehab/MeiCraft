@@ -26,6 +26,6 @@ for i in range(19):
  refs=' || '.join(f"({actor}.child('count').val() > {j} && {actor}.child('batch/b{j}/last/from').val() == {i})" for j in range(19))
  check+=f" && (!{old_cell}.exists() || {old_cell}.child('type').val() == 0 || ({refs}))"
  # Permutations cannot consume a natural block which has no durable source cell.
- check+=f" && ({last}.child('nature').val() == '' || {last}.child('nature').val() == 'user' || {last}.child('nature').val().matches(/^mech_[A-Za-z0-9_-]{{20,116}}$/))"
+ check+=f" && ({last}.child('nature').val() == '' || {last}.child('nature').val() == 'user' || {last}.child('nature').val().matches(/^mech_[A-Za-z0-9_-]{{20,140}}$/))"
  node['.validate']=expr+f" && (!{actor}.child('mechanic').exists() || ({check}))"
 p.write_text(json.dumps(d,indent=2)+'\n')

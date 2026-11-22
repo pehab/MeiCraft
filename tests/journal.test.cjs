@@ -277,8 +277,9 @@ test('a completed scan can revisit yesterday’s stage-1 tree without permitting
  await seed();const blocks=[],from=[],initial={},switchToken='e'.repeat(32);
  for(let y=27;y<30;y++)for(let z=20;z<23;z++){const token=(100+blocks.length).toString(16).padStart(32,'0');initial[`20_${y}_${z}`]={type:7,water:false,token,nature:'user'};blocks.push({x:20,y,z,type:0,before:token});from.push(-1);}
  for(let y=27;y<30;y++)for(let z=20;z<23;z++){blocks.push({x:21,y,z,type:7,nature:'user'});from.push(from.length-9);}
- initial['25_30_25']={type:14,water:false,token:switchToken,nature:'user'};blocks.push({x:25,y:30,z:25,type:14,before:switchToken,nature:'mech_'+'a'.repeat(116)});from.push(18);
+ initial['25_30_25']={type:14,water:false,token:switchToken,nature:'user'};blocks.push({x:25,y:30,z:25,type:14,before:switchToken,nature:'mech_'+'a'.repeat(140)});from.push(18);
  await env.withSecurityRulesDisabled(c=>set(ref(c.database(),storage+'/chunks/0_1_1_1'),{cells:initial}));
+ const tooLong=blocks.map((b,i)=>i===18?{...b,nature:'mech_'+'a'.repeat(141)}:b);await assertFails(update(r('child',storage),mechanical('child',tooLong,from)));
  await assertSucceeds(update(r('child',storage),mechanical('child',blocks,from)));
  const data=(await get(r('child',storage))).val();assert.equal(data.head.actors.child.count,19);assert.equal(Object.keys(data.head.actors.child.tail).length,16);assert.equal(Object.keys(data.journal.child).length,19);
  for(let y=27;y<30;y++)for(let z=20;z<23;z++){assert.equal(data.chunks['0_1_1_1'].cells[`20_${y}_${z}`].type,0);assert.equal(data.chunks['0_1_1_1'].cells[`21_${y}_${z}`].type,7);}

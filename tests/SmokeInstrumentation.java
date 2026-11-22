@@ -76,6 +76,17 @@ public final class SmokeInstrumentation extends Instrumentation {
    check(Math.abs(w.yaw-yaw)>.001f||Math.abs(w.pitch-pitch)>.001f,"showing a mechanism aims the camera toward its switch without teleporting");
   }finally{runOnMainSync(()->{editor.cancel();activity.paused=paused;});onGl(game,()->{synchronized(w){if(previous==null)w.mechanics.links.remove(key);else w.mechanics.links.put(key,previous);w.yaw=yaw;w.pitch=pitch;}});}
  }
+ void testPlayMode(MainActivity activity,GameView game)throws Exception{
+  phase="look-only play mode";World original=game.world;boolean oldMode=game.lookOnly,oldPaused=activity.paused;World fixture=World.emptyOnlineTile(321);fixture.online=false;fixture.progress.onlineTools=false;fixture.story=true;fixture.progress.chapter=7;fixture.progress.inventory[2]=10;fixture.x=48.5f;fixture.y=34.6f;fixture.z=48.5f;fixture.yaw=0;fixture.pitch=0;fixture.set(48,34,46,14);fixture.set(51,34,46,7);
+  Mechanics.Link link=new Mechanics.Link(new Mechanics.Block(48,34,46,14),java.util.List.of(new Mechanics.Block(51,34,46,7)),0,1,false,"Verstecktür");fixture.mechanics.install(fixture,link);
+  try{runOnMainSync(()->{activity.paused=true;game.playMode();});clickText("Umschauen ·");check(game.lookOnly&&activity.getSharedPreferences("play-settings",0).getBoolean("lookOnly",false),"look-only mode can be selected and persists on the device");
+   runOnMainSync(()->activity.paused=true);onGl(game,()->{activity.world=fixture;game.replace(fixture);});byte[] blocks=fixture.blocks.clone();int[] inventory=fixture.progress.inventory.clone();game.edit(false);game.edit(true);onGl(game,()->{game.mineHeld=true;game.mining(10);});check(java.util.Arrays.equals(blocks,fixture.blocks)&&java.util.Arrays.equals(inventory,fixture.progress.inventory),"look-only blocks held mining and placement without consuming inventory");
+   onGl(game,()->game.mechanics.activate(fixture,link));check(fixture.get(52,34,46)==7&&fixture.get(51,34,46)==0,"manual hidden door remains usable while look-only is active");
+   onGl(game,()->{game.mechanics.activate(fixture,link.toggle());fixture.mechanics.links.put(fixture.idx(48,34,46),link.mode(true));fixture.x=48.5f;fixture.y=36.6f;fixture.z=46.5f;game.mechanics.nextPlateScan=0;game.mechanics.plateRetry.clear();game.mechanics.tick(fixture,.25f);});check(fixture.get(52,34,46)==7,"pressure plates remain active in look-only mode");
+   onGl(game,()->{fixture.x=60;fixture.y=40;fixture.z=60;fixture.set(51,34,46,3);game.mechanics.nextPlateScan=0;game.mechanics.plateRetry.clear();game.mechanics.tick(fixture,.25f);});check(fixture.get(52,34,46)==7&&fixture.get(51,34,46)==3,"blocked return does not overwrite a structure");
+   onGl(game,()->{fixture.set(51,34,46,0);game.mechanics.nextPlateScan=0;game.mechanics.plateRetry.clear();game.mechanics.tick(fixture,.25f);});check(fixture.get(51,34,46)==7&&fixture.get(52,34,46)==0,"pressure door returns after its blocked path becomes free");
+  }finally{runOnMainSync(()->{game.setLookOnly(oldMode);activity.paused=true;});onGl(game,()->{activity.world=original;game.replace(original);game.mechanics.plateRetry.clear();});runOnMainSync(()->activity.paused=oldPaused);}
+ }
  void testStory(MainActivity activity,GameView game)throws Exception{
   runOnMainSync(()->{activity.getPreferences(0).edit().putBoolean("storyIntroduced",true).apply();activity.switchMode(1);});awaitSlot(activity,1);
   check(!game.world.flying&&game.world.progress.tool()==0,"new story starts walking without tools");check(game.world.get(30,30,30)!=11,"story does not reuse creative blocks");
@@ -762,7 +773,7 @@ public final class SmokeInstrumentation extends Instrumentation {
   check(java.util.Arrays.asList(context.getPackageManager().getPackageInfo(context.getPackageName(),android.content.pm.PackageManager.GET_PERMISSIONS).requestedPermissions).contains("android.permission.INTERNET"),"update permission present");
   runOnMainSync(()->{synchronized(game.world){World w=game.world;w.yaw=.55f;w.pitch=-.38f;w.y=26;w.x=48.5f;w.z=48.5f;}activity.paused=false;});
   testStory(activity,game);onGlAfterFrame(game,()->checkGl("after testStory"));
-  testMechanicsEditor(activity,game);
+  testMechanicsEditor(activity,game);testPlayMode(activity,game);
   testSurvival(activity,game);onGlAfterFrame(game,()->checkGl("after testSurvival"));
    testNature(activity,game);onGlAfterFrame(game,()->checkGl("after testNature"));
    testForge(activity,game);onGlAfterFrame(game,()->checkGl("after testForge"));

@@ -6,17 +6,17 @@ Die untere Materialleiste lässt sich mit dem Finger nach links und rechts schie
 
 Im Menü **Mechanik** oder über das Zahnrad:
 
-1. **Neue Mechanik** wählen, einen Namen vergeben, einen festen Schalterblock anvisieren und **+** antippen.
+1. **Neue Mechanik** wählen, einen Namen und **Antippen** oder **Draufstehen** wählen, einen festen Schalterblock anvisieren und **+** antippen.
 2. Bis zu **neun feste Blöcke** einzeln anvisieren und mit **+** markieren. Erneutes Antippen entfernt eine Markierung. Markierungen erhalten einen Rahmen.
 3. Das Zahnrad antippen, eine der sechs Weltachsen und eine Strecke von **ein bis vier Blöcken** wählen.
 4. Die Zusammenfassung prüfen und speichern. Die Auswahl bleibt bis zur Speicherbestätigung erhalten.
-5. Zum Schalten den Schalter anvisieren und das Zahnrad antippen. Beim nächsten Schalten kehrt die Gruppe zurück.
+5. Zum Schalten den Schalter anvisieren und das Zahnrad antippen. Beim nächsten Schalten kehrt die Gruppe zurück. Im Modus **Draufstehen** hält jede belegte Druckplatte die Gruppe verschoben. Sobald der letzte Spieler die Platten verlässt, kehrt sie automatisch zurück, wenn der Weg frei ist.
 
 Richtung X/Z bezieht sich auf die Weltachsen, nicht auf die Blickrichtung. Mit kleinen Strecken ausprobieren. Beispiel: sechs Ziegel als Wand, daneben einen Eisenblock als Schalter; die Wand zwei Blöcke seitlich verschieben. Die Bewegung erfolgt in einem Schritt, ohne Drehung oder freie Physik. Keine automatische Rückstellung und keine Mitfahrt von Spielern.
 
 Der Schalter bleibt stehen. Flüssigkeiten und Laub werden nicht bewegt. Der gesamte Weg muss frei sein, auch der Rückweg. Spieler blockieren eine Bewegung; blockierte oder inzwischen veränderte Gruppen bleiben vollständig stehen. Es werden keine Materialien verbraucht oder gutgeschrieben. **Verbindungen entfernen** löscht nur die Zuordnung und lässt alle Blöcke an ihrer aktuellen Position.
 
-In der Verwaltung zeigen die nach Entfernung sortierten Einträge Name, Blockzahl, Entfernung, Stellung und Schalterkoordinaten. Über **In der Welt markieren** den Blick auf den Schalter richten und die Gruppe für 15 Sekunden hervorheben. Dort sind auch Schalten, Umbenennen und Entfernen erreichbar.
+In der Verwaltung zeigen die nach Entfernung sortierten Einträge Name, Blockzahl, Entfernung, Stellung und Schalterkoordinaten. Über **In der Welt markieren** den Blick auf den Schalter richten und die Gruppe für 15 Sekunden hervorheben. Dort sind auch Schalten, Umbenennen und Entfernen erreichbar. Über **Weiteren Schalter hinzufügen** können bis zu drei Auslöser dieselbe Gruppe steuern. Zusätzliche Schalter müssen im gleichen Weltbereich und höchstens 16 Blöcke pro Achse vom ersten Schalter entfernt liegen. **Auslöser ändern** wechselt zwischen Antippen und Draufstehen.
 
 ## Offline und online
 
@@ -34,3 +34,9 @@ Keine laufende Abfrage nur für Mechaniken: Konfiguration und Betätigung nutzen
 - Materialleiste: Antippen, Wischschwelle, Randbegrenzung, Rückwärtswischen und jedes Material.
 - RTDB-Emulator: atomare Bewegung, verweigerte Duplikate, Blockverlust, Materialwechsel, falsche Nonces, Teilpakete und geänderte Spielerpositionen.
 - Android-Instrumentierung: Online-Bewegung über Bereichsgrenzen, zweiter Spieler, Rückbewegung, Vorräte, Checkpoint und Wiederbeitritt mit warmem Bereichscache.
+
+## Umschauen / Versteckspielen
+
+Im Pausenmenü unter **Spielmodus** zwischen **Bauen** und **Umschauen** wechseln. Die Einstellung gilt für dieses Gerät und wird beim Neustart beibehalten. Umschauen verhindert direktes Setzen, Abbauen, Angreifen und Aufnehmen von Flüssigkeiten. Laufen, Springen und Umsehen sowie alle Mechaniken bleiben aktiv. Sowohl Druckplatten als auch über ⚙ betätigte Schalter lassen sich für versteckte Türen nutzen. Der Modus ist eine persönliche Bedienungssperre; andere Spieler können ihren eigenen Modus wählen.
+
+Version 1.2.0 verwendet für Druckplatten und mehrere Schalter erweiterte Mechanik-Metadaten. Vor der gemeinsamen Nutzung alle Geräte aktualisieren und die RTDB-Regeln von 1.2.0 einspielen. Vorhandene Mechaniken bleiben unverändert lesbar. Firestore-Regeln und Indizes ändern sich nicht.
