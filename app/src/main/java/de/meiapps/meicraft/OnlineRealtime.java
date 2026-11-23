@@ -14,6 +14,8 @@ final class OnlineRealtime implements AutoCloseable {
     final ScheduledExecutorService sender=Executors.newSingleThreadScheduledExecutor();
     final AtomicLong outgoing=new AtomicLong();final RealtimeTree tree=new RealtimeTree();
     final Map<String,Long> revisions=new HashMap<>();final Map<String,OnlineSession.Player> poses=new HashMap<>();
+    // The rendering roster excludes us; pressure plates still need our confirmed RTDB pose.
+    volatile OnlineSession.Player confirmedSelf;
     volatile Exception lastFailure;volatile String access;volatile boolean connected,closed,legacyPeers;volatile List<OnlineSession.Player> legacyPlayers=Collections.emptyList();boolean hadPosition;long lastSend;float x,y,z,yaw;long retryAt;
     OnlineRealtime(OnlineSession s)throws Exception{this.s=s;db=new RtdbRest(s.firebase);base="worlds/"+s.owner+"/"+s.invitation.id;access=s.modern.state.has("access")?OnlineV5.fields(s.modern.state,"access").toString():"{}";if(!(s.modern instanceof OnlineV6)&&s.modern.sequence>0)outgoing.set(s.modern.revision);}
     void start(){reader.execute(this::run);sender.scheduleWithFixedDelay(this::tick,0,100,TimeUnit.MILLISECONDS);}
@@ -39,7 +41,7 @@ final class OnlineRealtime implements AutoCloseable {
             if(!s.foreground){LockSupport.parkNanos(200000000);continue;}
             try{
                 if(lastSend!=0&&System.nanoTime()-lastSend<10000000000L)failures=0;
-                initialize();synchronized(tree){tree.root=new JSONObject();poses.clear();revisions.clear();}
+                initialize();synchronized(tree){tree.root=new JSONObject();poses.clear();confirmedSelf=null;revisions.clear();}
                 db.listen(base+"/live",this::event);
             }catch(Banned e){s.healthy=false;s.problem(e,true);close();return;}
             catch(Exception e){
@@ -61,16 +63,17 @@ final class OnlineRealtime implements AutoCloseable {
         catch(JSONException e){throw new IOException("Ungültige RTDB-Antwort.",e);}
     }
     void consume()throws JSONException{
-        JSONObject players=tree.root.optJSONObject("players");Set<String> present=new HashSet<>();long now=System.currentTimeMillis()+db.serverOffset;
+        JSONObject players=tree.root.optJSONObject("players");Set<String> present=new HashSet<>();long now=System.currentTimeMillis()+db.serverOffset;OnlineSession.Player own=null;
         if(players!=null)for(String uid:OnlineV5.keys(players)){
-            JSONObject p=players.optJSONObject(uid);if(p==null||uid.equals(s.firebase.uid)||poses.size()>=32&&!poses.containsKey(uid))continue;
+            JSONObject p=players.optJSONObject(uid);if(p==null||!uid.equals(s.firebase.uid)&&poses.size()>=32&&!poses.containsKey(uid))continue;
             long time=p.optLong("t");if(time<now-8000||time>now+5000)continue;
             int sector=p.optInt("sector",-1);float px=(float)p.optDouble("x",Double.NaN),py=(float)p.optDouble("y",Double.NaN),pz=(float)p.optDouble("z",Double.NaN),a=(float)p.optDouble("yaw",Double.NaN);
             if(sector<0||sector>=s.side*s.side||!Float.isFinite(px)||!Float.isFinite(py)||!Float.isFinite(pz)||!Float.isFinite(a))continue;
+            if(uid.equals(s.firebase.uid)){own=new OnlineSession.Player(uid,p.optString("name","Spieler"),sector,px,py,pz,a,time,System.nanoTime());continue;}
             present.add(uid);OnlineSession.Player old=poses.get(uid);
             if(old==null||old.serverTime!=time)poses.put(uid,new OnlineSession.Player(uid,p.optString("name","Spieler"),sector,px,py,pz,a,time,System.nanoTime()));
         }
-        poses.keySet().retainAll(present);publish();
+        confirmedSelf=own;poses.keySet().retainAll(present);publish();
         JSONObject signals=s.modern instanceof OnlineV6?null:tree.root.optJSONObject("signals");if(signals!=null)for(String uid:OnlineV5.keys(signals)){
             JSONObject signal=signals.optJSONObject(uid);if(signal==null||uid.equals(s.firebase.uid))continue;long rev=signal.optLong("rev");Long seen=revisions.put(uid,rev);if(seen==null||rev>seen)s.requestRealtimeSync();
         }
@@ -112,7 +115,7 @@ final class OnlineRealtime implements AutoCloseable {
     void revoke(String uid)throws Exception{db.request("PUT",base+"/members/"+uid+"/active",Boolean.FALSE);}
     void closeWorld()throws Exception{if(db.request("GET",base+"/meta",null)!=JSONObject.NULL)db.request("PUT",base+"/meta/closed",Boolean.TRUE);}
     @Override public void close(){
-        if(closed)return;closed=true;status(false);db.interrupt();reader.shutdownNow();
+        if(closed)return;closed=true;confirmedSelf=null;status(false);db.interrupt();reader.shutdownNow();
         try{sender.execute(()->{try{if(hadPosition)position(JSONObject.NULL);}catch(Exception ignored){/* Server-time TTL is the crash/offline fallback. */}finally{db.close();}});}catch(RejectedExecutionException ignored){db.close();}sender.shutdown();
     }
 }

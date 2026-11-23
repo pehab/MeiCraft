@@ -129,6 +129,7 @@ final class JournalChecks {
             m.toggleNow(door.toggle());test.onGl(game,()->{});for(Mechanics.Block cell:panel)check(w.get(cell.x,cell.y,cell.z)==7&&w.get(cell.x+1,cell.y,cell.z)==0,"nine-block door returns every block");
             Mechanics.Block sideSwitch=new Mechanics.Block(78,44,79,14);v(a).commit(a.inventory,new OnlineChange(v(a).sequence+1,0,sideSwitch.x,sideSwitch.y,sideSwitch.z,sideSwitch.type,false,OnlineWorld.randomId(),"","parent","user"));v(a).readSync();
             Mechanics.Link plates=door.mode(true).withButtons(List.of(door.button,sideSwitch));m.rename(door,plates,null);drain(a,game);check(w.mechanics.at(w,78,44,79).pressure,"additional pressure control resolves to the primary online group");
+            pressureSelf(activity,game,a,backend,plates);
             a.px=75.5f;a.py=46.6f;a.pz=80.5f;Backend.put(backend.root,v(a).base+"/live/players/parent",new JSONObject().put("sector",0).put("x",75.5).put("y",46.6).put("z",80.5).put("t",System.currentTimeMillis()+v(a).db.serverOffset));m.toggleNow(plates,true);test.onGl(game,()->{});check(w.get(81,44,80)==7&&w.get(80,44,80)==0,"standing on the first plate opens a nine-block online door");
             int pressureWrites=backend.writes;m.toggleNow(plates,true);check(backend.writes==pressureWrites,"repeated occupied-plate checks do not toggle or write again");
             a.px=60;a.py=40;a.pz=60;Backend.put(backend.root,v(a).base+"/live/players/parent",JSONObject.NULL);Backend.put(backend.root,v(a).base+"/live/players/child",new JSONObject().put("sector",0).put("x",78.5).put("y",46.6).put("z",79.5).put("t",System.currentTimeMillis()+v(a).db.serverOffset));m.toggleNow(plates,true);check(backend.writes==pressureWrites,"another player on a second plate keeps the same door open");
@@ -151,6 +152,29 @@ final class JournalChecks {
             JSONObject saved=backend.firestore.docs.get(a.base()+"/sync/checkpoint").getJSONObject("fields");boolean marker=false;for(String id:OnlineV5.keys(OnlineV5.fields(saved,"chunks"))){String version=FirebaseRest.string(OnlineV5.fields(saved,"chunks"),id);JSONObject cells=OnlineV5.fields(backend.firestore.docs.get(a.base()+"/saved/"+version).getJSONObject("fields"),"cells");for(String key:OnlineV5.keys(cells))if(FirebaseRest.string(cells,key).contains("mech_"))marker=true;}check(marker,"checkpoint retains mechanism definition with its switch cell");
         }finally{finish(a);finish(b);}
         OnlineSession warm=session(activity,backend,invite,"parent");try{v(warm).start(false,"",2);test.onGl(game,()->{});check(warm.world.mechanics.links.containsKey(warm.world.idx(90,44,90)),"warm region cache retains switch metadata after reconnect");}finally{finish(warm);}
+    }
+    void pressureTick(GameView game,World w)throws Exception{test.onGl(game,()->{game.mechanics.nextPlateScan=0;game.mechanics.plateRetry.clear();game.mechanics.tick(w,.25f);});}
+    void pressureSelf(MainActivity activity,GameView game,OnlineSession a,Backend backend,Mechanics.Link plates)throws Exception{
+        OnlineController controller=activity.online;OnlineSession previous=controller.session;OnlineRealtime prior=a.realtime;List<OnlineSession.Player> peers=a.players;boolean paused=activity.paused;
+        OnlineRealtime live=new OnlineRealtime(a);live.connected=true;activity.paused=true;controller.session=a;a.realtime=live;World w=a.world;
+        try{
+            // Real SSE parsing keeps the rendering roster empty when only the local player is online.
+            a.px=75.5f;a.py=46.6f;a.pz=80.5f;
+            live.event("put",new JSONObject().put("path","/").put("data",new JSONObject()).toString());
+            int reads=backend.reads;pressureTick(game,w);drain(a,game);check(backend.reads==reads&&w.get(80,44,80)==7,"an unconfirmed local pose does not poll or open a pressure door");
+            JSONObject own=new JSONObject().put("sector",0).put("x",75.5).put("y",46.6).put("z",80.5).put("yaw",0).put("t",System.currentTimeMillis()+v(a).db.serverOffset);
+            Backend.put(backend.root,v(a).base+"/live/players/parent",own);
+            live.event("put",new JSONObject().put("path","/players/parent").put("data",own).toString());
+            check(a.players.isEmpty()&&live.confirmedSelf!=null,"confirmed self is retained separately from the peer rendering roster");
+            pressureTick(game,w);drain(a,game);check(w.get(81,44,80)==7&&w.get(80,44,80)==0,"the normal online controller opens a door for its own confirmed player without any peers");
+            int writes=backend.writes;reads=backend.reads;pressureTick(game,w);drain(a,game);check(backend.writes==writes&&backend.reads==reads,"standing on our plate does not repeatedly query or toggle the door");
+            a.px=60;a.py=40;a.pz=60;own.put("x",60).put("y",40).put("z",60).put("t",System.currentTimeMillis()+v(a).db.serverOffset);
+            Backend.put(backend.root,v(a).base+"/live/players/parent",own);live.event("put",new JSONObject().put("path","/players/parent").put("data",own).toString());
+            pressureTick(game,w);drain(a,game);check(w.get(80,44,80)==7&&w.get(81,44,80)==0,"leaving our own pressure plate closes through the same controller path");
+            own.put("x",75.5).put("y",46.6).put("z",80.5).put("t",System.currentTimeMillis()+v(a).db.serverOffset-9000);live.event("put",new JSONObject().put("path","/players/parent").put("data",own).toString());
+            check(live.confirmedSelf==null,"expired self presence cannot hold a plate");reads=backend.reads;pressureTick(game,w);drain(a,game);check(backend.reads==reads,"expired self pose does not cause pressure polling");
+            own.put("t",System.currentTimeMillis()+v(a).db.serverOffset);live.event("put",new JSONObject().put("path","/players/parent").put("data",own).toString());live.event("put",new JSONObject().put("path","/players/parent").put("data",JSONObject.NULL).toString());check(live.confirmedSelf==null,"deleting self presence clears the cached pressure occupant");
+        }finally{Backend.put(backend.root,v(a).base+"/live/players/parent",JSONObject.NULL);live.connected=false;live.close();controller.session=previous;a.realtime=prior;a.players=peers;activity.paused=paused;}
     }
     void resources(MainActivity activity,GameView game)throws Exception{
         Backend backend=new Backend();OnlineWorld invite=new OnlineWorld(OnlineWorld.randomId(),OnlineWorld.randomId());OnlineSession seed=session(activity,backend,invite,"parent");v(seed).start(true,"Resources",2);finish(seed);
