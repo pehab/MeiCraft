@@ -165,7 +165,7 @@ final class VoxelRenderer implements GLSurfaceView.Renderer {
             actorPart(x,feet,z,yaw,-.25f,.65f,-.15f,.5f,.55f,.3f,shirt);actorPart(x,feet,z,yaw,-.22f,1.2f,-.22f,.44f,.44f,.44f,25);
             actorPart(x,feet,z,yaw,-.24f,0,-.14f+swing,.19f,.65f,.28f,26);actorPart(x,feet,z,yaw,.05f,0,-.14f-swing,.19f,.65f,.28f,26);
             actorPart(x,feet,z,yaw,-.4f,.6f,-.13f-swing,.15f,.6f,.26f,-25);actorPart(x,feet,z,yaw,.25f,.6f,-.13f+swing,.15f,.6f,.26f,-25);
-            float[] screen=playerScreen;if(GLU.gluProject(x,feet+1.85f,z,look,0,projection,0,viewport,0,screen,0)==1&&screen[2]>0&&screen[2]<1&&world.clearLine(world.x,world.y,world.z,x,feet+1.6f,z))labels.add(new PlayerLabel(player.name,screen[0],height-screen[1]));
+            float[] screen=playerScreen;if(view.showPlayerHints&&GLU.gluProject(x,feet+1.85f,z,look,0,projection,0,viewport,0,screen,0)==1&&screen[2]>0&&screen[2]<1&&world.clearLine(world.x,world.y,world.z,x,feet+1.6f,z))labels.add(new PlayerLabel(player.name,screen[0],height-screen[1]));
         }
         avatarPositions.keySet().retainAll(seen);playerLabels=java.util.Collections.unmodifiableList(labels);
     }
