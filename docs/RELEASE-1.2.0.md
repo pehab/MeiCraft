@@ -12,4 +12,3 @@
 
 Alle mitspielenden Geräte aktualisieren, dann in **Firebase Realtime Database → Regeln** die [database.rules.json](https://raw.githubusercontent.com/pehab/MeiCraft/v1.2.0/database.rules.json) vollständig ersetzen und veröffentlichen. Die erweiterten Mechanik-Metadaten benötigen die neuen RTDB-Regeln. Firestore-Regeln und Indizes bleiben unverändert. Vorhandene Mechaniken und lokale Spielstände bleiben lesbar; ältere Apps verstehen die neuen Druckplatten- und Mehrfachschalter-Metadaten nicht.
 
-Diese Version ist im PR vorbereitet. Ein Merge oder eine Veröffentlichung wird dadurch nicht ausgeführt.
